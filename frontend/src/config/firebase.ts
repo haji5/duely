@@ -2,15 +2,15 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
 // Your web app's Firebase configuration
-// Replace these with your actual Firebase config values
+// Using environment variables for security
 const firebaseConfig = {
-    apiKey: "AIzaSyAX9U54jU4iBQxVlSA67xtSMlzYrkxO0EQ",
-    authDomain: "duelybattles.firebaseapp.com",
-    projectId: "duelybattles",
-    storageBucket: "duelybattles.firebasestorage.app",
-    messagingSenderId: "303255979287",
-    appId: "1:303255979287:web:9c08dfbaad615865c6e352",
-    measurementId: "G-8RCDW6HJPK"
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
 
