@@ -43,10 +43,11 @@ const ResultsPage: React.FC = () => {
 
         // Fetch all results for global rankings
         try {
-          const allResultsData = await bracketApi.getAllBracketResults(parseInt(id));
+          const allResultsData = await bracketApi.getBracketResults(parseInt(id));
+          console.log('Fetched global results:', allResultsData.length, 'results');
           setAllResults(allResultsData);
         } catch (error) {
-          console.log('No global results available yet');
+          console.log('No global results available yet:', error);
           setAllResults([]);
         }
 

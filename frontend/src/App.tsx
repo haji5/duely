@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { SessionBattleProvider } from './contexts/SessionBattleContext';
 import HomePage from './pages/HomePage';
 import BracketPage from './pages/BracketPage';
@@ -18,23 +19,25 @@ const LogoutHandler: React.FC = () => {
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        <SessionBattleProvider>
-          <div className="min-h-screen bg-gray-50">
-            <Navbar />
-            <LogoutHandler />
-            <main>
-              <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/browse" element={<BrowsePage />} />
-                <Route path="/create" element={<CustomBracketPage />} />
-                <Route path="/bracket/:id" element={<BracketPage />} />
-                <Route path="/results/:id" element={<ResultsPage />} />
-              </Routes>
-            </main>
-          </div>
-        </SessionBattleProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <SessionBattleProvider>
+            <div className="min-h-screen bg-themed-primary">
+              <Navbar />
+              <LogoutHandler />
+              <main>
+                <Routes>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/browse" element={<BrowsePage />} />
+                  <Route path="/create" element={<CustomBracketPage />} />
+                  <Route path="/bracket/:id" element={<BracketPage />} />
+                  <Route path="/results/:id" element={<ResultsPage />} />
+                </Routes>
+              </main>
+            </div>
+          </SessionBattleProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </Router>
   );
 }

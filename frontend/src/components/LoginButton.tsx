@@ -21,7 +21,7 @@ const LoginButton: React.FC = () => {
     <button
       onClick={handleGoogleSignIn}
       disabled={isLoading}
-      className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="flex items-center justify-center px-4 py-2 border border-themed-primary rounded-md shadow-themed-sm bg-themed-secondary text-sm font-medium text-themed-primary hover:bg-themed-tertiary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
     >
       {isLoading ? (
         <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mr-2"></div>
