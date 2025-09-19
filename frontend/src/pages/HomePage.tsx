@@ -46,23 +46,23 @@ const HomePage: React.FC = () => {
         transition={{ duration: 0.6 }}
         className="text-center mb-16"
       >
-        <h1 className="text-5xl font-bold text-gray-900 mb-6">
+        <h1 className="text-5xl font-bold text-primary mb-6">
           Choose Your Champion
         </h1>
-        <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
+        <p className="text-xl text-secondary max-w-3xl mx-auto mb-8">
           Battle it out in tournament-style brackets! Compare songs, videos, or images head-to-head
           until only one remains victorious. Preview media on hover and watch the competition unfold.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <button
             onClick={() => navigate('/create')}
-            className="btn btn-primary text-lg px-8 py-4"
+            className="btn btn-primary text-lg px-8 py-4 cursor-pointer"
           >
             Create Custom Bracket
           </button>
           <button
             onClick={() => navigate('/browse')}
-            className="btn btn-secondary text-lg px-8 py-4"
+            className="btn btn-secondary text-lg px-8 py-4 cursor-pointer"
           >
             Browse All Brackets
           </button>
@@ -77,7 +77,7 @@ const HomePage: React.FC = () => {
           transition={{ delay: 0.3 }}
           className="mb-16"
         >
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">Popular Battles</h2>
+          <h2 className="text-3xl font-bold text-primary mb-8">Popular Battles</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {popularBrackets.slice(0, 6).map((bracket, index) => (
               <motion.div
@@ -100,10 +100,10 @@ const HomePage: React.FC = () => {
         transition={{ delay: 0.5 }}
       >
         <div className="flex items-center justify-between mb-8">
-          <h2 className="text-3xl font-bold text-gray-900">All Brackets</h2>
+          <h2 className="text-3xl font-bold text-primary">All Brackets</h2>
           <Link
             to="/browse"
-            className="inline-flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 shadow-sm hover:shadow-md"
+            className="inline-flex items-center space-x-2 px-4 py-2 bg-secondary border border-primary rounded-lg text-secondary hover:bg-tertiary hover:border-secondary transition-all duration-200 shadow-primary hover:shadow-secondary"
           >
             <span className="text-sm font-medium">View All</span>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -167,15 +167,15 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
               {getTypeIcon(bracket.type)}
               <span className="text-sm font-medium capitalize">{bracket.type}</span>
             </div>
-            <div className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
+            <div className="bg-tertiary text-secondary px-2 py-1 rounded-full text-xs">
               Battle
             </div>
           </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">{bracket.name}</h3>
-          <p className="text-gray-600 text-sm mb-4 line-clamp-2">{bracket.description}</p>
+          <h3 className="text-xl font-semibold text-primary mb-2">{bracket.name}</h3>
+          <p className="text-secondary text-sm mb-4 line-clamp-2">{bracket.description}</p>
           <div className="flex items-center justify-between">
             <span className="text-primary-600 font-medium">Start Battle →</span>
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-tertiary">
               {new Date(bracket.createdAt).toLocaleDateString()}
             </div>
           </div>

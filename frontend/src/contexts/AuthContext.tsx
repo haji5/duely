@@ -1,10 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import {
-  User,
   signInWithPopup,
   signOut,
-  onAuthStateChanged,
-  GoogleAuthProvider
+  onAuthStateChanged
 } from 'firebase/auth';
 import { auth, googleProvider } from '../config/firebase';
 
@@ -44,15 +42,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signInWithGoogle = async (): Promise<void> => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      const user = result.user;
 
-      if (user) {
+      if (result.user) {
         const userProfile: UserProfile = {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName,
+          photoURL: result.user.photoURL
         };
         setCurrentUser(userProfile);
         // Store user data in localStorage for persistence

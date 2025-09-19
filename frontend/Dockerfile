@@ -20,12 +20,16 @@ ENV VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID
 ENV VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
 ENV VITE_FIREBASE_MEASUREMENT_ID=$VITE_FIREBASE_MEASUREMENT_ID
 
+# Copy package files
 COPY package*.json ./
 
-RUN npm install
+# Install all dependencies (including devDependencies needed for build)
+RUN npm ci --silent
 
+# Copy source code
 COPY . .
 
+# Build the application
 RUN npm run build
 
 FROM nginx:alpine

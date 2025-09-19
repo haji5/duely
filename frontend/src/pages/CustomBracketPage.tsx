@@ -126,16 +126,15 @@ const CustomBracketPage: React.FC = () => {
 
         return (
           <div className="mt-2 relative">
-            <div className="relative bg-gray-100 rounded overflow-hidden">
+            <div className="relative bg-tertiary rounded overflow-hidden">
               <iframe
                 width="100%"
                 height="120"
                 src={embedUrl}
                 title={`Video preview ${index + 1}`}
-                frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
-                className="rounded"
+                className="rounded border-0"
                 loading="lazy"
               />
               {/* Show thumbnail as fallback behind iframe */}
@@ -200,7 +199,7 @@ const CustomBracketPage: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
-        <h1 className="text-4xl font-bold text-gray-900 text-center mb-8">
+        <h1 className="text-4xl font-bold text-primary text-center mb-8">
           Create Your Own Bracket
         </h1>
 
@@ -208,7 +207,7 @@ const CustomBracketPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
             {/* Bracket Name */}
             <div>
-              <label htmlFor="bracketName" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="bracketName" className="block text-sm font-medium text-primary mb-2">
                 Bracket Name
               </label>
               <input
@@ -216,7 +215,7 @@ const CustomBracketPage: React.FC = () => {
                 id="bracketName"
                 value={bracketName}
                 onChange={(e) => setBracketName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                className="w-full px-3 py-2 border border-primary rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                 placeholder="e.g., Best Radiohead Songs"
                 required
               />
@@ -224,14 +223,14 @@ const CustomBracketPage: React.FC = () => {
 
             {/* Bracket Type */}
             <div>
-              <label htmlFor="bracketType" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="bracketType" className="block text-sm font-medium text-primary mb-2">
                 Bracket Type
               </label>
               <select
                 id="bracketType"
                 value={bracketType}
                 onChange={(e) => updateBracketType(e.target.value as 'song' | 'video' | 'image')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                className="w-full px-3 py-2 border border-primary rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="song">Songs</option>
                 <option value="video">Videos</option>
@@ -242,8 +241,8 @@ const CustomBracketPage: React.FC = () => {
             {/* Items Section */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Items</h3>
-                <span className="text-sm text-gray-500">
+                <h3 className="text-lg font-medium text-primary">Items</h3>
+                <span className="text-sm text-tertiary">
                   {items.filter(item => item.title.trim() && item.mediaUrl.trim()).length} items added
                 </span>
               </div>
@@ -255,7 +254,7 @@ const CustomBracketPage: React.FC = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="border border-gray-200 rounded-lg p-4 bg-gray-50"
+                    className="border border-primary rounded-lg p-4 bg-tertiary"
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center space-x-2 text-primary-600">
@@ -266,7 +265,7 @@ const CustomBracketPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => removeItem(index)}
-                          className="text-red-500 hover:text-red-700 p-1"
+                          className="text-error hover:text-red-700 p-1"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -277,17 +276,17 @@ const CustomBracketPage: React.FC = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Title</label>
+                        <label className="block text-xs font-medium text-secondary mb-1">Title</label>
                         <input
                           type="text"
                           value={item.title}
                           onChange={(e) => updateItem(index, 'title', e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                           placeholder={`${bracketType === 'song' ? 'Song' : bracketType === 'video' ? 'Video' : 'Image'} title`}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-xs font-medium text-secondary mb-1">
                           {bracketType === 'song' ? 'Spotify/Audio URL' :
                            bracketType === 'video' ? 'YouTube/Video URL' : 'Image URL'}
                         </label>
@@ -295,7 +294,7 @@ const CustomBracketPage: React.FC = () => {
                           type="url"
                           value={item.mediaUrl}
                           onChange={(e) => updateItem(index, 'mediaUrl', e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                           placeholder={`Paste ${bracketType} URL here`}
                         />
                       </div>
@@ -309,33 +308,44 @@ const CustomBracketPage: React.FC = () => {
               <button
                 type="button"
                 onClick={addItem}
-                className="w-full mt-4 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-primary-400 hover:text-primary-600 transition-colors"
+                className="w-full mt-4 py-3 border-2 border-dashed border-primary rounded-lg text-secondary hover:text-primary hover:bg-tertiary transition-colors duration-200 flex items-center justify-center space-x-2"
               >
-                + Add Item
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                <span>Add Another Item</span>
               </button>
             </div>
 
             {/* Error Message */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                <p className="text-sm text-red-600">{error}</p>
+              <div className="p-4 bg-error/10 border border-error/20 rounded-lg">
+                <p className="text-error text-sm">{error}</p>
               </div>
             )}
 
-            {/* Submit Button */}
-            <div className="pt-4">
+            {/* Submit Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-6">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="btn btn-secondary flex-1"
+                disabled={loading}
+              >
+                Cancel
+              </button>
               <button
                 type="submit"
+                className="btn btn-primary flex-1"
                 disabled={loading}
-                className="w-full btn btn-primary py-3 text-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Creating Bracket...
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>Creating...</span>
                   </div>
                 ) : (
-                  'Save Bracket & Start Playing'
+                  'Create Bracket'
                 )}
               </button>
             </div>
