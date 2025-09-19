@@ -357,7 +357,7 @@ const ResultsPage: React.FC = () => {
                       {/* Media Preview */}
                       <div className="flex-shrink-0">
                         <div className="w-24 h-16 overflow-hidden rounded-lg">
-                          <MediaPreview item={item} className="w-full h-full scale-75 origin-top-left" />
+                          <MediaPreview item={item} size="thumbnail" className="w-full h-full scale-75 origin-top-left" />
                         </div>
                       </div>
 
