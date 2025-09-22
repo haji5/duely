@@ -4,6 +4,7 @@ export interface Bracket {
   description: string;
   type: string;
   createdAt: string;
+  createdBy?: string;
 }
 
 export interface Item {

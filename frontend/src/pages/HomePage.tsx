@@ -9,6 +9,19 @@ const HomePage: React.FC = () => {
   const [brackets, setBrackets] = React.useState<Bracket[]>([]);
   const [popularBrackets, setPopularBrackets] = React.useState<Bracket[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [searchQuery, setSearchQuery] = React.useState('');
+
+  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      navigate(`/browse?search=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+
+  const handleSearchClick = () => {
+    if (searchQuery.trim()) {
+      navigate(`/browse?search=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
 
   React.useEffect(() => {
     const fetchData = async () => {
@@ -53,6 +66,52 @@ const HomePage: React.FC = () => {
           Battle it out in tournament-style brackets! Compare songs, videos, or images head-to-head
           until only one remains victorious. Preview media on hover and watch the competition unfold.
         </p>
+
+        {/* Search Bar */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.6 }}
+          className="max-w-2xl mx-auto mb-8"
+        >
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-5 w-5 text-themed-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearch}
+              placeholder="Search for brackets... (Press Enter to search)"
+              className="block w-full pl-10 pr-20 py-4 text-lg bg-themed-secondary border-2 border-themed-primary rounded-xl focus:outline-none focus:ring-2 transition-all duration-200 shadow-themed-lg text-themed-primary focus:border-themed-primary"
+              style={{
+                '--tw-ring-color': 'var(--accent-primary)'
+              } as React.CSSProperties}
+            />
+            <div className="absolute inset-y-0 right-0 flex items-center">
+              <button
+                onClick={handleSearchClick}
+                className="mr-2 px-6 py-2 rounded-lg font-medium transition-colors duration-200"
+                style={{
+                  backgroundColor: 'var(--accent-primary)',
+                  color: 'var(--accent-primary-text)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--accent-primary-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--accent-primary)';
+                }}
+              >
+                Search
+              </button>
+            </div>
+          </div>
+        </motion.div>
+
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <button
             onClick={() => navigate('/create')}

@@ -81,8 +81,9 @@ public class BracketController {
         String name = payload.get("name");
         String description = payload.get("description");
         String type = payload.get("type");
+        String createdBy = payload.get("createdBy");
 
-        Bracket bracket = bracketService.createBracket(name, description, type);
+        Bracket bracket = bracketService.createBracket(name, description, type, createdBy);
         return ResponseEntity.ok(bracket);
     }
 

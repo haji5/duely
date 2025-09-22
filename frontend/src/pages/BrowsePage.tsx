@@ -1,15 +1,31 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { bracketApi } from '../services/api';
-import { Bracket } from '../types';
+import type { Bracket } from '../types';
 
 const BrowsePage: React.FC = () => {
+  const location = useLocation();
   const [brackets, setBrackets] = React.useState<Bracket[]>([]);
   const [filteredBrackets, setFilteredBrackets] = React.useState<Bracket[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [selectedType, setSelectedType] = React.useState<string>('all');
+  const [sortBy, setSortBy] = React.useState<string>('newest');
+  const [creatorFilter, setCreatorFilter] = React.useState<string>('');
   const [loading, setLoading] = React.useState(true);
+
+  // Initialize search query and creator filter from URL parameters
+  React.useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const query = searchParams.get('search');
+    const creator = searchParams.get('creator');
+    if (query) {
+      setSearchQuery(query);
+    }
+    if (creator) {
+      setCreatorFilter(creator);
+    }
+  }, [location.search]);
 
   React.useEffect(() => {
     const fetchBrackets = async () => {
@@ -38,13 +54,48 @@ const BrowsePage: React.FC = () => {
       );
     }
 
+    // Filter by creator
+    if (creatorFilter) {
+      filtered = filtered.filter(bracket => bracket.createdBy === creatorFilter);
+    }
+
     // Filter by type
     if (selectedType !== 'all') {
       filtered = filtered.filter(bracket => bracket.type === selectedType);
     }
 
+    // Sort the filtered results
+    filtered = sortBrackets(filtered, sortBy);
+
     setFilteredBrackets(filtered);
-  }, [searchQuery, selectedType, brackets]);
+  }, [searchQuery, selectedType, brackets, sortBy, creatorFilter]);
+
+  const sortBrackets = (brackets: Bracket[], sortOption: string): Bracket[] => {
+    const sortedBrackets = [...brackets];
+
+    switch (sortOption) {
+      case 'newest':
+        return sortedBrackets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      case 'oldest':
+        return sortedBrackets.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      case 'name-asc':
+        return sortedBrackets.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      case 'name-desc':
+        return sortedBrackets.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+      case 'type':
+        return sortedBrackets.sort((a, b) => (a.type || '').localeCompare(b.type || ''));
+      default:
+        return sortedBrackets;
+    }
+  };
+
+  const getSortOptions = () => [
+    { value: 'newest', label: 'Newest First' },
+    { value: 'oldest', label: 'Oldest First' },
+    { value: 'name-asc', label: 'Name A-Z' },
+    { value: 'name-desc', label: 'Name Z-A' },
+    { value: 'type', label: 'Type' }
+  ];
 
   const getUniqueTypes = () => {
     const types = brackets.map(bracket => bracket.type).filter(Boolean);
@@ -70,10 +121,13 @@ const BrowsePage: React.FC = () => {
           className="text-center mb-12"
         >
           <h1 className="text-4xl font-bold text-primary mb-4">
-            Browse All Brackets
+            {creatorFilter ? 'My Brackets' : 'Browse All Brackets'}
           </h1>
           <p className="text-xl text-secondary max-w-3xl mx-auto mb-8">
-            Discover all available bracket battles. Search by name or filter by type to find your perfect competition.
+            {creatorFilter
+              ? 'View and manage all the bracket battles you have created.'
+              : 'Discover all available bracket battles. Search by name or filter by type to find your perfect competition.'
+            }
           </p>
         </motion.div>
 
@@ -82,20 +136,23 @@ const BrowsePage: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-secondary rounded-lg shadow-secondary p-6 mb-8"
+          className="bg-themed-secondary rounded-lg shadow-themed-lg border border-themed-primary p-6 mb-8"
         >
           <div className="flex flex-col md:flex-row gap-4">
             {/* Search Input */}
             <div className="flex-1 relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5 text-themed-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
               <input
                 type="text"
                 placeholder="Search brackets by name or description..."
-                className="block w-full pl-10 pr-3 py-3 border border-primary rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                className="block w-full pl-10 pr-3 py-3 bg-themed-secondary border border-themed-primary rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 text-themed-primary"
+                style={{
+                  '--tw-ring-color': 'var(--accent-primary)'
+                } as React.CSSProperties}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -104,7 +161,10 @@ const BrowsePage: React.FC = () => {
             {/* Type Filter */}
             <div className="md:w-48">
               <select
-                className="block w-full px-3 py-3 border border-primary rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                className="block w-full px-3 py-3 bg-themed-secondary border border-themed-primary rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 text-themed-primary"
+                style={{
+                  '--tw-ring-color': 'var(--accent-primary)'
+                } as React.CSSProperties}
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
               >
@@ -116,10 +176,28 @@ const BrowsePage: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            {/* Sort By */}
+            <div className="md:w-48">
+              <select
+                className="block w-full px-3 py-3 bg-themed-secondary border border-themed-primary rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 text-themed-primary"
+                style={{
+                  '--tw-ring-color': 'var(--accent-primary)'
+                } as React.CSSProperties}
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                {getSortOptions().map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Results Count */}
-          <div className="mt-4 text-sm text-secondary">
+          <div className="mt-4 text-sm text-themed-secondary">
             Showing {filteredBrackets.length} of {brackets.length} brackets
             {searchQuery && (
               <span> for "{searchQuery}"</span>

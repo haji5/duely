@@ -63,11 +63,12 @@ export const bracketApi = {
   },
 
   // Create new bracket
-  createBracket: async (name: string, description: string, type: string): Promise<Bracket> => {
+  createBracket: async (name: string, description: string, type: string, createdBy?: string): Promise<Bracket> => {
     const response = await api.post('/brackets', {
       name,
       description,
       type,
+      createdBy,
     });
     return response.data;
   },

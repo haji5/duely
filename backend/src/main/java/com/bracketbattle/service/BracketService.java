@@ -56,8 +56,8 @@ public class BracketService {
         return resultRepository.findByBracketIdAndUserId(bracketId, userId);
     }
 
-    public Bracket createBracket(String name, String description, String type) {
-        Bracket bracket = new Bracket(name, description, type);
+    public Bracket createBracket(String name, String description, String type, String createdBy) {
+        Bracket bracket = new Bracket(name, description, type, createdBy);
         return bracketRepository.save(bracket);
     }
 

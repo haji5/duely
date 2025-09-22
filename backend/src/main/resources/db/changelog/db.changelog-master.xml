@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
-    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
     <changeSet id="1" author="bracket-battle">
         <createTable tableName="brackets">
@@ -72,6 +71,13 @@
     <!-- Fix ranking column type to resolve Jackson serialization issues -->
     <changeSet id="6" author="bracket-battle">
         <modifyDataType tableName="results" columnName="ranking" newDataType="TEXT"/>
+    </changeSet>
+
+    <!-- Add missing created_by column to brackets table -->
+    <changeSet id="11" author="bracket-battle">
+        <addColumn tableName="brackets">
+            <column name="created_by" type="VARCHAR(255)"/>
+        </addColumn>
     </changeSet>
 
     <changeSet id="4" author="bracket-battle">

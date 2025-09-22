@@ -78,6 +78,7 @@ const BracketPage: React.FC = () => {
         winnerId: number;
         loserId: number;
     } | null>(null);
+    const [selectedSize, setSelectedSize] = React.useState<number | null>(null);
 
     // Initialize audio context
     const audioRef = React.useRef<ReturnType<typeof createAudioContext> | null>(null);
@@ -372,7 +373,7 @@ const BracketPage: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
+            <div className="flex items-center justify-center py-20">
                 <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
             </div>
         );
@@ -380,10 +381,10 @@ const BracketPage: React.FC = () => {
 
     if (error) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
+            <div className="flex items-center justify-center py-20">
                 <div className="text-center">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Oops!</h2>
-                    <p className="text-gray-600 mb-6">{error}</p>
+                    <h2 className="text-2xl font-bold text-themed-primary mb-4">Oops!</h2>
+                    <p className="text-themed-secondary mb-6">{error}</p>
                     <button onClick={() => navigate('/')} className="btn btn-primary">
                         Go Back Home
                     </button>
@@ -394,42 +395,91 @@ const BracketPage: React.FC = () => {
 
     if (selectionPopup) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-100">
+            <div className="min-h-screen flex items-center justify-center bg-themed-primary py-12 px-4">
                 <div className="card p-8 max-w-lg mx-auto text-center">
-                    <h2 className="text-2xl font-bold mb-6">Select Tournament Size</h2>
-                    <p className="text-gray-600 mb-6">
-                        Choose how many items to include in the tournament. Only power-of-2 numbers are available for balanced brackets.
+                    <h2 className="text-3xl font-bold mb-4 text-themed-primary">
+                        {selectionPopup.bracket.name}
+                    </h2>
+                    <p className="text-themed-secondary mb-6">
+                        {selectionPopup.bracket.description}
                     </p>
-                    <div className="grid grid-cols-1 gap-3 mb-6">
-                        {selectionPopup.options.map(opt => (
-                            <button
-                                key={opt}
-                                className="btn btn-primary p-4 text-left"
-                                onClick={() => {
+
+                    <div className="bg-themed-tertiary rounded-lg p-4 mb-6 border border-themed-primary">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                            <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 00-2 2v2m0 0V9a2 2 0 012-2m0 0h14m-2 2v-2" />
+                            </svg>
+                            <span className="font-semibold text-primary-600">Battle Arena</span>
+                        </div>
+                        <p className="text-sm text-themed-secondary">
+                            <span className="font-bold">{selectionPopup.items.length} items</span> ready to compete
+                        </p>
+                    </div>
+
+                    <h3 className="text-xl font-bold mb-4 text-themed-primary">Select Tournament Size</h3>
+                    <p className="text-themed-secondary mb-6">
+                        Choose your tournament format. Larger rounds create more intense competition.
+                    </p>
+
+                    <div className="mb-6">
+                        <select
+                            className="w-full p-4 border border-themed-primary rounded-lg bg-themed-secondary text-themed-primary font-medium focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                            onChange={(e) => {
+                                const selectedValue = parseInt(e.target.value);
+                                if (selectedValue) {
+                                    setSelectedSize(selectedValue);
                                     // Play selection sound
+                                    audioRef.current?.playTick(800, 0.1, 0.06);
+                                }
+                            }}
+                            defaultValue=""
+                        >
+                            <option value="" disabled>
+                                Select tournament format...
+                            </option>
+                            {selectionPopup.options.map(opt => (
+                                <option key={opt} value={opt}>
+                                    Round of {opt} ({Math.log2(opt)} rounds • {opt - 1} total matches)
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Start Tournament Button */}
+                    {selectedSize && (
+                        <div className="mb-6">
+                            <button
+                                onClick={() => {
+                                    // Play start sound
                                     audioRef.current?.playTick(1000, 0.1, 0.08);
 
                                     const chosenItems = [...selectionPopup.items]
                                         .sort(() => Math.random() - 0.5)
-                                        .slice(0, opt);
+                                        .slice(0, selectedSize);
                                     setTournament(createTournament(
                                         selectionPopup.bracket,
                                         chosenItems
                                     ));
                                     setSelectionPopup(null);
                                 }}
+                                className="btn btn-primary w-full py-4 text-lg font-bold hover:shadow-lg transition-all duration-200"
                             >
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <div className="font-bold text-lg">{opt} Items</div>
-                                        <div className="text-sm opacity-75 mt-1">
-                                            {Math.log2(opt)} rounds
-                                        </div>
-                                    </div>
-                                    <div className="text-2xl">🏆</div>
-                                </div>
+                                🏆 Start Round of {selectedSize} Tournament
                             </button>
-                        ))}
+                        </div>
+                    )}
+
+                    {/* View Stats Button */}
+                    <div className="border-t border-themed-primary pt-6 mt-6">
+                        <button
+                            onClick={() => navigate(`/results/${id}`)}
+                            className="btn btn-secondary w-full flex items-center justify-center gap-2 hover:shadow-lg transition-all duration-200"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                            View Stats & Results
+                        </button>
                     </div>
                 </div>
             </div>
@@ -453,20 +503,20 @@ const BracketPage: React.FC = () => {
     const matchDisplay = getCurrentMatchDisplay();
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-primary-50 to-purple-50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="bg-themed-primary py-12 min-h-screen">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="text-center mb-12">
-                    <h1 className="text-4xl font-bold text-gray-900 mb-4">
+                    <h1 className="text-4xl font-bold text-themed-primary mb-4">
                         {tournament.bracket.name}
                     </h1>
-                    <p className="text-gray-600 mb-6">{tournament.bracket.description}</p>
+                    <p className="text-themed-secondary mb-6">{tournament.bracket.description}</p>
 
                     {matchDisplay && (
-                        <div className="bg-white rounded-lg p-6 inline-block shadow-sm">
+                        <div className="bg-themed-secondary rounded-lg p-6 inline-block shadow-themed-lg border border-themed-primary">
                             <p className="text-2xl font-bold text-primary-600 mb-2">
                                 Round of {matchDisplay.roundOf}
                             </p>
-                            <p className="text-lg text-gray-600">
+                            <p className="text-lg text-themed-secondary">
                                 Match {matchDisplay.current} of {matchDisplay.total}
                             </p>
                         </div>
@@ -507,7 +557,7 @@ const BattleArena: React.FC<{
                 winnerAnimation={winnerAnimation}
             />
             <div className="flex items-center justify-center lg:hidden">
-                <div className="bg-white rounded-full p-3 shadow-lg">
+                <div className="bg-themed-secondary rounded-full p-3 shadow-themed-lg border border-themed-primary">
                     <span className="text-2xl font-bold text-primary-600">VS</span>
                 </div>
             </div>
@@ -518,7 +568,7 @@ const BattleArena: React.FC<{
                 winnerAnimation={winnerAnimation}
             />
             <div className="hidden lg:flex lg:absolute lg:left-1/2 lg:top-1/2 lg:transform lg:-translate-x-1/2 lg:-translate-y-1/2 lg:z-10">
-                <div className="bg-white rounded-full p-4 shadow-xl border-4 border-primary-200">
+                <div className="bg-themed-secondary rounded-full p-4 shadow-themed-xl border-4 border-primary-200">
                     <span className="text-3xl font-bold text-primary-600">VS</span>
                 </div>
             </div>
@@ -580,11 +630,11 @@ const BattleItem: React.FC<{
                     <h3 className={`text-2xl font-bold transition-colors line-clamp-2 ${
                         isWinner ? 'text-green-600' : 
                         isLoser ? 'text-red-600' : 
-                        'text-gray-900 group-hover:text-primary-600'
+                        'text-themed-primary group-hover:text-primary-600'
                     }`}>
                         {item.title}
                     </h3>
-                    <p className="text-gray-600 capitalize text-base font-medium">{item.mediaType}</p>
+                    <p className="text-themed-secondary capitalize text-base font-medium">{item.mediaType}</p>
                 </div>
 
                 {/* Winner celebration animation */}
@@ -644,7 +694,7 @@ const BattleItem: React.FC<{
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 0.7 }}
                             transition={{ duration: 0.5 }}
-                            className="absolute inset-0 bg-gray-800 pointer-events-none rounded-lg"
+                            className="absolute inset-0 bg-themed-tertiary opacity-80 pointer-events-none rounded-lg"
                         />
                         <motion.div
                             initial={{ scale: 0, opacity: 0 }}
@@ -683,13 +733,13 @@ const TournamentComplete: React.FC<{
     const winner = tournament.finalRanking?.[0];
     if (!winner) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center">
+            <div className="bg-themed-primary flex items-center justify-center py-20 min-h-screen">
                 <div className="max-w-2xl mx-auto text-center px-4">
                     <div className="card p-12">
-                        <h1 className="text-4xl font-bold text-gray-900 mb-4">
+                        <h1 className="text-4xl font-bold text-themed-primary mb-4">
                             Tournament Complete!
                         </h1>
-                        <p className="text-xl text-gray-600 mb-8">
+                        <p className="text-xl text-themed-secondary mb-8">
                             There was an issue determining the winner. Please try again.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -707,52 +757,59 @@ const TournamentComplete: React.FC<{
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-yellow-50 to-orange-50 flex items-center justify-center">
+        <div className="bg-themed-primary flex items-center justify-center py-20 min-h-screen">
             <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.6 }}
-                className="max-w-2xl mx-auto text-center px-4"
+                className="max-w-2xl mx-auto text-center px-4 relative"
             >
+                {/* Celebration particles positioned relative to the card */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                    {[...Array(50)].map((_, i) => (
+                    {[...Array(20)].map((_, i) => (
                         <motion.div
                             key={i}
                             className="absolute w-2 h-2 bg-primary-400 rounded-full"
                             initial={{
-                                x: Math.random() * window.innerWidth,
-                                y: -10,
-                                rotate: 0
+                                x: '50%',
+                                y: '50%',
+                                scale: 0,
+                                opacity: 1
                             }}
                             animate={{
-                                y: window.innerHeight + 10,
-                                rotate: 360
+                                x: `${50 + (Math.random() - 0.5) * 300}%`,
+                                y: `${50 + (Math.random() - 0.5) * 300}%`,
+                                scale: [0, 1, 0],
+                                opacity: [1, 1, 0]
                             }}
                             transition={{
                                 duration: Math.random() * 3 + 2,
-                                delay: Math.random() * 2
+                                delay: Math.random() * 2,
+                                repeat: Infinity,
+                                repeatDelay: Math.random() * 5 + 3
                             }}
                         />
                     ))}
                 </div>
-                <div className="card p-12 relative">
+
+                <div className="card p-12 relative z-10">
                     <div className="mb-8">
                         <div className="w-24 h-24 mx-auto mb-6 bg-yellow-400 rounded-full flex items-center justify-center">
                             <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732L14.146 12.8l-1.179 4.456a1 1 0 01-1.934 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732L9.854 7.2l1.179-4.456A1 1 0 0112 2z" clipRule="evenodd" />
                             </svg>
                         </div>
-                        <h1 className="text-4xl font-bold text-gray-900 mb-4">
+                        <h1 className="text-4xl font-bold text-themed-primary mb-4">
                             We Have a Winner!
                         </h1>
-                        <p className="text-xl text-gray-600 mb-8">
+                        <p className="text-xl text-themed-secondary mb-8">
                             The ultimate champion of {tournament.bracket.name}
                         </p>
                     </div>
                     <div className="mb-8">
-                        <div className="card bg-gradient-to-r from-yellow-100 to-orange-100 p-6 max-w-md mx-auto">
+                        <div className="bg-themed-tertiary border border-themed-primary rounded-xl p-6 max-w-md mx-auto shadow-themed-lg">
                             <MediaPreview item={winner} />
-                            <h2 className="text-2xl font-bold text-gray-900 mt-4">
+                            <h2 className="text-2xl font-bold text-themed-primary mt-4">
                                 {winner.title}
                             </h2>
                         </div>

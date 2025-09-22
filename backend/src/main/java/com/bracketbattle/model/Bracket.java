@@ -24,6 +24,9 @@ public class Bracket {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "created_by")
+    private String createdBy;
+
     @OneToMany(mappedBy = "bracket", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Item> items;
 
@@ -37,6 +40,14 @@ public class Bracket {
         this.name = name;
         this.description = description;
         this.type = type;
+        this.createdAt = LocalDateTime.now();
+    }
+
+    public Bracket(String name, String description, String type, String createdBy) {
+        this.name = name;
+        this.description = description;
+        this.type = type;
+        this.createdBy = createdBy;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -79,6 +90,14 @@ public class Bracket {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
     }
 
     public List<Item> getItems() {

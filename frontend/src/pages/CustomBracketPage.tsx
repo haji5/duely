@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { bracketApi } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface BracketItem {
   title: string;
@@ -11,6 +12,7 @@ interface BracketItem {
 
 const CustomBracketPage: React.FC = () => {
   const navigate = useNavigate();
+  const { currentUser, signInWithGoogle } = useAuth();
   const [bracketName, setBracketName] = useState('');
   const [bracketType, setBracketType] = useState<'song' | 'video' | 'image'>('song');
   const [items, setItems] = useState<BracketItem[]>([
@@ -68,6 +70,12 @@ const CustomBracketPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Check if user is authenticated
+    if (!currentUser) {
+      setError('You must be logged in to create a bracket. Please sign in and try again.');
+      return;
+    }
+
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
@@ -80,8 +88,8 @@ const CustomBracketPage: React.FC = () => {
     try {
       const validItems = items.filter(item => item.title.trim() && item.mediaUrl.trim());
 
-      // Step 1: Create the bracket
-      const bracket = await bracketApi.createBracket(bracketName, '', bracketType);
+      // Step 1: Create the bracket with user ID
+      const bracket = await bracketApi.createBracket(bracketName, '', bracketType, currentUser.uid);
 
       // Step 2: Add all items to the bracket
       for (const item of validItems) {
@@ -324,6 +332,30 @@ const CustomBracketPage: React.FC = () => {
               </div>
             )}
 
+            {/* Authentication Warning */}
+            {!currentUser && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-start space-x-3">
+                  <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <div>
+                    <h3 className="text-sm font-medium text-yellow-800">Sign in required</h3>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      You need to be logged in to create a bracket. You can fill out all the details, but you'll need to sign in before creating the bracket.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={signInWithGoogle}
+                      className="mt-2 text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
+                    >
+                      Sign in with Google
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Submit Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 pt-6">
               <button
@@ -336,14 +368,17 @@ const CustomBracketPage: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="btn btn-primary flex-1"
-                disabled={loading}
+                className={`btn flex-1 ${!currentUser ? 'btn-disabled cursor-not-allowed opacity-50' : 'btn-primary'}`}
+                disabled={loading || !currentUser}
+                title={!currentUser ? 'You must be logged in to create a bracket' : ''}
               >
                 {loading ? (
                   <div className="flex items-center justify-center space-x-2">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                     <span>Creating...</span>
                   </div>
+                ) : !currentUser ? (
+                  'Sign in to Create Bracket'
                 ) : (
                   'Create Bracket'
                 )}

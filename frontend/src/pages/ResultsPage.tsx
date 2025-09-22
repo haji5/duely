@@ -15,6 +15,12 @@ interface SessionBattle {
   createdAt: Date;
 }
 
+interface ItemWithStats extends Item {
+  wins: number;
+  totalMatches: number;
+  winPercentage: number;
+}
+
 const ResultsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -86,55 +92,85 @@ const ResultsPage: React.FC = () => {
     ).filter(Boolean) as Item[];
   };
 
-  const getGlobalAggregatedRanking = (): Item[] => {
+  const getGlobalAggregatedRanking = (): ItemWithStats[] => {
     if (allResults.length === 0) return [];
 
-    // Calculate average position for each item across ALL users
-    const itemScores: Record<number, { item: Item; totalScore: number; count: number }> = {};
+    // Calculate average position and win statistics for each item across ALL users
+    const itemScores: Record<number, { item: Item; totalScore: number; count: number; wins: number; totalMatches: number }> = {};
 
     allResults.forEach(result => {
       result.ranking.forEach((itemId: number, index: number) => {
         const item = items.find(i => i.id === itemId);
         if (item) {
           if (!itemScores[itemId]) {
-            itemScores[itemId] = { item, totalScore: 0, count: 0 };
+            itemScores[itemId] = { item, totalScore: 0, count: 0, wins: 0, totalMatches: 0 };
           }
           itemScores[itemId].totalScore += (result.ranking.length - index);
           itemScores[itemId].count += 1;
+
+          // Calculate wins against other items based on ranking position
+          result.ranking.forEach((otherItemId: number, otherIndex: number) => {
+            if (itemId !== otherItemId) {
+              itemScores[itemId].totalMatches += 1;
+              if (index < otherIndex) { // Higher ranked = won the match
+                itemScores[itemId].wins += 1;
+              }
+            }
+          });
         }
       });
     });
 
-    // Sort by average score
+    // Sort by average score and add win percentage
     return Object.values(itemScores)
       .sort((a, b) => (b.totalScore / b.count) - (a.totalScore / a.count))
-      .map(score => score.item);
+      .map(score => ({
+        ...score.item,
+        wins: score.wins,
+        totalMatches: score.totalMatches,
+        winPercentage: score.totalMatches > 0 ? Math.round((score.wins / score.totalMatches) * 100) : 0
+      }));
   };
 
-  const getPersonalAggregatedRanking = (): Item[] => {
+  const getPersonalAggregatedRanking = (): ItemWithStats[] => {
     const personalBattles = user ? results : sessionBattles;
     if (personalBattles.length === 0) return [];
 
-    // Calculate average position for each item from personal battles only
-    const itemScores: Record<number, { item: Item; totalScore: number; count: number }> = {};
+    // Calculate average position and win statistics for each item from personal battles only
+    const itemScores: Record<number, { item: Item; totalScore: number; count: number; wins: number; totalMatches: number }> = {};
 
     personalBattles.forEach(result => {
       result.ranking.forEach((itemId: number, index: number) => {
         const item = items.find(i => i.id === itemId);
         if (item) {
           if (!itemScores[itemId]) {
-            itemScores[itemId] = { item, totalScore: 0, count: 0 };
+            itemScores[itemId] = { item, totalScore: 0, count: 0, wins: 0, totalMatches: 0 };
           }
           itemScores[itemId].totalScore += (result.ranking.length - index);
           itemScores[itemId].count += 1;
+
+          // Calculate wins against other items based on ranking position
+          result.ranking.forEach((otherItemId: number, otherIndex: number) => {
+            if (itemId !== otherItemId) {
+              itemScores[itemId].totalMatches += 1;
+              if (index < otherIndex) { // Higher ranked = won the match
+                itemScores[itemId].wins += 1;
+              }
+            }
+          });
         }
       });
     });
 
-    // Sort by average score
+    // Sort by average score and add win percentage
     return Object.values(itemScores)
       .sort((a, b) => (b.totalScore / b.count) - (a.totalScore / a.count))
-      .map(score => score.item);
+      .map(score => ({
+        ...score.item,
+        wins: score.wins,
+        totalMatches: score.totalMatches,
+        winPercentage: score.totalMatches > 0 ? Math.round((score.wins / score.totalMatches) * 100) : 0
+      }));
   };
 
   if (loading) {
@@ -161,10 +197,11 @@ const ResultsPage: React.FC = () => {
   const allBattles = user ? results : sessionBattles;
 
   // Fix the currentRanking calculation
-  const getCurrentRanking = () => {
+  const getCurrentRanking = (): (ItemWithStats | Item)[] => {
     if (selectedResult === 'personal') {
       return personalRanking;
     } else if (selectedResult && typeof selectedResult === 'object') {
+      // For individual battles, return items without stats since we don't have win data for single battles
       return getRankedItems(selectedResult);
     } else {
       return globalRanking;
@@ -172,6 +209,11 @@ const ResultsPage: React.FC = () => {
   };
 
   const currentRanking = getCurrentRanking();
+
+  // Helper function to check if an item has stats
+  const hasStats = (item: ItemWithStats | Item): item is ItemWithStats => {
+    return 'winPercentage' in item;
+  };
 
   const isSelectedBattle = (battle: Result | SessionBattle) => {
     if (!selectedResult || selectedResult === 'personal') return false;
@@ -369,6 +411,16 @@ const ResultsPage: React.FC = () => {
                         <p className="text-sm text-gray-500 capitalize">
                           {item.mediaType}
                         </p>
+                        {hasStats(item) && (
+                          <p className="text-sm text-gray-500">
+                            {item.winPercentage}% wins
+                          </p>
+                        )}
+                        {!hasStats(item) && (
+                          <p className="text-sm text-gray-500">
+                            0% wins
+                          </p>
+                        )}
                       </div>
 
                       {/* Trophy for winner */}
