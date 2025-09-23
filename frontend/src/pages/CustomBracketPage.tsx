@@ -88,8 +88,8 @@ const CustomBracketPage: React.FC = () => {
     try {
       const validItems = items.filter(item => item.title.trim() && item.mediaUrl.trim());
 
-      // Step 1: Create the bracket with user ID
-      const bracket = await bracketApi.createBracket(bracketName, '', bracketType, currentUser.uid);
+      // Step 1: Create the bracket (createdBy derived from backend auth)
+      const bracket = await bracketApi.createBracket(bracketName, '', bracketType);
 
       // Step 2: Add all items to the bracket
       for (const item of validItems) {

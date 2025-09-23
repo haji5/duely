@@ -5,6 +5,7 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 import { auth, googleProvider } from '../config/firebase';
+import { resetApiAuthState } from '@/services/api';
 
 interface UserProfile {
   uid: string;
@@ -65,6 +66,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await signOut(auth);
       setCurrentUser(null);
       localStorage.removeItem('user');
+      // Clear any cached API auth/CSRF state on logout
+      resetApiAuthState();
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;
@@ -98,6 +101,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else {
         setCurrentUser(null);
         localStorage.removeItem('user');
+        // Also reset API state if the user signs out elsewhere
+        resetApiAuthState();
       }
       setLoading(false);
     });

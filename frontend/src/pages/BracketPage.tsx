@@ -316,7 +316,7 @@ const BracketPage: React.FC = () => {
 
             if (user) {
                 // User is logged in - save to backend with user ID
-                await bracketApi.saveBracketResult(parseInt(id), user.uid, ranking);
+                await bracketApi.saveBracketResult(parseInt(id), ranking);
             } else {
                 // User not logged in - save to session memory only
                 addSessionBattle(

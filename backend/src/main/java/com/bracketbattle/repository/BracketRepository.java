@@ -9,11 +9,7 @@ import java.util.List;
 @Repository
 public interface BracketRepository extends JpaRepository<Bracket, Long> {
 
-    @Query("SELECT b FROM Bracket b " +
-           "LEFT JOIN Result r ON b.id = r.bracketId " +
-           "WHERE r.userId IS NOT NULL " +
-           "GROUP BY b.id " +
-           "ORDER BY COUNT(r.id) DESC")
+    @Query("SELECT b FROM Bracket b LEFT JOIN b.results r GROUP BY b.id ORDER BY COUNT(r.id) DESC")
     List<Bracket> findPopularBrackets();
 
     List<Bracket> findByType(String type);

@@ -12,12 +12,22 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Runtime stage
-FROM eclipse-temurin:21-jdk-alpine
+FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
+# Create non-root user and group
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Copy artifact and set permissions
 COPY --from=build /app/target/bracket-battle-backend-0.0.1-SNAPSHOT.jar app.jar
+RUN chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 8080
 
-CMD ["java", "-jar", "app.jar"]
+# Set a minimal heap ergonomics; can be overridden at runtime
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

@@ -63,11 +63,13 @@ A full-stack web application for creating and participating in tournament-style 
 
 ## 📋 Prerequisites
 
-- **Node.js** 18.0.0 or higher
+- **Node.js** 22 (LTS) or higher
 - **Java** 21 or higher
 - **PostgreSQL** 15 or higher
 - **Docker** (optional, for containerized setup)
 - **Firebase Project** (for authentication - see setup below)
+
+Note: The frontend includes an `.nvmrc` set to `22` to help Node version managers align with the project. On Windows you can use nvm-windows or install Node 22 via Winget/Chocolatey.
 
 ## 🚀 Quick Start
 
@@ -158,6 +160,43 @@ VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 2. Enable Authentication and configure Google sign-in provider
 3. Get your Firebase configuration from Project Settings
 4. Add the configuration to your `.env` file
+
+## Firebase credentials (Option A: Base64 env)
+
+To run the backend with Firebase Auth, provide service account credentials via a base64-encoded environment variable.
+
+1. Generate base64 from your service-account JSON (Windows PowerShell):
+
+```
+powershell -NoProfile -Command "$b = [Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\\path\\to\\service-account.json')); $b"
+```
+
+Or use the helper script in this repo:
+
+```
+./scripts/encode-firebase-credentials.ps1 -Path C:\path\to\service-account.json -ToClipboard
+```
+
+2. Paste the base64 string into `backend/.env`:
+
+```
+FIREBASE_CREDENTIALS_JSON=<paste_here>
+```
+
+3. Recreate containers:
+
+```
+docker compose up -d --build
+```
+
+4. Verify env is loaded and Firebase initialized:
+
+```
+docker compose config
+docker compose logs backend --tail=200
+```
+
+If you prefer file-based credentials, mount the JSON and set `GOOGLE_APPLICATION_CREDENTIALS` instead (see docker-compose.yml notes).
 
 ## 📚 API Reference
 

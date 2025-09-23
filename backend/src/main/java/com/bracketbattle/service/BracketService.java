@@ -6,10 +6,14 @@ import com.bracketbattle.model.Result;
 import com.bracketbattle.repository.BracketRepository;
 import com.bracketbattle.repository.ItemRepository;
 import com.bracketbattle.repository.ResultRepository;
+import com.bracketbattle.util.Sanitizer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class BracketService {
@@ -40,6 +44,20 @@ public class BracketService {
     }
 
     public Result saveBracketResult(Long bracketId, String userId, List<Long> ranking) {
+        // Basic validation: ensure bracket exists and ranking items belong to it
+        Bracket bracket = bracketRepository.findById(bracketId)
+                .orElseThrow(() -> new IllegalArgumentException("Bracket not found"));
+        if (ranking == null || ranking.isEmpty()) {
+            throw new IllegalArgumentException("Ranking must not be empty");
+        }
+        List<Item> items = itemRepository.findByBracketId(bracketId);
+        Set<Long> validItemIds = new HashSet<>();
+        for (Item i : items) validItemIds.add(i.getId());
+        for (Long itemId : ranking) {
+            if (!validItemIds.contains(itemId)) {
+                throw new IllegalArgumentException("Ranking contains invalid item for this bracket");
+            }
+        }
         Result result = new Result(bracketId, userId, ranking);
         return resultRepository.save(result);
     }
@@ -57,12 +75,38 @@ public class BracketService {
     }
 
     public Bracket createBracket(String name, String description, String type, String createdBy) {
-        Bracket bracket = new Bracket(name, description, type, createdBy);
+        String cleanName = Sanitizer.stripToPlain(name, 100);
+        String cleanDescription = Sanitizer.sanitizeDescription(description, 2000);
+        if (cleanName == null || cleanName.isBlank()) {
+            throw new IllegalArgumentException("Name is required");
+        }
+        if (!type.matches("^(song|audio|video|image)$")) {
+            throw new IllegalArgumentException("Invalid type");
+        }
+        Bracket bracket = new Bracket(cleanName, cleanDescription, type, createdBy);
         return bracketRepository.save(bracket);
     }
 
     public Item addItemToBracket(Long bracketId, String title, String mediaUrl, String mediaType) {
-        Item item = new Item(bracketId, title, mediaUrl, mediaType);
+        // Ensure bracket exists
+        bracketRepository.findById(bracketId)
+                .orElseThrow(() -> new IllegalArgumentException("Bracket not found"));
+        String cleanTitle = Sanitizer.stripToPlain(title, 150);
+        String cleanUrl = mediaUrl != null ? mediaUrl.trim() : null;
+        if (cleanTitle == null || cleanTitle.isBlank()) {
+            throw new IllegalArgumentException("Title is required");
+        }
+        if (cleanUrl == null || !Sanitizer.isSafeHttpUrl(cleanUrl)) {
+            throw new IllegalArgumentException("Invalid media URL");
+        }
+        if (!mediaType.matches("^(song|audio|video|image)$")) {
+            throw new IllegalArgumentException("Invalid media type");
+        }
+        // For videos, restrict to YouTube to avoid arbitrary iframes
+        if (("video").equalsIgnoreCase(mediaType) && !Sanitizer.isYouTubeUrl(cleanUrl)) {
+            throw new IllegalArgumentException("Only YouTube URLs are allowed for videos");
+        }
+        Item item = new Item(bracketId, cleanTitle, cleanUrl, mediaType);
         return itemRepository.save(item);
     }
 }

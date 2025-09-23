@@ -1,18 +1,24 @@
 package com.bracketbattle.controller;
 
+import com.bracketbattle.dto.AddItemRequest;
+import com.bracketbattle.dto.CreateBracketRequest;
+import com.bracketbattle.dto.SaveResultRequest;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Item;
 import com.bracketbattle.model.Result;
 import com.bracketbattle.service.BracketService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "http://localhost:3000")
+// CORS centralized in SecurityConfig
 public class BracketController {
 
     @Autowired
@@ -27,7 +33,7 @@ public class BracketController {
     @GetMapping("/brackets/{id}")
     public ResponseEntity<Bracket> getBracket(@PathVariable Long id) {
         return bracketService.getBracketById(id)
-                .map(bracket -> ResponseEntity.ok(bracket))
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -37,16 +43,15 @@ public class BracketController {
         return ResponseEntity.ok(items);
     }
 
+    @PreAuthorize("hasRole('USER')")
     @PostMapping("/brackets/{id}/results")
     public ResponseEntity<Result> saveBracketResult(
             @PathVariable Long id,
-            @RequestBody Map<String, Object> payload) {
+            @Valid @RequestBody SaveResultRequest payload,
+            Authentication authentication) {
 
-        String userId = (String) payload.get("userId");
-        @SuppressWarnings("unchecked")
-        List<Long> ranking = (List<Long>) payload.get("ranking");
-
-        Result result = bracketService.saveBracketResult(id, userId, ranking);
+        String userId = (String) authentication.getPrincipal();
+        Result result = bracketService.saveBracketResult(id, userId, payload.getRanking());
         return ResponseEntity.ok(result);
     }
 
@@ -76,27 +81,21 @@ public class BracketController {
         return ResponseEntity.ok(results);
     }
 
+    @PreAuthorize("hasRole('USER')")
     @PostMapping("/brackets")
-    public ResponseEntity<Bracket> createBracket(@RequestBody Map<String, String> payload) {
-        String name = payload.get("name");
-        String description = payload.get("description");
-        String type = payload.get("type");
-        String createdBy = payload.get("createdBy");
-
-        Bracket bracket = bracketService.createBracket(name, description, type, createdBy);
+    public ResponseEntity<Bracket> createBracket(@Valid @RequestBody CreateBracketRequest payload, Authentication authentication) {
+        String createdBy = (String) authentication.getPrincipal();
+        Bracket bracket = bracketService.createBracket(payload.getName(), payload.getDescription(), payload.getType(), createdBy);
         return ResponseEntity.ok(bracket);
     }
 
+    @PreAuthorize("hasRole('USER')")
     @PostMapping("/brackets/{id}/items")
     public ResponseEntity<Item> addItemToBracket(
             @PathVariable Long id,
-            @RequestBody Map<String, String> payload) {
+            @Valid @RequestBody AddItemRequest payload) {
 
-        String title = payload.get("title");
-        String mediaUrl = payload.get("mediaUrl");
-        String mediaType = payload.get("mediaType");
-
-        Item item = bracketService.addItemToBracket(id, title, mediaUrl, mediaType);
+        Item item = bracketService.addItemToBracket(id, payload.getTitle(), payload.getMediaUrl(), payload.getMediaType());
         return ResponseEntity.ok(item);
     }
 }

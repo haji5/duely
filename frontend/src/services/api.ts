@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Bracket, Item, Result } from '@/types';
+import { auth } from '@/config/firebase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
@@ -8,6 +9,49 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
+});
+
+let csrfToken: string | null = null;
+
+async function ensureCsrfToken() {
+  try {
+    if (!csrfToken) {
+      const res = await api.get('/csrf-token');
+      csrfToken = res.data?.token || null;
+    }
+  } catch {
+    // ignore; backend may not require CSRF on GET
+  }
+}
+
+// Provide a way to clear any cached state when logging out
+export function resetApiAuthState() {
+  csrfToken = null;
+  // If we ever add default Authorization headers, clear them here as well
+  if (api.defaults.headers && 'Authorization' in api.defaults.headers.common) {
+    delete (api.defaults.headers.common as any)['Authorization'];
+  }
+}
+
+api.interceptors.request.use(async (config) => {
+  // Attach Firebase ID token if available
+  const user = auth.currentUser;
+  if (user) {
+    const idToken = await user.getIdToken();
+    config.headers = config.headers || {};
+    (config.headers as any)['Authorization'] = `Bearer ${idToken}`;
+  }
+  // Ensure CSRF header for state-changing methods
+  const method = (config.method || 'get').toLowerCase();
+  if (['post', 'put', 'patch', 'delete'].includes(method)) {
+    await ensureCsrfToken();
+    if (csrfToken) {
+      config.headers = config.headers || {};
+      (config.headers as any)['X-XSRF-TOKEN'] = csrfToken;
+    }
+  }
+  return config;
 });
 
 export const bracketApi = {
@@ -29,10 +73,9 @@ export const bracketApi = {
     return response.data;
   },
 
-  // Save bracket result
-  saveBracketResult: async (id: number, userId: string | null, ranking: number[]): Promise<Result> => {
+  // Save bracket result (userId derived on backend)
+  saveBracketResult: async (id: number, ranking: number[]): Promise<Result> => {
     const response = await api.post(`/brackets/${id}/results`, {
-      userId,
       ranking,
     });
     return response.data;
@@ -63,12 +106,11 @@ export const bracketApi = {
   },
 
   // Create new bracket
-  createBracket: async (name: string, description: string, type: string, createdBy?: string): Promise<Bracket> => {
+  createBracket: async (name: string, description: string, type: string): Promise<Bracket> => {
     const response = await api.post('/brackets', {
       name,
       description,
       type,
-      createdBy,
     });
     return response.data;
   },
@@ -88,7 +130,7 @@ export const bracketApi = {
     return response.data;
   },
 
-  // Create bracket with items
+  // Create bracket with items (optional helper if supported)
   createBracketWithItems: async (payload: {
     name: string;
     type: string;
@@ -99,12 +141,6 @@ export const bracketApi = {
     }>;
   }): Promise<Bracket> => {
     const response = await api.post('/brackets', payload);
-    return response.data;
-  },
-
-  // Get all bracket results from all users
-  getAllBracketResults: async (bracketId: number): Promise<Result[]> => {
-    const response = await api.get(`/brackets/${bracketId}/results/all`);
     return response.data;
   },
 };

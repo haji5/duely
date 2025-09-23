@@ -14,6 +14,9 @@ services:
 
   backend:
     build: ./backend
+    env_file:
+      - ./.env
+      - ./backend/.env
     ports:
       - "${SERVER_PORT:-8080}:8080"
     environment:
@@ -37,10 +40,9 @@ services:
         - VITE_FIREBASE_MESSAGING_SENDER_ID=${VITE_FIREBASE_MESSAGING_SENDER_ID}
         - VITE_FIREBASE_APP_ID=${VITE_FIREBASE_APP_ID}
         - VITE_FIREBASE_MEASUREMENT_ID=${VITE_FIREBASE_MEASUREMENT_ID}
+        - VITE_API_URL=/api
     ports:
       - "3000:3000"
-    environment:
-      VITE_API_URL: http://localhost:8080
     depends_on:
       - backend
     networks:
