@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
 import { bracketApi } from '../services/api';
-import type { Bracket } from '../types';
+import type { Bracket } from '@/types';
 
 const BrowsePage: React.FC = () => {
   const location = useLocation();

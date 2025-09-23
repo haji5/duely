@@ -2,7 +2,7 @@ import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { bracketApi } from '../services/api';
-import { Bracket, Item, Result } from '../types';
+import { Bracket, Item, Result } from '@/types';
 import MediaPreview from '../components/MediaPreview';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';

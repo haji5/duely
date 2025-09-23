@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { motion } from 'framer-motion';
-import { Item } from '../types';
+import { Item } from '@/types';
 
 interface MediaPreviewProps {
     item: Item;

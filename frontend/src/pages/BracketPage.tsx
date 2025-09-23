@@ -2,7 +2,7 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { bracketApi } from '../services/api';
-import { Bracket, Item, BracketMatch, Tournament } from '../types';
+import { Bracket, Item, BracketMatch, Tournament } from '@/types';
 import MediaPreview from '../components/MediaPreview';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
