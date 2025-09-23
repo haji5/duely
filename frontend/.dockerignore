@@ -1,0 +1,23 @@
+# Ignore node and build artifacts
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# keep lockfile for npm ci
+# package-lock.json
+pnpm-lock.yaml
+
+# Local env files
+.env
+.env.*
+
+# Vite/React build output
+build
+dist
+
+# Misc
+.DS_Store
+.git
+.github
+.vscode
+coverage
