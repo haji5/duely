@@ -3,11 +3,13 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { bracketApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { isSafeHttpUrl, isYouTubeUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, fetchYouTubeTitle } from '../utils/mediaUtils';
 
 interface BracketItem {
   title: string;
   mediaUrl: string;
   mediaType: string;
+  isFetchingTitle?: boolean;
 }
 
 const CustomBracketPage: React.FC = () => {
@@ -38,6 +40,36 @@ const CustomBracketPage: React.FC = () => {
     setItems(updatedItems);
   };
 
+  // New function to handle URL updates with automatic title fetching for YouTube videos
+  const updateItemUrl = async (index: number, url: string) => {
+    const updatedItems = [...items];
+    updatedItems[index] = { ...updatedItems[index], mediaUrl: url };
+
+    // If it's a video type and YouTube URL, automatically fetch the title
+    if (bracketType === 'video' && isYouTubeUrl(url) && url.trim()) {
+      updatedItems[index].isFetchingTitle = true;
+      setItems(updatedItems);
+
+      try {
+        const title = await fetchYouTubeTitle(url);
+        if (title) {
+          updatedItems[index].title = title;
+          updatedItems[index].isFetchingTitle = false;
+          setItems([...updatedItems]);
+        } else {
+          updatedItems[index].isFetchingTitle = false;
+          setItems([...updatedItems]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch YouTube title:', error);
+        updatedItems[index].isFetchingTitle = false;
+        setItems([...updatedItems]);
+      }
+    } else {
+      setItems(updatedItems);
+    }
+  };
+
   const updateBracketType = (newType: 'song' | 'video' | 'image') => {
     setBracketType(newType);
     // Update all items' mediaType when bracket type changes
@@ -55,11 +87,9 @@ const CustomBracketPage: React.FC = () => {
       return 'At least 2 items are required';
     }
 
-    // Basic URL validation
+    // Enhanced URL validation using shared utilities
     for (const item of validItems) {
-      try {
-        new URL(item.mediaUrl);
-      } catch {
+      if (!isSafeHttpUrl(item.mediaUrl)) {
         return `Invalid URL for item: ${item.title}`;
       }
     }
@@ -118,19 +148,9 @@ const CustomBracketPage: React.FC = () => {
           </div>
         );
       case 'video':
-        // Handle YouTube URLs
-        let embedUrl = item.mediaUrl;
-        let thumbnailUrl = '';
-
-        if (item.mediaUrl.includes('youtube.com/watch?v=')) {
-          const videoId = item.mediaUrl.split('v=')[1]?.split('&')[0];
-          embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=0&mute=1&controls=1&modestbranding=1&rel=0`;
-          thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-        } else if (item.mediaUrl.includes('youtu.be/')) {
-          const videoId = item.mediaUrl.split('youtu.be/')[1]?.split('?')[0];
-          embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=0&mute=1&controls=1&modestbranding=1&rel=0`;
-          thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-        }
+        // Use shared utility functions for YouTube handling
+        const embedUrl = getYouTubeEmbedUrl(item.mediaUrl);
+        const thumbnailUrl = getYouTubeThumbnail(item.mediaUrl);
 
         return (
           <div className="mt-2 relative">
@@ -284,24 +304,36 @@ const CustomBracketPage: React.FC = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">Title</label>
+                        <label className="block text-xs font-medium text-secondary mb-1">
+                          Title
+                          {item.isFetchingTitle && (
+                            <span className="ml-2 text-xs text-blue-600 flex items-center">
+                              <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600 mr-1"></div>
+                              Fetching title...
+                            </span>
+                          )}
+                        </label>
                         <input
                           type="text"
                           value={item.title}
                           onChange={(e) => updateItem(index, 'title', e.target.value)}
                           className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                           placeholder={`${bracketType === 'song' ? 'Song' : bracketType === 'video' ? 'Video' : 'Image'} title`}
+                          disabled={item.isFetchingTitle}
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-secondary mb-1">
                           {bracketType === 'song' ? 'Spotify/Audio URL' :
                            bracketType === 'video' ? 'YouTube/Video URL' : 'Image URL'}
+                          {bracketType === 'video' && (
+                            <span className="text-xs text-gray-500 ml-1">(Title will auto-fill for YouTube videos)</span>
+                          )}
                         </label>
                         <input
                           type="url"
                           value={item.mediaUrl}
-                          onChange={(e) => updateItem(index, 'mediaUrl', e.target.value)}
+                          onChange={(e) => updateItemUrl(index, e.target.value)}
                           className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                           placeholder={`Paste ${bracketType} URL here`}
                         />
