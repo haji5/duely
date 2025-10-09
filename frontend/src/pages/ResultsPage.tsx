@@ -231,18 +231,18 @@ const ResultsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
             {bracket.name} Results
           </h1>
-          <p className="text-gray-600 mb-6">{bracket.description}</p>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">{bracket.description}</p>
 
           {!user && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
-              <p className="text-blue-800 text-sm">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
+              <p className="text-blue-800 dark:text-blue-200 text-sm">
                 <strong>Session Mode:</strong> Your battle results are stored temporarily.
                 Sign in to save your progress permanently and contribute to the global rankings!
               </p>
@@ -262,8 +262,8 @@ const ResultsPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Results Sidebar */}
           <div className="lg:col-span-1">
-            <div className="card p-6 sticky top-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            <div className="card p-6 sticky top-6 bg-white dark:bg-gray-800 border dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 View Results
               </h3>
 
@@ -272,12 +272,12 @@ const ResultsPage: React.FC = () => {
                   onClick={() => setSelectedResult(null)}
                   className={`w-full text-left p-3 rounded-lg transition-colors ${
                     !selectedResult 
-                      ? 'bg-primary-100 text-primary-700 border-2 border-primary-200' 
-                      : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                      ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border-2 border-primary-200 dark:border-primary-700' 
+                      : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
                   }`}
                 >
                   <div className="font-medium">🌍 Global Rankings</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
                     From all {allResults.length} completed battles
                   </div>
                 </button>
@@ -287,12 +287,12 @@ const ResultsPage: React.FC = () => {
                     onClick={() => setSelectedResult('personal')}
                     className={`w-full text-left p-3 rounded-lg transition-colors ${
                       selectedResult === 'personal'
-                        ? 'bg-primary-100 text-primary-700 border-2 border-primary-200' 
-                        : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                        ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border-2 border-primary-200 dark:border-primary-700' 
+                        : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
                     }`}
                   >
                     <div className="font-medium">👤 Your Rankings</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
                       Your personal average from {allBattles.length} battles
                       {!user && ' (Session)'}
                     </div>
@@ -302,11 +302,11 @@ const ResultsPage: React.FC = () => {
 
               {allBattles.length > 0 && (
                 <>
-                  <hr className="my-4" />
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">
+                  <hr className="my-4 border-gray-200 dark:border-gray-700" />
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                     Individual Battles
                     {!user && (
-                      <span className="text-xs text-gray-500 block font-normal">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 block font-normal">
                         (Session Only)
                       </span>
                     )}
@@ -318,12 +318,12 @@ const ResultsPage: React.FC = () => {
                         onClick={() => setSelectedResult(battle)}
                         className={`w-full text-left p-2 rounded-lg transition-colors text-sm ${
                           isSelectedBattle(battle)
-                            ? 'bg-primary-100 text-primary-700 border border-primary-200' 
-                            : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                            ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700' 
+                            : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
                         }`}
                       >
                         <div className="font-medium">Battle #{allBattles.length - index}</div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
                           {new Date(battle.createdAt).toLocaleDateString()}
                         </div>
                       </button>
@@ -336,15 +336,15 @@ const ResultsPage: React.FC = () => {
 
           {/* Rankings Display */}
           <div className="lg:col-span-3">
-            <div className="card p-6">
+            <div className="card p-6 bg-white dark:bg-gray-800 border dark:border-gray-700">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                   {!selectedResult ? '🌍 Global Rankings' :
                    selectedResult === 'personal' ? '👤 Your Personal Rankings' :
                    'Individual Battle Results'}
                 </h2>
                 {selectedResult && selectedResult !== 'personal' && typeof selectedResult === 'object' && (
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
                     {new Date(selectedResult.createdAt).toLocaleString()}
                   </div>
                 )}
@@ -353,12 +353,12 @@ const ResultsPage: React.FC = () => {
               {/* Show ranking based on selection */}
               {currentRanking.length === 0 ? (
                 <div className="text-center py-16">
-                  <div className="w-16 h-16 mx-auto mb-6 bg-gray-200 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 mx-auto mb-6 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                     </svg>
                   </div>
-                  <p className="text-gray-500 text-lg mb-6">
+                  <p className="text-gray-500 dark:text-gray-400 text-lg mb-6">
                     {!selectedResult ? 'No global results available yet.' : 'No results to display yet.'}
                   </p>
                   <Link to={`/bracket/${id}`} className="btn btn-primary">
@@ -375,23 +375,23 @@ const ResultsPage: React.FC = () => {
                       transition={{ delay: index * 0.1 }}
                       className={`flex items-center space-x-4 p-4 rounded-lg border-2 ${
                         index === 0 
-                          ? 'bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200' 
+                          ? 'bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border-yellow-200 dark:border-yellow-800' 
                           : index === 1
-                          ? 'bg-gradient-to-r from-gray-50 to-gray-100 border-gray-200'
+                          ? 'bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 border-gray-200 dark:border-gray-600'
                           : index === 2
-                          ? 'bg-gradient-to-r from-orange-50 to-red-50 border-orange-200'
-                          : 'bg-white border-gray-200'
+                          ? 'bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-orange-200 dark:border-orange-800'
+                          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
                       }`}
                     >
                       {/* Rank */}
                       <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
                         index === 0 
-                          ? 'bg-yellow-400 text-white' 
+                          ? 'bg-yellow-400 dark:bg-yellow-500 text-white' 
                           : index === 1
-                          ? 'bg-gray-400 text-white'
+                          ? 'bg-gray-400 dark:bg-gray-500 text-white'
                           : index === 2
-                          ? 'bg-orange-400 text-white'
-                          : 'bg-gray-200 text-gray-600'
+                          ? 'bg-orange-400 dark:bg-orange-500 text-white'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
                       }`}>
                         {index === 0 ? '👑' : index + 1}
                       </div>
@@ -405,19 +405,19 @@ const ResultsPage: React.FC = () => {
 
                       {/* Item Info */}
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold text-gray-900 truncate">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
                           {item.title}
                         </h3>
-                        <p className="text-sm text-gray-500 capitalize">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">
                           {item.mediaType}
                         </p>
                         {hasStats(item) && (
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
                             {item.winPercentage}% wins
                           </p>
                         )}
                         {!hasStats(item) && (
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
                             0% wins
                           </p>
                         )}
@@ -429,7 +429,7 @@ const ResultsPage: React.FC = () => {
                           <motion.div
                             animate={{ rotate: [0, 5, -5, 0] }}
                             transition={{ duration: 2, repeat: Infinity }}
-                            className="text-yellow-500"
+                            className="text-yellow-500 dark:text-yellow-400"
                           >
                             <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732L14.146 12.8l-1.179 4.456a1 1 0 01-1.934 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732L9.854 7.2l1.179-4.456A1 1 0 0112 2z" clipRule="evenodd" />

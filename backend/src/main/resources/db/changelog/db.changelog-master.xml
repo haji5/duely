@@ -4,6 +4,7 @@
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
+    <!-- Create brackets table -->
     <changeSet id="1" author="bracket-battle">
         <createTable tableName="brackets">
             <column name="id" type="BIGSERIAL">
@@ -16,10 +17,15 @@
             <column name="type" type="VARCHAR(50)">
                 <constraints nullable="false"/>
             </column>
+            <column name="category" type="VARCHAR(100)" defaultValue="General">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by" type="VARCHAR(255)"/>
             <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"/>
         </createTable>
     </changeSet>
 
+    <!-- Create items table -->
     <changeSet id="2" author="bracket-battle">
         <createTable tableName="items">
             <column name="id" type="BIGSERIAL">
@@ -46,6 +52,7 @@
             referencedColumnNames="id"/>
     </changeSet>
 
+    <!-- Create results table -->
     <changeSet id="3" author="bracket-battle">
         <createTable tableName="results">
             <column name="id" type="BIGSERIAL">
@@ -55,8 +62,14 @@
                 <constraints nullable="false"/>
             </column>
             <column name="user_id" type="VARCHAR(255)"/>
-            <column name="ranking" type="JSONB">
+            <column name="ranking" type="TEXT">
                 <constraints nullable="false"/>
+            </column>
+            <column name="version" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="true"/>
+            </column>
+            <column name="submission_token" type="VARCHAR(255)">
+                <constraints nullable="true"/>
             </column>
             <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"/>
         </createTable>
@@ -66,195 +79,16 @@
             constraintName="fk_results_bracket"
             referencedTableName="brackets"
             referencedColumnNames="id"/>
-    </changeSet>
-
-    <!-- Fix ranking column type to resolve Jackson serialization issues -->
-    <changeSet id="6" author="bracket-battle">
-        <modifyDataType tableName="results" columnName="ranking" newDataType="TEXT"/>
-    </changeSet>
-
-    <!-- Add missing created_by column to brackets table -->
-    <changeSet id="11" author="bracket-battle">
-        <addColumn tableName="brackets">
-            <column name="created_by" type="VARCHAR(255)"/>
-        </addColumn>
-    </changeSet>
-
-    <changeSet id="4" author="bracket-battle">
-        <insert tableName="brackets">
-            <column name="name" value="Best Radiohead Songs"/>
-            <column name="description" value="Choose the ultimate Radiohead song in this epic bracket battle"/>
-            <column name="type" value="song"/>
-        </insert>
-    </changeSet>
-
-    <changeSet id="5" author="bracket-battle">
-        <insert tableName="items">
-            <column name="bracket_id" value="1"/>
-            <column name="title" value="Paranoid Android"/>
-            <column name="media_url" value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"/>
-            <column name="media_type" value="audio"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="1"/>
-            <column name="title" value="Creep"/>
-            <column name="media_url" value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"/>
-            <column name="media_type" value="audio"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="1"/>
-            <column name="title" value="Karma Police"/>
-            <column name="media_url" value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"/>
-            <column name="media_type" value="audio"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="1"/>
-            <column name="title" value="Everything In Its Right Place"/>
-            <column name="media_url" value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"/>
-            <column name="media_type" value="audio"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="1"/>
-            <column name="title" value="No Surprises"/>
-            <column name="media_url" value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"/>
-            <column name="media_type" value="audio"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="1"/>
-            <column name="title" value="The Bends"/>
-            <column name="media_url" value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3"/>
-            <column name="media_type" value="audio"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="1"/>
-            <column name="title" value="Street Spirit"/>
-            <column name="media_url" value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3"/>
-            <column name="media_type" value="audio"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="1"/>
-            <column name="title" value="Exit Music"/>
-            <column name="media_url" value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3"/>
-            <column name="media_type" value="audio"/>
-        </insert>
-    </changeSet>
-
-    <changeSet id="7" author="bracket-battle">
-        <insert tableName="brackets">
-            <column name="name" value="Epic Movie Showdown"/>
-            <column name="description" value="Battle between the most iconic movie scenes of all time"/>
-            <column name="type" value="video"/>
-        </insert>
-    </changeSet>
-
-    <changeSet id="8" author="bracket-battle">
-        <insert tableName="items">
-            <column name="bracket_id" value="2"/>
-            <column name="title" value="Star Wars: A New Hope - Death Star Battle"/>
-            <column name="media_url" value="https://www.youtube.com/watch?v=2WBG2rJZGW8"/>
-            <column name="media_type" value="video"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="2"/>
-            <column name="title" value="The Matrix - Bullet Time"/>
-            <column name="media_url" value="https://www.youtube.com/watch?v=ggFKLxAQBbc"/>
-            <column name="media_type" value="video"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="2"/>
-            <column name="title" value="Terminator 2 - T-1000 Chase"/>
-            <column name="media_url" value="https://www.youtube.com/watch?v=fqkdrTyUGyI"/>
-            <column name="media_type" value="video"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="2"/>
-            <column name="title" value="Jurassic Park - T-Rex Breakout"/>
-            <column name="media_url" value="https://www.youtube.com/watch?v=rxqHVoZ0fzc"/>
-            <column name="media_type" value="video"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="2"/>
-            <column name="title" value="Raiders of the Lost Ark - Boulder Chase"/>
-            <column name="media_url" value="https://www.youtube.com/watch?v=Pr-8AP0To4k"/>
-            <column name="media_type" value="video"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="2"/>
-            <column name="title" value="Back to the Future - Clock Tower"/>
-            <column name="media_url" value="https://www.youtube.com/watch?v=O1KJRRSB_XA"/>
-            <column name="media_type" value="video"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="2"/>
-            <column name="title" value="Top Gun - Highway to the Danger Zone"/>
-            <column name="media_url" value="https://www.youtube.com/watch?v=siwpn14IE7E"/>
-            <column name="media_type" value="video"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="2"/>
-            <column name="title" value="Aliens - Power Loader Fight"/>
-            <column name="media_url" value="https://www.youtube.com/watch?v=jEjUAnPc2VA"/>
-            <column name="media_type" value="video"/>
-        </insert>
-    </changeSet>
-
-    <changeSet id="9" author="bracket-battle">
-        <insert tableName="brackets">
-            <column name="name" value="Ultimate Meme Battle"/>
-            <column name="description" value="The most iconic memes compete for ultimate supremacy"/>
-            <column name="type" value="image"/>
-        </insert>
-    </changeSet>
-
-    <changeSet id="10" author="bracket-battle">
-        <insert tableName="items">
-            <column name="bracket_id" value="3"/>
-            <column name="title" value="Distracted Boyfriend"/>
-            <column name="media_url" value="https://i.imgflip.com/1ur9b0.jpg"/>
-            <column name="media_type" value="image"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="3"/>
-            <column name="title" value="Drake Pointing"/>
-            <column name="media_url" value="https://i.imgflip.com/30b1gx.jpg"/>
-            <column name="media_type" value="image"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="3"/>
-            <column name="title" value="Woman Yelling at Cat"/>
-            <column name="media_url" value="https://i.imgflip.com/345v97.jpg"/>
-            <column name="media_type" value="image"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="3"/>
-            <column name="title" value="This is Fine Dog"/>
-            <column name="media_url" value="https://i.imgflip.com/26am.jpg"/>
-            <column name="media_type" value="image"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="3"/>
-            <column name="title" value="Expanding Brain"/>
-            <column name="media_url" value="https://i.imgflip.com/1jwhww.jpg"/>
-            <column name="media_type" value="image"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="3"/>
-            <column name="title" value="Two Buttons"/>
-            <column name="media_url" value="https://i.imgflip.com/1g8my4.jpg"/>
-            <column name="media_type" value="image"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="3"/>
-            <column name="title" value="Change My Mind"/>
-            <column name="media_url" value="https://i.imgflip.com/24y43o.jpg"/>
-            <column name="media_type" value="image"/>
-        </insert>
-        <insert tableName="items">
-            <column name="bracket_id" value="3"/>
-            <column name="title" value="Success Kid"/>
-            <column name="media_url" value="https://i.imgflip.com/1bhk.jpg"/>
-            <column name="media_type" value="image"/>
-        </insert>
+        <addUniqueConstraint
+            tableName="results"
+            columnNames="submission_token"
+            constraintName="uq_results_submission_token"/>
+        <createIndex indexName="idx_user_bracket_token"
+                     tableName="results">
+            <column name="user_id"/>
+            <column name="bracket_id"/>
+            <column name="submission_token"/>
+        </createIndex>
     </changeSet>
 
 </databaseChangeLog>

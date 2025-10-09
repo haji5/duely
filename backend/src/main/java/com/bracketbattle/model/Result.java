@@ -10,7 +10,9 @@ import java.util.List;
 import java.util.ArrayList;
 
 @Entity
-@Table(name = "results")
+@Table(name = "results", indexes = {
+    @Index(name = "idx_user_bracket_token", columnList = "user_id, bracket_id, submission_token")
+})
 public class Result {
 
     @Id
@@ -29,6 +31,13 @@ public class Result {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Version
+    @Column(name = "version")
+    private Long version;
+
+    @Column(name = "submission_token", unique = true)
+    private String submissionToken;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "bracket_id", insertable = false, updatable = false)
     @JsonIgnore
@@ -44,6 +53,14 @@ public class Result {
         this.bracketId = bracketId;
         this.userId = userId;
         this.setRanking(ranking);
+        this.createdAt = LocalDateTime.now();
+    }
+
+    public Result(Long bracketId, String userId, List<Long> ranking, String submissionToken) {
+        this.bracketId = bracketId;
+        this.userId = userId;
+        this.setRanking(ranking);
+        this.submissionToken = submissionToken;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -97,6 +114,22 @@ public class Result {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
+
+    public String getSubmissionToken() {
+        return submissionToken;
+    }
+
+    public void setSubmissionToken(String submissionToken) {
+        this.submissionToken = submissionToken;
     }
 
     public Bracket getBracket() {

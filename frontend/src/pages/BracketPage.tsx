@@ -315,8 +315,11 @@ const BracketPage: React.FC = () => {
             const ranking = completedTournament.finalRanking.map(item => item.id);
 
             if (user) {
-                // User is logged in - save to backend with user ID
-                await bracketApi.saveBracketResult(parseInt(id), ranking);
+                // Generate a unique submission token for this specific tournament completion
+                const submissionToken = `${id}-${user.uid}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                // User is logged in - save to backend with user ID and submission token
+                await bracketApi.saveBracketResult(parseInt(id), ranking, submissionToken);
             } else {
                 // User not logged in - save to session memory only
                 addSessionBattle(

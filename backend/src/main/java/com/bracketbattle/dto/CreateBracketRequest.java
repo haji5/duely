@@ -17,6 +17,10 @@ public class CreateBracketRequest {
     @Pattern(regexp = "^(song|audio|video|image)$", message = "Invalid type")
     private String type;
 
+    @NotBlank
+    @Size(max = 100)
+    private String category = "General";
+
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
@@ -25,5 +29,7 @@ public class CreateBracketRequest {
 
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
-}
 
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+}

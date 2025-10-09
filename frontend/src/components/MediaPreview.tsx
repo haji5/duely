@@ -7,9 +7,10 @@ interface MediaPreviewProps {
     item: Item;
     className?: string;
     size?: 'thumbnail' | 'full';
+    autoplay?: boolean; // Control video autoplay (defaults to true for bracket battles)
 }
 
-const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size = 'full' }) => {
+const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size = 'full', autoplay = true }) => {
     const [isHovered, setIsHovered] = React.useState(false);
     const [isPlaying, setIsPlaying] = React.useState(false); // for audio rotation
     const [isVideoStarted, setIsVideoStarted] = React.useState(false);
@@ -108,7 +109,7 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
                 );
             }
             case 'video': {
-                const embedUrl = getYouTubeEmbedUrl(item.mediaUrl);
+                const embedUrl = getYouTubeEmbedUrl(item.mediaUrl, autoplay);
                 const thumbnailUrl = getYouTubeThumbnail(item.mediaUrl);
                 const isThumbnail = size === 'thumbnail';
                 const playButtonSize = isThumbnail ? 'w-6 h-6' : 'w-12 h-12';
@@ -126,7 +127,7 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
                                     className={`w-full ${videoHeight} border-0 rounded-lg`}
                                     loading="lazy"
                                     style={{ border: 0 }}
-                                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+                                    allow="autoplay; encrypted-media; picture-in-picture; web-share"
                                     allowFullScreen
                                     title={item.title}
                                 />

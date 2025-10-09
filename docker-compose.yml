@@ -12,6 +12,21 @@ services:
     networks:
       - bracket-battle-network
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - bracket-battle-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   backend:
     build: ./backend
     env_file:
@@ -23,9 +38,12 @@ services:
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/bracket_battle}
       DB_USERNAME: ${DB_USERNAME:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
     depends_on:
       - postgres
+      - redis
     networks:
       - bracket-battle-network
 
@@ -50,6 +68,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   bracket-battle-network:

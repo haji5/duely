@@ -10,6 +10,10 @@ const HomePage: React.FC = () => {
   const [popularBrackets, setPopularBrackets] = React.useState<Bracket[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [categorizedBrackets, setCategorizedBrackets] = React.useState<{
+    category: string;
+    brackets: Bracket[];
+  }[]>([]);
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && searchQuery.trim()) {
@@ -26,12 +30,65 @@ const HomePage: React.FC = () => {
   React.useEffect(() => {
     const fetchData = async () => {
       try {
+        // Fetch brackets and popular brackets in parallel (both are cached on backend)
+        // - getAllBrackets: Redis cached for 5 minutes
+        // - getPopularBrackets: Redis cached for 10 minutes
         const [allBrackets, popular] = await Promise.all([
           bracketApi.getAllBrackets(),
           bracketApi.getPopularBrackets()
         ]);
         setBrackets(allBrackets);
         setPopularBrackets(popular);
+
+        // OPTIMIZATION: Don't fetch results for every bracket on page load!
+        // This was causing N+1 API calls and defeating the purpose of caching.
+        // Instead, group brackets by category and sort by creation date or use
+        // the popularBrackets endpoint which already has engagement data.
+
+        // Group brackets by category (simple, no additional API calls needed)
+        const categoryMap = new Map<string, Bracket[]>();
+        allBrackets.forEach((bracket) => {
+          const category = bracket.category || 'General';
+          if (!categoryMap.has(category)) {
+            categoryMap.set(category, []);
+          }
+          categoryMap.get(category)!.push(bracket);
+        });
+
+        // Sort categories by the number of brackets in each category
+        // and by how many appear in the popular list (indicates engagement)
+        const popularIds = new Set(popular.map(b => b.id));
+
+        const categorySections = Array.from(categoryMap.entries())
+          .map(([category, brackets]) => {
+            // Count how many brackets in this category are popular
+            const popularCount = brackets.filter(b => popularIds.has(b.id)).length;
+            return {
+              category,
+              brackets,
+              popularCount,
+              // Sort brackets within category: popular first, then by date
+              sortedBrackets: [...brackets].sort((a, b) => {
+                const aPopular = popularIds.has(a.id) ? 1 : 0;
+                const bPopular = popularIds.has(b.id) ? 1 : 0;
+                if (aPopular !== bPopular) return bPopular - aPopular;
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+              })
+            };
+          })
+          // Sort categories by popularity (those with most popular brackets first)
+          .sort((a, b) => {
+            if (a.popularCount !== b.popularCount) {
+              return b.popularCount - a.popularCount;
+            }
+            return b.brackets.length - a.brackets.length;
+          })
+          .map(({ category, sortedBrackets }) => ({
+            category,
+            brackets: sortedBrackets
+          }));
+
+        setCategorizedBrackets(categorySections);
       } catch (error) {
         console.error('Error fetching brackets:', error);
       } finally {
@@ -40,7 +97,7 @@ const HomePage: React.FC = () => {
     };
 
     fetchData();
-  }, []);
+  }, []); // Only run once on mount
 
   if (loading) {
     return (
@@ -128,7 +185,7 @@ const HomePage: React.FC = () => {
         </div>
       </motion.div>
 
-      {/* Popular Brackets */}
+      {/* Popular Battles */}
       {popularBrackets.length > 0 && (
         <motion.section
           initial={{ opacity: 0 }}
@@ -152,6 +209,44 @@ const HomePage: React.FC = () => {
         </motion.section>
       )}
 
+      {/* Category Sections */}
+      {categorizedBrackets.map((categorySection, sectionIndex) => (
+        <motion.section
+          key={categorySection.category}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 + sectionIndex * 0.1 }}
+          className="mb-16"
+        >
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-bold text-primary">
+              {categorySection.category} Battles
+            </h2>
+            <Link
+              to={`/browse?category=${encodeURIComponent(categorySection.category)}&sort=popular`}
+              className="inline-flex items-center space-x-2 px-4 py-2 bg-secondary border border-primary rounded-lg text-secondary hover:bg-tertiary hover:border-secondary transition-all duration-200 shadow-primary hover:shadow-secondary"
+            >
+              <span className="text-sm font-medium">View More</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {categorySection.brackets.slice(0, 3).map((bracket, index) => (
+              <motion.div
+                key={bracket.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 * index }}
+              >
+                <BracketCard bracket={bracket} />
+              </motion.div>
+            ))}
+          </div>
+        </motion.section>
+      ))}
+
       {/* All Brackets */}
       <motion.section
         initial={{ opacity: 0 }}
@@ -171,7 +266,7 @@ const HomePage: React.FC = () => {
           </Link>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {brackets.map((bracket, index) => (
+          {brackets.slice(0, 6).map((bracket, index) => (
             <motion.div
               key={bracket.id}
               initial={{ opacity: 0, y: 20 }}
@@ -217,6 +312,24 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
     }
   };
 
+  const getCategoryColor = (category: string) => {
+    const categoryLower = category?.toLowerCase() || 'general';
+    const colorMap: { [key: string]: string } = {
+      'music': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+      'tv': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+      'movies': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+      'sports': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+      'gaming': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+      'food': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+      'travel': 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
+      'art': 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
+      'technology': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+      'entertainment': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+      'general': 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+    };
+    return colorMap[categoryLower] || colorMap['general'];
+  };
+
   return (
     <Link to={`/bracket/${bracket.id}`}>
       <div className="card hover:shadow-xl transition-all duration-300 hover:scale-105">
@@ -226,8 +339,8 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
               {getTypeIcon(bracket.type)}
               <span className="text-sm font-medium capitalize">{bracket.type}</span>
             </div>
-            <div className="bg-tertiary text-secondary px-2 py-1 rounded-full text-xs">
-              Battle
+            <div className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(bracket.category)}`}>
+              {bracket.category || 'General'}
             </div>
           </div>
           <h3 className="text-xl font-semibold text-primary mb-2">{bracket.name}</h3>

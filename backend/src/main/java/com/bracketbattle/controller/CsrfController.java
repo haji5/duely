@@ -9,7 +9,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api")
 public class CsrfController {
 
     @GetMapping("/csrf-token")
@@ -18,4 +17,3 @@ public class CsrfController {
         return Map.of("headerName", token.getHeaderName(), "token", token.getToken());
     }
 }
-

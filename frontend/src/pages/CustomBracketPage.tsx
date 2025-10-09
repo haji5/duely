@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { bracketApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../config/firebase';
 import { isSafeHttpUrl, isYouTubeUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, fetchYouTubeTitle } from '../utils/mediaUtils';
 
 interface BracketItem {
@@ -17,12 +18,27 @@ const CustomBracketPage: React.FC = () => {
   const { currentUser, signInWithGoogle } = useAuth();
   const [bracketName, setBracketName] = useState('');
   const [bracketType, setBracketType] = useState<'song' | 'video' | 'image'>('song');
+  const [bracketCategory, setBracketCategory] = useState('General');
   const [items, setItems] = useState<BracketItem[]>([
     { title: '', mediaUrl: '', mediaType: 'song' },
     { title: '', mediaUrl: '', mediaType: 'song' }
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const categories = [
+    'General',
+    'Music',
+    'TV',
+    'Movies',
+    'Sports',
+    'Gaming',
+    'Food',
+    'Travel',
+    'Art',
+    'Technology',
+    'Entertainment'
+  ];
 
   const addItem = () => {
     setItems([...items, { title: '', mediaUrl: '', mediaType: bracketType }]);
@@ -100,6 +116,8 @@ const CustomBracketPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    console.log('[CustomBracket] Submit started, currentUser:', currentUser);
+
     // Check if user is authenticated
     if (!currentUser) {
       setError('You must be logged in to create a bracket. Please sign in and try again.');
@@ -116,19 +134,42 @@ const CustomBracketPage: React.FC = () => {
     setError(null);
 
     try {
+      // Ensure Firebase auth is ready
+      const user = auth.currentUser;
+      console.log('[CustomBracket] Firebase auth.currentUser:', user ? user.uid : 'null');
+
+      if (!user) {
+        setError('Authentication session expired. Please sign in again.');
+        setLoading(false);
+        return;
+      }
+
       const validItems = items.filter(item => item.title.trim() && item.mediaUrl.trim());
+      console.log('[CustomBracket] Creating bracket with', validItems.length, 'items');
 
       // Step 1: Create the bracket (createdBy derived from backend auth)
-      const bracket = await bracketApi.createBracket(bracketName, '', bracketType);
+      const bracket = await bracketApi.createBracket(bracketName, '', bracketType, bracketCategory);
+      console.log('[CustomBracket] Bracket created successfully:', bracket.id);
 
       // Step 2: Add all items to the bracket
       for (const item of validItems) {
         await bracketApi.addItemToBracket(bracket.id, item.title, item.mediaUrl, item.mediaType);
       }
 
+      console.log('[CustomBracket] All items added, navigating to bracket page');
       navigate(`/bracket/${bracket.id}`);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to create bracket. Please try again.');
+      console.error('[CustomBracket] Error creating bracket:', err);
+      console.error('[CustomBracket] Error response:', err.response);
+
+      // Handle specific error cases
+      if (err.response?.status === 401) {
+        setError('Authentication failed. Please sign out and sign in again, then try creating your bracket.');
+      } else if (err.message?.includes('Authentication')) {
+        setError(err.message);
+      } else {
+        setError(err.response?.data?.message || 'Failed to create bracket. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -149,7 +190,7 @@ const CustomBracketPage: React.FC = () => {
         );
       case 'video':
         // Use shared utility functions for YouTube handling
-        const embedUrl = getYouTubeEmbedUrl(item.mediaUrl);
+        const embedUrl = getYouTubeEmbedUrl(item.mediaUrl, false); // Disable autoplay in create bracket page
         const thumbnailUrl = getYouTubeThumbnail(item.mediaUrl);
 
         return (
@@ -160,7 +201,7 @@ const CustomBracketPage: React.FC = () => {
                 height="120"
                 src={embedUrl}
                 title={`Video preview ${index + 1}`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allow="autoplay; encrypted-media; picture-in-picture; web-share"
                 allowFullScreen
                 className="rounded border-0"
                 loading="lazy"
@@ -266,6 +307,25 @@ const CustomBracketPage: React.FC = () => {
               </select>
             </div>
 
+            {/* Bracket Category - New Field */}
+            <div>
+              <label htmlFor="bracketCategory" className="block text-sm font-medium text-primary mb-2">
+                Bracket Category
+              </label>
+              <select
+                id="bracketCategory"
+                value={bracketCategory}
+                onChange={(e) => setBracketCategory(e.target.value)}
+                className="w-full px-3 py-2 border border-primary rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+              >
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Items Section */}
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -326,10 +386,10 @@ const CustomBracketPage: React.FC = () => {
                         <label className="block text-xs font-medium text-secondary mb-1">
                           {bracketType === 'song' ? 'Spotify/Audio URL' :
                            bracketType === 'video' ? 'YouTube/Video URL' : 'Image URL'}
-                          {bracketType === 'video' && (
-                            <span className="text-xs text-gray-500 ml-1">(Title will auto-fill for YouTube videos)</span>
-                          )}
                         </label>
+                        {bracketType === 'video' && (
+                          <p className="text-xs text-gray-500 mb-1">Auto-fills title for YouTube</p>
+                        )}
                         <input
                           type="url"
                           value={item.mediaUrl}

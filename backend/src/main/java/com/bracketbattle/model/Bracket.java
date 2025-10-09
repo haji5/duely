@@ -1,11 +1,13 @@
 package com.bracketbattle.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
 @Table(name = "brackets")
+@JsonIgnoreProperties({"items", "results", "hibernateLazyInitializer", "handler"})
 public class Bracket {
 
     @Id
@@ -20,6 +22,9 @@ public class Bracket {
 
     @Column(nullable = false)
     private String type;
+
+    @Column(name = "category", nullable = false)
+    private String category = "General";
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -82,6 +87,14 @@ public class Bracket {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
     }
 
     public LocalDateTime getCreatedAt() {

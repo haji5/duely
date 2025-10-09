@@ -38,11 +38,12 @@ export function extractYouTubeId(url: string): string | null {
     return null;
 }
 
-export function getYouTubeEmbedUrl(url: string): string {
+export function getYouTubeEmbedUrl(url: string, autoplay: boolean = true): string {
     const id = extractYouTubeId(url);
     if (!id) return 'about:blank';
     const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-    return `https://www.youtube.com/embed/${id}?enablejsapi=1&autoplay=1&mute=1&controls=1&modestbranding=1&rel=0&playsinline=1&origin=${origin}`;
+    const autoplayParam = autoplay ? '1' : '0';
+    return `https://www.youtube.com/embed/${id}?enablejsapi=1&autoplay=${autoplayParam}&mute=1&controls=1&modestbranding=1&rel=0&playsinline=1&origin=${origin}`;
 }
 
 export function getYouTubeThumbnail(url: string): string {

@@ -49,16 +49,21 @@ public class SecurityConfig {
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf
                 .csrfTokenRepository(csrfRepo)
+                .requireCsrfProtectionMatcher(request -> {
+                    // Disable CSRF for stateless JWT auth (Firebase tokens provide CSRF protection)
+                    // Only enable CSRF for session-based endpoints if needed
+                    return false;
+                })
             )
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/", "/actuator/health", "/api/csrf-token", "/api/brackets",
-                        "/api/brackets/*", "/api/brackets/*/items",
-                        "/api/brackets/*/results",
-                        "/api/brackets/popular",
-                        "/api/users/*/results",
-                        "/api/brackets/*/users/*/results").permitAll()
+                .requestMatchers(HttpMethod.GET, "/", "/actuator/health", "/csrf-token", "/brackets",
+                        "/brackets/*", "/brackets/*/items",
+                        "/brackets/*/results",
+                        "/brackets/popular",
+                        "/users/*/results",
+                        "/brackets/*/users/*/results").permitAll()
                 .anyRequest().authenticated()
             )
             .headers(headers -> {

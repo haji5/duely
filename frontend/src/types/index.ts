@@ -3,6 +3,7 @@ export interface Bracket {
   name: string;
   description: string;
   type: string;
+  category: string;
   createdAt: string;
   createdBy?: string;
 }

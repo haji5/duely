@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
 import { bracketApi } from '../services/api';
 import type { Bracket } from '@/types';
+import { useDebounce } from '@/utils/debounce';
 
 const BrowsePage: React.FC = () => {
   const location = useLocation();
@@ -10,20 +11,33 @@ const BrowsePage: React.FC = () => {
   const [filteredBrackets, setFilteredBrackets] = React.useState<Bracket[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [selectedType, setSelectedType] = React.useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = React.useState<string>('all');
   const [sortBy, setSortBy] = React.useState<string>('newest');
   const [creatorFilter, setCreatorFilter] = React.useState<string>('');
   const [loading, setLoading] = React.useState(true);
+  const [resultsMap, setResultsMap] = React.useState<Map<number, number>>(new Map());
+
+  // Debounce search query to prevent excessive filtering
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   // Initialize search query and creator filter from URL parameters
   React.useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const query = searchParams.get('search');
     const creator = searchParams.get('creator');
+    const category = searchParams.get('category');
+    const sort = searchParams.get('sort');
     if (query) {
       setSearchQuery(query);
     }
     if (creator) {
       setCreatorFilter(creator);
+    }
+    if (category) {
+      setSelectedCategory(category);
+    }
+    if (sort) {
+      setSortBy(sort);
     }
   }, [location.search]);
 
@@ -33,6 +47,12 @@ const BrowsePage: React.FC = () => {
         const allBrackets = await bracketApi.getAllBrackets();
         setBrackets(allBrackets);
         setFilteredBrackets(allBrackets);
+
+        // OPTIMIZATION: Only fetch results if sorting by popular
+        // This prevents unnecessary API calls on page load
+        if (sortBy === 'popular') {
+          await fetchResultsForPopularSort(allBrackets);
+        }
       } catch (error) {
         console.error('Error fetching brackets:', error);
       } finally {
@@ -43,14 +63,46 @@ const BrowsePage: React.FC = () => {
     fetchBrackets();
   }, []);
 
+  // Fetch results only when needed for popular sorting
+  const fetchResultsForPopularSort = async (bracketsToFetch: Bracket[]) => {
+    const resultsCount = new Map<number, number>();
+
+    // Fetch results in parallel but limit concurrency to avoid overwhelming the server
+    const chunkSize = 5;
+    for (let i = 0; i < bracketsToFetch.length; i += chunkSize) {
+      const chunk = bracketsToFetch.slice(i, i + chunkSize);
+      await Promise.all(
+        chunk.map(async (bracket) => {
+          try {
+            const bracketResults = await bracketApi.getBracketResults(bracket.id);
+            resultsCount.set(bracket.id, bracketResults.length);
+          } catch (err) {
+            console.error(`Error fetching results for bracket ${bracket.id}:`, err);
+            resultsCount.set(bracket.id, 0);
+          }
+        })
+      );
+    }
+
+    setResultsMap(resultsCount);
+  };
+
+  // Fetch results when sort changes to popular
+  React.useEffect(() => {
+    if (sortBy === 'popular' && resultsMap.size === 0 && brackets.length > 0) {
+      fetchResultsForPopularSort(brackets);
+    }
+  }, [sortBy, brackets]);
+
+  // Use debounced search query for filtering
   React.useEffect(() => {
     let filtered = brackets;
 
-    // Filter by search query
-    if (searchQuery.trim()) {
+    // Filter by search query (debounced)
+    if (debouncedSearchQuery.trim()) {
       filtered = filtered.filter(bracket =>
-        bracket.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        bracket.description?.toLowerCase().includes(searchQuery.toLowerCase())
+        bracket.name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        bracket.description?.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
       );
     }
 
@@ -64,11 +116,16 @@ const BrowsePage: React.FC = () => {
       filtered = filtered.filter(bracket => bracket.type === selectedType);
     }
 
+    // Filter by category
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(bracket => bracket.category === selectedCategory);
+    }
+
     // Sort the filtered results
     filtered = sortBrackets(filtered, sortBy);
 
     setFilteredBrackets(filtered);
-  }, [searchQuery, selectedType, brackets, sortBy, creatorFilter]);
+  }, [debouncedSearchQuery, selectedType, brackets, sortBy, creatorFilter, selectedCategory, resultsMap]);
 
   const sortBrackets = (brackets: Bracket[], sortOption: string): Bracket[] => {
     const sortedBrackets = [...brackets];
@@ -84,6 +141,12 @@ const BrowsePage: React.FC = () => {
         return sortedBrackets.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
       case 'type':
         return sortedBrackets.sort((a, b) => (a.type || '').localeCompare(b.type || ''));
+      case 'popular':
+        return sortedBrackets.sort((a, b) => {
+          const aResults = resultsMap.get(a.id) || 0;
+          const bResults = resultsMap.get(b.id) || 0;
+          return bResults - aResults;
+        });
       default:
         return sortedBrackets;
     }
@@ -94,12 +157,18 @@ const BrowsePage: React.FC = () => {
     { value: 'oldest', label: 'Oldest First' },
     { value: 'name-asc', label: 'Name A-Z' },
     { value: 'name-desc', label: 'Name Z-A' },
-    { value: 'type', label: 'Type' }
+    { value: 'type', label: 'Type' },
+    { value: 'popular', label: 'Most Popular' }
   ];
 
   const getUniqueTypes = () => {
     const types = brackets.map(bracket => bracket.type).filter(Boolean);
     return Array.from(new Set(types));
+  };
+
+  const getUniqueCategories = () => {
+    const categories = brackets.map(bracket => bracket.category).filter(Boolean);
+    return Array.from(new Set(categories));
   };
 
   if (loading) {
@@ -177,6 +246,25 @@ const BrowsePage: React.FC = () => {
               </select>
             </div>
 
+            {/* Category Filter */}
+            <div className="md:w-48">
+              <select
+                className="block w-full px-3 py-3 bg-themed-secondary border border-themed-primary rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 text-themed-primary"
+                style={{
+                  '--tw-ring-color': 'var(--accent-primary)'
+                } as React.CSSProperties}
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+              >
+                <option value="all">All Categories</option>
+                {getUniqueCategories().map(category => (
+                  <option key={category} value={category}>
+                    {category.charAt(0).toUpperCase() + category.slice(1)}s
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Sort By */}
             <div className="md:w-48">
               <select
@@ -205,6 +293,9 @@ const BrowsePage: React.FC = () => {
             {selectedType !== 'all' && (
               <span> in {selectedType}s</span>
             )}
+            {selectedCategory !== 'all' && (
+              <span> in {selectedCategory}s</span>
+            )}
           </div>
         </motion.div>
 
@@ -223,15 +314,16 @@ const BrowsePage: React.FC = () => {
             </div>
             <h3 className="text-xl font-semibold text-primary mb-2">No brackets found</h3>
             <p className="text-secondary mb-6">
-              {searchQuery || selectedType !== 'all'
+              {searchQuery || selectedType !== 'all' || selectedCategory !== 'all'
                 ? 'Try adjusting your search or filter criteria.'
                 : 'No brackets are available at the moment.'}
             </p>
-            {(searchQuery || selectedType !== 'all') && (
+            {(searchQuery || selectedType !== 'all' || selectedCategory !== 'all') && (
               <button
                 onClick={() => {
                   setSearchQuery('');
                   setSelectedType('all');
+                  setSelectedCategory('all');
                 }}
                 className="btn btn-secondary"
               >
@@ -276,6 +368,24 @@ const BrowsePage: React.FC = () => {
 };
 
 const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
+  const getCategoryColor = (category: string) => {
+    const categoryLower = category?.toLowerCase() || 'general';
+    const colorMap: { [key: string]: string } = {
+      'music': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+      'tv': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+      'movies': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+      'sports': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+      'gaming': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+      'food': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+      'travel': 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
+      'art': 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
+      'technology': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+      'entertainment': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+      'general': 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+    };
+    return colorMap[categoryLower] || colorMap['general'];
+  };
+
   return (
     <Link to={`/bracket/${bracket.id}`}>
       <div className="card hover:shadow-xl transition-all duration-300 hover:scale-105">
@@ -313,8 +423,8 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
               })()}
               <span className="text-sm font-medium capitalize">{bracket.type}</span>
             </div>
-            <div className="bg-tertiary text-secondary px-2 py-1 rounded-full text-xs">
-              Battle
+            <div className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(bracket.category)}`}>
+              {bracket.category || 'General'}
             </div>
           </div>
           <h3 className="text-xl font-semibold text-primary mb-2">{bracket.name}</h3>
