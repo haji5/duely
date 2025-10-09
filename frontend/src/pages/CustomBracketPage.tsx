@@ -17,11 +17,11 @@ const CustomBracketPage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, signInWithGoogle } = useAuth();
   const [bracketName, setBracketName] = useState('');
-  const [bracketType, setBracketType] = useState<'song' | 'video' | 'image'>('song');
+  const [bracketType, setBracketType] = useState<'song' | 'video' | 'image'>('video');
   const [bracketCategory, setBracketCategory] = useState('General');
   const [items, setItems] = useState<BracketItem[]>([
-    { title: '', mediaUrl: '', mediaType: 'song' },
-    { title: '', mediaUrl: '', mediaType: 'song' }
+    { title: '', mediaUrl: '', mediaType: 'video' },
+    { title: '', mediaUrl: '', mediaType: 'video' }
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -285,7 +285,7 @@ const CustomBracketPage: React.FC = () => {
                 value={bracketName}
                 onChange={(e) => setBracketName(e.target.value)}
                 className="w-full px-3 py-2 border border-primary rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                placeholder="e.g., Best Radiohead Songs"
+                placeholder={bracketType === 'video' ? 'e.g., Best YouTube Videos' : 'e.g., Best Radiohead Songs'}
                 required
               />
             </div>
@@ -334,6 +334,20 @@ const CustomBracketPage: React.FC = () => {
                   {items.filter(item => item.title.trim() && item.mediaUrl.trim()).length} items added
                 </span>
               </div>
+
+              {/* YouTube Auto-fill Notice - Only shown for video type */}
+              {bracketType === 'video' && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start space-x-2">
+                    <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-sm text-blue-800">
+                      <strong>Tip:</strong> Paste a YouTube URL and the video title will automatically be fetched for you!
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-4">
                 {items.map((item, index) => (
@@ -387,9 +401,6 @@ const CustomBracketPage: React.FC = () => {
                           {bracketType === 'song' ? 'Spotify/Audio URL' :
                            bracketType === 'video' ? 'YouTube/Video URL' : 'Image URL'}
                         </label>
-                        {bracketType === 'video' && (
-                          <p className="text-xs text-gray-500 mb-1">Auto-fills title for YouTube</p>
-                        )}
                         <input
                           type="url"
                           value={item.mediaUrl}
