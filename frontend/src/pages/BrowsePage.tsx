@@ -15,7 +15,6 @@ const BrowsePage: React.FC = () => {
   const [sortBy, setSortBy] = React.useState<string>('newest');
   const [creatorFilter, setCreatorFilter] = React.useState<string>('');
   const [loading, setLoading] = React.useState(true);
-  const [resultsMap, setResultsMap] = React.useState<Map<number, number>>(new Map());
 
   // Debounce search query to prevent excessive filtering
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -44,15 +43,21 @@ const BrowsePage: React.FC = () => {
   React.useEffect(() => {
     const fetchBrackets = async () => {
       try {
-        const allBrackets = await bracketApi.getAllBrackets();
+        let allBrackets: Bracket[];
+
+        // If viewing "My Brackets", fetch directly without cache for immediate visibility
+        if (creatorFilter) {
+          allBrackets = await bracketApi.getBracketsByCreator(creatorFilter);
+        } else if (sortBy === 'popular') {
+          // OPTIMIZATION: Use dedicated popular brackets endpoint
+          // This is cached on the backend and pre-sorted by result count
+          allBrackets = await bracketApi.getPopularBrackets();
+        } else {
+          allBrackets = await bracketApi.getAllBrackets();
+        }
+
         setBrackets(allBrackets);
         setFilteredBrackets(allBrackets);
-
-        // OPTIMIZATION: Only fetch results if sorting by popular
-        // This prevents unnecessary API calls on page load
-        if (sortBy === 'popular') {
-          await fetchResultsForPopularSort(allBrackets);
-        }
       } catch (error) {
         console.error('Error fetching brackets:', error);
       } finally {
@@ -61,38 +66,7 @@ const BrowsePage: React.FC = () => {
     };
 
     fetchBrackets();
-  }, []);
-
-  // Fetch results only when needed for popular sorting
-  const fetchResultsForPopularSort = async (bracketsToFetch: Bracket[]) => {
-    const resultsCount = new Map<number, number>();
-
-    // Fetch results in parallel but limit concurrency to avoid overwhelming the server
-    const chunkSize = 5;
-    for (let i = 0; i < bracketsToFetch.length; i += chunkSize) {
-      const chunk = bracketsToFetch.slice(i, i + chunkSize);
-      await Promise.all(
-        chunk.map(async (bracket) => {
-          try {
-            const bracketResults = await bracketApi.getBracketResults(bracket.id);
-            resultsCount.set(bracket.id, bracketResults.length);
-          } catch (err) {
-            console.error(`Error fetching results for bracket ${bracket.id}:`, err);
-            resultsCount.set(bracket.id, 0);
-          }
-        })
-      );
-    }
-
-    setResultsMap(resultsCount);
-  };
-
-  // Fetch results when sort changes to popular
-  React.useEffect(() => {
-    if (sortBy === 'popular' && resultsMap.size === 0 && brackets.length > 0) {
-      fetchResultsForPopularSort(brackets);
-    }
-  }, [sortBy, brackets]);
+  }, [creatorFilter, sortBy]);
 
   // Use debounced search query for filtering
   React.useEffect(() => {
@@ -121,11 +95,14 @@ const BrowsePage: React.FC = () => {
       filtered = filtered.filter(bracket => bracket.category === selectedCategory);
     }
 
-    // Sort the filtered results
-    filtered = sortBrackets(filtered, sortBy);
+    // Sort the filtered results (client-side for non-popular sorts)
+    // Popular sort is already handled by the backend endpoint
+    if (sortBy !== 'popular') {
+      filtered = sortBrackets(filtered, sortBy);
+    }
 
     setFilteredBrackets(filtered);
-  }, [debouncedSearchQuery, selectedType, brackets, sortBy, creatorFilter, selectedCategory, resultsMap]);
+  }, [debouncedSearchQuery, selectedType, brackets, sortBy, creatorFilter, selectedCategory]);
 
   const sortBrackets = (brackets: Bracket[], sortOption: string): Bracket[] => {
     const sortedBrackets = [...brackets];
@@ -142,11 +119,9 @@ const BrowsePage: React.FC = () => {
       case 'type':
         return sortedBrackets.sort((a, b) => (a.type || '').localeCompare(b.type || ''));
       case 'popular':
-        return sortedBrackets.sort((a, b) => {
-          const aResults = resultsMap.get(a.id) || 0;
-          const bResults = resultsMap.get(b.id) || 0;
-          return bResults - aResults;
-        });
+        // Popular sorting is handled by backend endpoint
+        // If we're here, just return as-is (already sorted from server)
+        return sortedBrackets;
       default:
         return sortedBrackets;
     }

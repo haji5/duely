@@ -73,19 +73,38 @@ public class ReadRateLimiterInterceptor implements HandlerInterceptor {
 
     /**
      * Extract client IP address, considering proxy headers.
+     * Validates and sanitizes X-Forwarded-For to prevent spoofing.
      */
     private String getClientIpAddress(HttpServletRequest request) {
         String xForwardedFor = request.getHeader("X-Forwarded-For");
         if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
+            // Take only the first IP in the chain and validate it
+            String clientIp = xForwardedFor.split(",")[0].trim();
+            // Basic IP validation to prevent header injection
+            if (isValidIpAddress(clientIp)) {
+                return clientIp;
+            }
         }
         
         String xRealIp = request.getHeader("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty()) {
+        if (xRealIp != null && !xRealIp.isEmpty() && isValidIpAddress(xRealIp)) {
             return xRealIp;
         }
         
         return request.getRemoteAddr();
     }
-}
 
+    /**
+     * Validate IP address format to prevent header injection attacks.
+     */
+    private boolean isValidIpAddress(String ip) {
+        if (ip == null || ip.isEmpty() || ip.length() > 45) {
+            return false;
+        }
+        // IPv4 pattern
+        String ipv4Pattern = "^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$";
+        // IPv6 pattern (simplified)
+        String ipv6Pattern = "^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$";
+        return ip.matches(ipv4Pattern) || ip.matches(ipv6Pattern);
+    }
+}

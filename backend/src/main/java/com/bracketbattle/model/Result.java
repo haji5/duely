@@ -43,8 +43,8 @@ public class Result {
     @JsonIgnore
     private Bracket bracket;
 
-    @Transient
-    private ObjectMapper objectMapper = new ObjectMapper();
+    // Use a static ObjectMapper to avoid recreation on deserialization
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // Constructors
     public Result() {}
@@ -94,7 +94,7 @@ public class Result {
             return new ArrayList<>();
         }
         try {
-            return objectMapper.readValue(rankingJson, new TypeReference<List<Long>>() {});
+            return OBJECT_MAPPER.readValue(rankingJson, new TypeReference<List<Long>>() {});
         } catch (JsonProcessingException e) {
             return new ArrayList<>();
         }
@@ -102,7 +102,7 @@ public class Result {
 
     public void setRanking(List<Long> ranking) {
         try {
-            this.rankingJson = objectMapper.writeValueAsString(ranking);
+            this.rankingJson = OBJECT_MAPPER.writeValueAsString(ranking);
         } catch (JsonProcessingException e) {
             this.rankingJson = "[]";
         }

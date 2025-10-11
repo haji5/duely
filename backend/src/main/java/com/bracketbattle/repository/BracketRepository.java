@@ -13,4 +13,6 @@ public interface BracketRepository extends JpaRepository<Bracket, Long> {
     List<Bracket> findPopularBrackets();
 
     List<Bracket> findByType(String type);
+
+    List<Bracket> findByCreatedByOrderByCreatedAtDesc(String createdBy);
 }

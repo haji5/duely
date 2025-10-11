@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Bracket, Item, Result } from '@/types';
+import { Bracket, Item, Result, ItemRanking } from '@/types';
 import { auth } from '@/config/firebase';
 import { apiCache, cachedApiCall, createCacheKey } from '@/utils/apiCache';
 
@@ -111,9 +111,19 @@ export const bracketApi = {
       submissionToken: token,
     });
     
-    // Invalidate related caches after submission
-    apiCache.invalidatePattern(/\/brackets\/\d+\/results/);
-    apiCache.invalidatePattern(/\/users\/.*\/results/);
+    // Invalidate ONLY the specific bracket's caches (not all brackets!)
+    apiCache.invalidate(createCacheKey(`/brackets/${id}/results`));
+    apiCache.invalidate(createCacheKey(`/brackets/${id}/rankings`));
+
+    // Invalidate user-specific caches if user is logged in
+    const user = auth.currentUser;
+    if (user) {
+      apiCache.invalidate(createCacheKey(`/brackets/${id}/users/${user.uid}/results`));
+      apiCache.invalidate(createCacheKey(`/users/${user.uid}/results`));
+    }
+
+    // Only invalidate popular brackets if this might affect the list
+    // (popular brackets are determined by result count, so this is relevant)
     apiCache.invalidate(createCacheKey('/brackets/popular'));
     
     return response.data;
@@ -155,6 +165,15 @@ export const bracketApi = {
     }, 10 * 60 * 1000); // 10 minutes
   },
 
+  // Get pre-calculated rankings from server (cached for 5 minutes)
+  getBracketRankings: async (id: number): Promise<ItemRanking[]> => {
+    const cacheKey = createCacheKey(`/brackets/${id}/rankings`);
+    return cachedApiCall(cacheKey, async () => {
+      const response = await api.get(`/brackets/${id}/rankings`);
+      return response.data;
+    }, 5 * 60 * 1000); // 5 minutes
+  },
+
   // Create new bracket
   createBracket: async (name: string, description: string, type: string, category?: string): Promise<Bracket> => {
     const response = await api.post('/brackets', {
@@ -164,10 +183,15 @@ export const bracketApi = {
       category: category || 'General',
     });
     
-    // Invalidate brackets list cache
-    apiCache.invalidate(createCacheKey('/brackets'));
-    apiCache.invalidate(createCacheKey('/brackets/popular'));
-    
+    // Don't invalidate list caches - let them expire naturally for eventual consistency
+    // User can still see their bracket via the direct endpoint
+
+    return response.data;
+  },
+
+  // Get brackets by creator ID (NOT cached - for immediate "My Brackets" visibility)
+  getBracketsByCreator: async (creatorId: string): Promise<Bracket[]> => {
+    const response = await api.get(`/brackets/by-creator/${creatorId}`);
     return response.data;
   },
 

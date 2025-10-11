@@ -28,10 +28,25 @@ public class CacheMonitoringService {
         for (String cacheName : cacheManager.getCacheNames()) {
             Cache cache = cacheManager.getCache(cacheName);
             if (cache != null) {
-                Map<String, Object> info = new HashMap<>();
-                info.put("name", cacheName);
-                info.put("nativeCache", cache.getNativeCache().getClass().getSimpleName());
-                cacheInfo.put(cacheName, info);
+                try {
+                    Map<String, Object> info = new HashMap<>();
+                    info.put("name", cacheName);
+                    info.put("nativeCache", cache.getNativeCache().getClass().getSimpleName());
+
+                    // Try to get Redis-specific info if available
+                    Object nativeCache = cache.getNativeCache();
+                    if (nativeCache instanceof org.springframework.data.redis.cache.RedisCache) {
+                        info.put("type", "Redis");
+                    }
+
+                    cacheInfo.put(cacheName, info);
+                } catch (Exception e) {
+                    logger.warn("Failed to get info for cache '{}': {}", cacheName, e.getMessage());
+                    Map<String, Object> errorInfo = new HashMap<>();
+                    errorInfo.put("name", cacheName);
+                    errorInfo.put("error", e.getMessage());
+                    cacheInfo.put(cacheName, errorInfo);
+                }
             }
         }
 
@@ -78,4 +93,3 @@ public class CacheMonitoringService {
         }
     }
 }
-

@@ -24,6 +24,15 @@ export interface Result {
   createdAt: string;
 }
 
+export interface ItemRanking {
+  item: Item;
+  wins: number;
+  totalMatches: number;
+  winPercentage: number;
+  averageScore: number;
+  timesRanked: number;
+}
+
 export interface BracketMatch {
   itemA: Item;
   itemB: Item;

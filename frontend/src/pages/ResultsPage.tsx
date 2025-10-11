@@ -2,7 +2,7 @@ import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { bracketApi } from '../services/api';
-import { Bracket, Item, Result } from '@/types';
+import { Bracket, Item, Result, ItemRanking } from '@/types';
 import MediaPreview from '../components/MediaPreview';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
@@ -30,6 +30,7 @@ const ResultsPage: React.FC = () => {
   const [items, setItems] = React.useState<Item[]>([]);
   const [results, setResults] = React.useState<Result[]>([]);
   const [allResults, setAllResults] = React.useState<Result[]>([]);
+  const [serverRankings, setServerRankings] = React.useState<ItemRanking[]>([]);
   const [sessionBattles, setSessionBattles] = React.useState<SessionBattle[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selectedResult, setSelectedResult] = React.useState<Result | SessionBattle | 'personal' | null>(null);
@@ -47,14 +48,23 @@ const ResultsPage: React.FC = () => {
         setBracket(bracketData);
         setItems(itemsData);
 
-        // Fetch all results for global rankings
+        // Fetch server-calculated rankings first (preferred method)
         try {
-          const allResultsData = await bracketApi.getBracketResults(parseInt(id));
-          console.log('Fetched global results:', allResultsData.length, 'results');
-          setAllResults(allResultsData);
+          const rankings = await bracketApi.getBracketRankings(parseInt(id));
+          console.log('Fetched server-calculated rankings:', rankings.length, 'items');
+          setServerRankings(rankings);
         } catch (error) {
-          console.log('No global results available yet:', error);
-          setAllResults([]);
+          console.log('Server rankings not available, falling back to client-side calculation:', error);
+
+          // Fallback: Fetch all results for client-side calculation
+          try {
+            const allResultsData = await bracketApi.getBracketResults(parseInt(id));
+            console.log('Fetched global results for client-side calculation:', allResultsData.length, 'results');
+            setAllResults(allResultsData);
+          } catch (error) {
+            console.log('No global results available yet:', error);
+            setAllResults([]);
+          }
         }
 
         if (user) {
@@ -93,6 +103,17 @@ const ResultsPage: React.FC = () => {
   };
 
   const getGlobalAggregatedRanking = (): ItemWithStats[] => {
+    // If we have server-calculated rankings, use them (preferred!)
+    if (serverRankings.length > 0) {
+      return serverRankings.map(ranking => ({
+        ...ranking.item,
+        wins: ranking.wins,
+        totalMatches: ranking.totalMatches,
+        winPercentage: ranking.winPercentage
+      }));
+    }
+
+    // Fallback to client-side calculation if server rankings not available
     if (allResults.length === 0) return [];
 
     // Calculate average position and win statistics for each item across ALL users
@@ -192,8 +213,16 @@ const ResultsPage: React.FC = () => {
     );
   }
 
-  const globalRanking = getGlobalAggregatedRanking();
-  const personalRanking = getPersonalAggregatedRanking();
+  const globalRanking = React.useMemo(
+    () => getGlobalAggregatedRanking(),
+    [serverRankings, allResults, items]
+  );
+
+  const personalRanking = React.useMemo(
+    () => getPersonalAggregatedRanking(),
+    [results, sessionBattles, items, user]
+  );
+
   const allBattles = user ? results : sessionBattles;
 
   // Fix the currentRanking calculation
@@ -278,7 +307,10 @@ const ResultsPage: React.FC = () => {
                 >
                   <div className="font-medium">🌍 Global Rankings</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    From all {allResults.length} completed battles
+                    {serverRankings.length > 0
+                      ? `Server-calculated from all battles`
+                      : `From all ${allResults.length} completed battles`
+                    }
                   </div>
                 </button>
 
@@ -411,14 +443,10 @@ const ResultsPage: React.FC = () => {
                         <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">
                           {item.mediaType}
                         </p>
-                        {hasStats(item) && (
+                        {/* Only show win percentage for aggregated rankings (global/personal), not individual battles */}
+                        {(selectedResult === null || selectedResult === 'personal') && hasStats(item) && (
                           <p className="text-sm text-gray-500 dark:text-gray-400">
                             {item.winPercentage}% wins
-                          </p>
-                        )}
-                        {!hasStats(item) && (
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            0% wins
                           </p>
                         )}
                       </div>

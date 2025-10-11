@@ -61,9 +61,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/", "/actuator/health", "/csrf-token", "/brackets",
                         "/brackets/*", "/brackets/*/items",
                         "/brackets/*/results",
-                        "/brackets/popular",
-                        "/users/*/results",
-                        "/brackets/*/users/*/results").permitAll()
+                        "/brackets/popular").permitAll()
+                // User-specific endpoints require authentication
+                .requestMatchers("/users/*/results", "/brackets/*/users/*/results").authenticated()
                 .anyRequest().authenticated()
             )
             .headers(headers -> {

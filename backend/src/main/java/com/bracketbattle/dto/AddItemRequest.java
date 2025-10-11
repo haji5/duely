@@ -11,7 +11,7 @@ public class AddItemRequest {
     private String title;
 
     @NotBlank
-    @Size(max = 2000)
+    @Size(min = 10, max = 2000, message = "Media URL must be between 10 and 2000 characters")
     private String mediaUrl;
 
     @NotBlank
@@ -27,4 +27,3 @@ public class AddItemRequest {
     public String getMediaType() { return mediaType; }
     public void setMediaType(String mediaType) { this.mediaType = mediaType; }
 }
-

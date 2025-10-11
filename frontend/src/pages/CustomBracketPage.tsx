@@ -157,6 +157,10 @@ const CustomBracketPage: React.FC = () => {
       }
 
       console.log('[CustomBracket] All items added, navigating to bracket page');
+
+      // Show success notification with info about visibility delay
+      alert('✅ Bracket created successfully!\n\nℹ️ Your bracket is ready to play immediately and will appear in "My Brackets" right away.\n\nNote: It may take up to 5 minutes for your bracket to appear in the public browse page due to caching optimization.');
+
       navigate(`/bracket/${bracket.id}`);
     } catch (err: any) {
       console.error('[CustomBracket] Error creating bracket:', err);

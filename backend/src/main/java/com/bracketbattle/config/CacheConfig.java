@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -23,7 +25,18 @@ import java.util.Map;
 
 @Configuration
 @EnableCaching
-public class CacheConfig {
+public class CacheConfig implements CachingConfigurer {
+
+    private final RedisCacheErrorHandler redisCacheErrorHandler;
+
+    public CacheConfig(RedisCacheErrorHandler redisCacheErrorHandler) {
+        this.redisCacheErrorHandler = redisCacheErrorHandler;
+    }
+
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return redisCacheErrorHandler;
+    }
 
     @Bean("redisObjectMapper")
     public ObjectMapper redisObjectMapper() {
@@ -52,7 +65,8 @@ public class CacheConfig {
                 .entryTtl(Duration.ofMinutes(10))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(serializer))
-                .disableCachingNullValues();
+                .disableCachingNullValues()
+                .enableTimeToIdle(); // Enable TTI to expire unused cache entries
 
         // Custom configurations for different caches
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
@@ -63,17 +77,20 @@ public class CacheConfig {
         // Popular brackets cache - 10 minutes (less frequently changing)
         cacheConfigurations.put("popularBrackets", defaultConfig.entryTtl(Duration.ofMinutes(10)));
         
-        // Individual bracket details - 15 minutes (rarely changes)
-        cacheConfigurations.put("bracket", defaultConfig.entryTtl(Duration.ofMinutes(15)));
-        
-        // Bracket items - 15 minutes (rarely changes after creation)
-        cacheConfigurations.put("bracketItems", defaultConfig.entryTtl(Duration.ofMinutes(15)));
-        
-        // Bracket results - 2 minutes (frequently updated)
-        cacheConfigurations.put("bracketResults", defaultConfig.entryTtl(Duration.ofMinutes(2)));
-        
-        // User results - 5 minutes
-        cacheConfigurations.put("userResults", defaultConfig.entryTtl(Duration.ofMinutes(5)));
+        // Individual bracket details - 30 minutes (rarely changes)
+        cacheConfigurations.put("bracket", defaultConfig.entryTtl(Duration.ofMinutes(30)));
+
+        // Bracket items - 30 minutes (rarely changes after creation)
+        cacheConfigurations.put("bracketItems", defaultConfig.entryTtl(Duration.ofMinutes(30)));
+
+        // Bracket results - 5 minutes (frequently updated)
+        cacheConfigurations.put("bracketResults", defaultConfig.entryTtl(Duration.ofMinutes(5)));
+
+        // Bracket rankings - 10 minutes (pre-calculated aggregations, computationally expensive)
+        cacheConfigurations.put("bracketRankings", defaultConfig.entryTtl(Duration.ofMinutes(10)));
+
+        // User results - 10 minutes
+        cacheConfigurations.put("userResults", defaultConfig.entryTtl(Duration.ofMinutes(10)));
 
         return RedisCacheManager.builder(redisConnectionFactory)
                 .cacheDefaults(defaultConfig)
