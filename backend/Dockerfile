@@ -27,7 +27,19 @@ USER appuser
 
 EXPOSE 8080
 
-# Set a minimal heap ergonomics; can be overridden at runtime
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+# Optimized for 2GB Render Standard tier - balanced performance
+ENV JAVA_OPTS="-XX:+UseContainerSupport \
+    -XX:MaxRAMPercentage=75.0 \
+    -XX:InitialRAMPercentage=50.0 \
+    -XX:MinRAMPercentage=50.0 \
+    -XX:MaxMetaspaceSize=256m \
+    -XX:MetaspaceSize=128m \
+    -XX:+UseG1GC \
+    -XX:MaxGCPauseMillis=200 \
+    -XX:G1ReservePercent=10 \
+    -XX:+UseStringDeduplication \
+    -XX:+OptimizeStringConcat \
+    -XX:+ParallelRefProcEnabled \
+    -Djava.security.egd=file:/dev/./urandom"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

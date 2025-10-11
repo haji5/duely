@@ -32,8 +32,8 @@ public class RedissonConfig {
         config.useSingleServer()
                 .setAddress(address)
                 .setPassword(redisPassword.isEmpty() ? null : redisPassword)
-                .setConnectionPoolSize(10)
-                .setConnectionMinimumIdleSize(5)
+                .setConnectionPoolSize(30)
+                .setConnectionMinimumIdleSize(10)
                 .setTimeout(3000)
                 .setRetryAttempts(3)
                 .setRetryInterval(1500)
@@ -43,4 +43,3 @@ public class RedissonConfig {
         return Redisson.create(config);
     }
 }
-

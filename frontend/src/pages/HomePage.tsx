@@ -96,7 +96,7 @@ const HomePage: React.FC = () => {
       }
     };
 
-    fetchData();
+    void fetchData();
   }, []); // Only run once on mount
 
   if (loading) {

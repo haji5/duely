@@ -8,6 +8,7 @@ import ResultsPage from './pages/ResultsPage';
 import CustomBracketPage from './pages/CustomBracketPage';
 import BrowsePage from './pages/BrowsePage';
 import Navbar from './components/Navbar';
+import ScrollToTop from './components/ScrollToTop';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <SessionBattleProvider>
+            <ScrollToTop />
             <div className="min-h-screen bg-themed-primary">
               <Navbar />
               <main>

@@ -158,9 +158,6 @@ const CustomBracketPage: React.FC = () => {
 
       console.log('[CustomBracket] All items added, navigating to bracket page');
 
-      // Show success notification with info about visibility delay
-      alert('✅ Bracket created successfully!\n\nℹ️ Your bracket is ready to play immediately and will appear in "My Brackets" right away.\n\nNote: It may take up to 5 minutes for your bracket to appear in the public browse page due to caching optimization.');
-
       navigate(`/bracket/${bracket.id}`);
     } catch (err: any) {
       console.error('[CustomBracket] Error creating bracket:', err);
@@ -341,12 +338,12 @@ const CustomBracketPage: React.FC = () => {
 
               {/* YouTube Auto-fill Notice - Only shown for video type */}
               {bracketType === 'video' && (
-                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <div className="flex items-start space-x-2">
-                    <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-sm text-blue-800">
+                    <p className="text-sm text-blue-800 dark:text-blue-300">
                       <strong>Tip:</strong> Paste a YouTube URL and the video title will automatically be fetched for you!
                     </p>
                   </div>
@@ -490,6 +487,14 @@ const CustomBracketPage: React.FC = () => {
                   'Create Bracket'
                 )}
               </button>
+            </div>
+
+            {/* Info Note about Caching Delay - New Addition */}
+            <div className="mt-4 p-3 text-sm text-center text-tertiary border border-tertiary rounded-lg">
+              <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m-3-3H9m3-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Note: Your bracket will appear in "My Brackets" immediately, but may take up to 5 minutes to show on the public browse page due to caching.
             </div>
           </form>
         </div>
