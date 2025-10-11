@@ -151,9 +151,9 @@ const CustomBracketPage: React.FC = () => {
       const bracket = await bracketApi.createBracket(bracketName, '', bracketType, bracketCategory);
       console.log('[CustomBracket] Bracket created successfully:', bracket.id);
 
-      // Step 2: Add all items to the bracket
-      for (const item of validItems) {
-        await bracketApi.addItemToBracket(bracket.id, item.title, item.mediaUrl, item.mediaType);
+      // Step 2: Add all items to the bracket using bulk endpoint (MUCH more efficient!)
+      if (validItems.length > 0) {
+        await bracketApi.bulkAddItemsToBracket(bracket.id, validItems);
       }
 
       console.log('[CustomBracket] All items added, navigating to bracket page');

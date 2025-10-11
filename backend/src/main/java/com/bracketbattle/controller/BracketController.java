@@ -1,6 +1,7 @@
 package com.bracketbattle.controller;
 
 import com.bracketbattle.dto.AddItemRequest;
+import com.bracketbattle.dto.BulkAddItemsRequest;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.dto.SaveResultRequest;
@@ -49,10 +50,12 @@ public class BracketController {
                         .build();
         bracketCreationLimiter = RateLimiter.of("bracket-creation", bracketConfig);
 
-        // Limit item creation: 50 per hour per user
+        // Limit item creation: 200 per hour per user
+        // NOTE: This is high because the frontend makes individual API calls per item.
+        // TODO: Implement bulk item creation endpoint to reduce API calls and lower this limit
         io.github.resilience4j.ratelimiter.RateLimiterConfig itemConfig =
                 io.github.resilience4j.ratelimiter.RateLimiterConfig.custom()
-                        .limitForPeriod(50)
+                        .limitForPeriod(200)
                         .limitRefreshPeriod(java.time.Duration.ofHours(1))
                         .timeoutDuration(java.time.Duration.ZERO)
                         .build();
@@ -135,7 +138,21 @@ public class BracketController {
     }
 
     @GetMapping("/brackets/by-creator/{creatorId}")
-    public ResponseEntity<List<Bracket>> getBracketsByCreator(@PathVariable String creatorId) {
+    public ResponseEntity<List<Bracket>> getBracketsByCreator(
+            @PathVariable String creatorId,
+            Authentication authentication) {
+        // Only allow users to view their own created brackets to prevent user enumeration
+        if (authentication != null && authentication.isAuthenticated()) {
+            String requestingUserId = (String) authentication.getPrincipal();
+            if (!requestingUserId.equals(creatorId)) {
+                // Return 403 Forbidden if trying to access another user's brackets
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+        } else {
+            // Unauthenticated users cannot access creator-specific brackets
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         List<Bracket> brackets = bracketService.getBracketsByCreator(creatorId);
         return ResponseEntity.ok(brackets);
     }
@@ -200,19 +217,65 @@ public class BracketController {
     @PostMapping("/brackets/{id}/items")
     public ResponseEntity<?> addItemToBracket(
             @PathVariable Long id,
-            @Valid @RequestBody AddItemRequest payload) {
+            @Valid @RequestBody AddItemRequest payload,
+            Authentication authentication) {
 
-        // Throttle item creation: 50 requests per hour per user
+        // Throttle individual item creation: 50 requests per hour per user
+        // For adding many items at once, use the bulk endpoint instead
         if (!itemCreationLimiter.acquirePermission()) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body(Map.of(
                         "error", "Too Many Requests",
-                        "message", "Item addition limit exceeded. Maximum 50 items per hour allowed.",
+                        "message", "Item addition limit exceeded. Maximum 50 items per hour allowed. Use bulk endpoint for adding many items at once.",
                         "retryAfter", "Please try again later"
                     ));
         }
 
-        Item item = bracketService.addItemToBracket(id, payload.getTitle(), payload.getMediaUrl(), payload.getMediaType());
+        String userId = (String) authentication.getPrincipal();
+        Item item = bracketService.addItemToBracket(id, userId, payload.getTitle(), payload.getMediaUrl(), payload.getMediaType());
         return ResponseEntity.ok(item);
+    }
+
+    /**
+     * Bulk add multiple items to a bracket at once.
+     * This is much more efficient than calling the single-item endpoint multiple times.
+     * Uses same rate limiter as bracket creation (10 per hour) since creating a bracket with items
+     * is typically done as a single operation.
+     */
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/brackets/{id}/items/bulk")
+    public ResponseEntity<?> bulkAddItemsToBracket(
+            @PathVariable Long id,
+            @Valid @RequestBody BulkAddItemsRequest payload,
+            Authentication authentication) {
+
+        // Throttle bulk operations using bracket creation limiter (10 per hour)
+        // This prevents abuse while allowing legitimate bracket creation
+        if (!bracketCreationLimiter.acquirePermission()) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(Map.of(
+                        "error", "Too Many Requests",
+                        "message", "Bulk operation limit exceeded. Maximum 10 bulk operations per hour allowed.",
+                        "retryAfter", "Please try again later"
+                    ));
+        }
+
+        String userId = (String) authentication.getPrincipal();
+
+        // Convert DTOs to service layer data objects
+        List<BracketService.ItemData> itemsData = payload.getItems().stream()
+                .map(item -> new BracketService.ItemData(
+                    item.getTitle(),
+                    item.getMediaUrl(),
+                    item.getMediaType()
+                ))
+                .collect(java.util.stream.Collectors.toList());
+
+        List<Item> items = bracketService.bulkAddItemsToBracket(id, userId, itemsData);
+        return ResponseEntity.ok(Map.of(
+            "items", items,
+            "count", items.size(),
+            "message", "Successfully added " + items.size() + " items"
+        ));
     }
 }

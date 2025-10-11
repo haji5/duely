@@ -47,7 +47,17 @@ const BrowsePage: React.FC = () => {
 
         // If viewing "My Brackets", fetch directly without cache for immediate visibility
         if (creatorFilter) {
-          allBrackets = await bracketApi.getBracketsByCreator(creatorFilter);
+          try {
+            allBrackets = await bracketApi.getBracketsByCreator(creatorFilter);
+          } catch (error: any) {
+            // Handle authentication errors gracefully
+            if (error?.response?.status === 403 || error?.response?.status === 401) {
+              console.error('Cannot fetch brackets by creator - authentication required or access denied');
+              allBrackets = [];
+            } else {
+              throw error;
+            }
+          }
         } else if (sortBy === 'popular') {
           // OPTIMIZATION: Use dedicated popular brackets endpoint
           // This is cached on the backend and pre-sorted by result count
@@ -60,6 +70,8 @@ const BrowsePage: React.FC = () => {
         setFilteredBrackets(allBrackets);
       } catch (error) {
         console.error('Error fetching brackets:', error);
+        setBrackets([]);
+        setFilteredBrackets([]);
       } finally {
         setLoading(false);
       }

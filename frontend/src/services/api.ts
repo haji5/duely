@@ -215,6 +215,26 @@ export const bracketApi = {
     return response.data;
   },
 
+  // Bulk add items to bracket (MUCH more efficient than individual calls)
+  bulkAddItemsToBracket: async (
+    bracketId: number,
+    items: Array<{
+      title: string;
+      mediaUrl: string;
+      mediaType: string;
+    }>
+  ): Promise<{ items: Item[]; count: number; message: string }> => {
+    const response = await api.post(`/brackets/${bracketId}/items/bulk`, {
+      items,
+    });
+
+    // Invalidate bracket items cache
+    apiCache.invalidate(createCacheKey(`/brackets/${bracketId}/items`));
+    apiCache.invalidate(createCacheKey(`/brackets/${bracketId}`));
+
+    return response.data;
+  },
+
   // Create bracket with items (optional helper if supported)
   createBracketWithItems: async (payload: {
     name: string;

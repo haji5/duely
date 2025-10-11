@@ -91,21 +91,43 @@ public class BracketService {
             return existingResult.get();
         }
 
-        // Basic validation: ensure bracket exists and ranking items belong to it
+        // Basic validation: ensure bracket exists
         Bracket bracket = bracketRepository.findById(bracketId)
-                .orElseThrow(() -> new IllegalArgumentException("Bracket not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Bracket not found with ID: " + bracketId));
+
+        // Validate ranking is not empty
         if (ranking == null || ranking.isEmpty()) {
             throw new IllegalArgumentException("Ranking must not be empty");
         }
+
+        // Validate ranking size
         if (ranking.size() > MAX_RANKING_SIZE) {
             throw new IllegalArgumentException("Ranking exceeds maximum size of " + MAX_RANKING_SIZE);
         }
+
+        // Get all valid items for this bracket
         List<Item> items = itemRepository.findByBracketId(bracketId);
         Set<Long> validItemIds = new HashSet<>();
-        for (Item i : items) validItemIds.add(i.getId());
+        for (Item i : items) {
+            validItemIds.add(i.getId());
+        }
+
+        // CRITICAL VALIDATION 1: Check for duplicate item IDs in ranking
+        Set<Long> uniqueRankingIds = new HashSet<>();
+        for (Long itemId : ranking) {
+            if (!uniqueRankingIds.add(itemId)) {
+                throw new IllegalArgumentException(
+                    "Ranking contains duplicate item ID: " + itemId + ". Each item must appear only once in the ranking."
+                );
+            }
+        }
+
+        // CRITICAL VALIDATION 2: Ensure all items in ranking belong to this bracket
         for (Long itemId : ranking) {
             if (!validItemIds.contains(itemId)) {
-                throw new IllegalArgumentException("Ranking contains invalid item for this bracket");
+                throw new IllegalArgumentException(
+                    "Ranking contains invalid item ID: " + itemId + ". This item does not belong to bracket ID: " + bracketId
+                );
             }
         }
 
@@ -280,10 +302,15 @@ public class BracketService {
             @CacheEvict(value = "popularBrackets", allEntries = true)
         })
         @Transactional
-        public Item addItemToBracket(Long bracketId, String title, String mediaUrl, String mediaType) {
-            // Ensure bracket exists
-            bracketRepository.findById(bracketId)
+        public Item addItemToBracket(Long bracketId, String userId, String title, String mediaUrl, String mediaType) {
+            // Ensure bracket exists and verify ownership
+            Bracket bracket = bracketRepository.findById(bracketId)
                     .orElseThrow(() -> new IllegalArgumentException("Bracket not found"));
+
+            // Verify that the user owns this bracket
+            if (bracket.getCreatedBy() == null || !bracket.getCreatedBy().equals(userId)) {
+                throw new IllegalArgumentException("You do not have permission to add items to this bracket");
+            }
 
             // Check if bracket has reached maximum items
             List<Item> existingItems = itemRepository.findByBracketId(bracketId);
@@ -300,17 +327,166 @@ public class BracketService {
             if (cleanUrl == null || cleanUrl.length() > 2000 || !Sanitizer.isSafeHttpUrl(cleanUrl)) {
                 throw new IllegalArgumentException("Invalid media URL");
             }
+
+            // Additional SSRF protection - block private IP ranges
+            if (isPotentiallyDangerousUrl(cleanUrl)) {
+                throw new IllegalArgumentException("URL points to restricted resource");
+            }
+
             if (!mediaType.matches("^(song|audio|video|image)$")) {
                 throw new IllegalArgumentException("Invalid media type");
             }
-            // For videos, restrict to YouTube to avoid arbitrary iframes
-            if (("video").equalsIgnoreCase(mediaType) && !Sanitizer.isYouTubeUrl(cleanUrl)) {
-                throw new IllegalArgumentException("Only YouTube URLs are allowed for videos");
-            }
+
             Item item = new Item(bracketId, cleanTitle, cleanUrl, mediaType);
             return itemRepository.save(item);
         }
 
+        /**
+         * Bulk add multiple items to a bracket in a single transaction.
+         * This is much more efficient than calling addItemToBracket() multiple times.
+         *
+         * @param bracketId The bracket to add items to
+         * @param userId The user adding the items (must be bracket owner)
+         * @param itemsData List of items to add (title, mediaUrl, mediaType)
+         * @return List of created items
+         * @throws IllegalArgumentException if validation fails
+         */
+        @Caching(evict = {
+                @CacheEvict(value = "bracketItems", key = "#bracketId"),
+                @CacheEvict(value = "bracket", key = "#bracketId"),
+                @CacheEvict(value = "brackets", allEntries = true),
+                @CacheEvict(value = "popularBrackets", allEntries = true)
+            })
+        @Transactional
+        public List<Item> bulkAddItemsToBracket(Long bracketId, String userId, List<ItemData> itemsData) {
+            // Ensure bracket exists and verify ownership
+            Bracket bracket = bracketRepository.findById(bracketId)
+                    .orElseThrow(() -> new IllegalArgumentException("Bracket not found"));
+
+            // Verify that the user owns this bracket
+            if (bracket.getCreatedBy() == null || !bracket.getCreatedBy().equals(userId)) {
+                throw new IllegalArgumentException("You do not have permission to add items to this bracket");
+            }
+
+            // Check if adding these items would exceed maximum
+            List<Item> existingItems = itemRepository.findByBracketId(bracketId);
+            int totalItemsAfterAdd = existingItems.size() + itemsData.size();
+            if (totalItemsAfterAdd > MAX_ITEMS_PER_BRACKET) {
+                throw new IllegalArgumentException(
+                    "Cannot add " + itemsData.size() + " items. Bracket currently has " +
+                    existingItems.size() + " items. Maximum is " + MAX_ITEMS_PER_BRACKET + "."
+                );
+            }
+
+            // Validate and create all items
+            List<Item> newItems = new java.util.ArrayList<>();
+            for (int i = 0; i < itemsData.size(); i++) {
+                ItemData data = itemsData.get(i);
+
+                String cleanTitle = Sanitizer.stripToPlain(data.title, 150);
+                String cleanUrl = data.mediaUrl != null ? data.mediaUrl.trim() : null;
+
+                if (cleanTitle == null || cleanTitle.isBlank()) {
+                    throw new IllegalArgumentException("Title is required for item at index " + i);
+                }
+                if (cleanUrl == null || cleanUrl.length() > 2000 || !Sanitizer.isSafeHttpUrl(cleanUrl)) {
+                    throw new IllegalArgumentException("Invalid media URL for item at index " + i + ": " + data.title);
+                }
+
+                // Additional SSRF protection - block private IP ranges
+                if (isPotentiallyDangerousUrl(cleanUrl)) {
+                    throw new IllegalArgumentException("URL points to restricted resource for item at index " + i + ": " + data.title);
+                }
+
+                if (!data.mediaType.matches("^(song|audio|video|image)$")) {
+                    throw new IllegalArgumentException("Invalid media type for item at index " + i + ": " + data.title);
+                }
+
+                Item item = new Item(bracketId, cleanTitle, cleanUrl, data.mediaType);
+                newItems.add(item);
+            }
+
+            // Save all items in a single batch operation
+            return itemRepository.saveAll(newItems);
+        }
+
+        /**
+         * Simple data class to hold item information for bulk creation
+         */
+        public static class ItemData {
+            public final String title;
+            public final String mediaUrl;
+            public final String mediaType;
+
+            public ItemData(String title, String mediaUrl, String mediaType) {
+                this.title = title;
+                this.mediaUrl = mediaUrl;
+                this.mediaType = mediaType;
+            }
+        }
+
+        /**
+         * Check if URL might be targeting internal/private networks (SSRF protection)
+         */
+        private boolean isPotentiallyDangerousUrl(String url) {
+            try {
+                java.net.URI uri = new java.net.URI(url);
+                String host = uri.getHost();
+
+                if (host == null) {
+                    return true;
+                }
+
+                // Block localhost and common local hostnames
+                if (host.equalsIgnoreCase("localhost") ||
+                    host.equals("127.0.0.1") ||
+                    host.equals("::1") ||
+                    host.equalsIgnoreCase("0.0.0.0")) {
+                    return true;
+                }
+
+                // Try to resolve the hostname to IP address
+                java.net.InetAddress addr = java.net.InetAddress.getByName(host);
+
+                // Block private IP ranges
+                if (addr.isLoopbackAddress() ||
+                    addr.isLinkLocalAddress() ||
+                    addr.isSiteLocalAddress() ||
+                    addr.isAnyLocalAddress()) {
+                    return true;
+                }
+
+                // Block common internal network ranges
+                String ipAddress = addr.getHostAddress();
+                if (ipAddress.startsWith("10.") ||
+                    ipAddress.startsWith("192.168.") ||
+                    ipAddress.startsWith("172.16.") ||
+                    ipAddress.startsWith("172.17.") ||
+                    ipAddress.startsWith("172.18.") ||
+                    ipAddress.startsWith("172.19.") ||
+                    ipAddress.startsWith("172.20.") ||
+                    ipAddress.startsWith("172.21.") ||
+                    ipAddress.startsWith("172.22.") ||
+                    ipAddress.startsWith("172.23.") ||
+                    ipAddress.startsWith("172.24.") ||
+                    ipAddress.startsWith("172.25.") ||
+                    ipAddress.startsWith("172.26.") ||
+                    ipAddress.startsWith("172.27.") ||
+                    ipAddress.startsWith("172.28.") ||
+                    ipAddress.startsWith("172.29.") ||
+                    ipAddress.startsWith("172.30.") ||
+                    ipAddress.startsWith("172.31.") ||
+                    ipAddress.startsWith("169.254.")) {
+                    return true;
+                }
+
+                return false;
+            } catch (Exception e) {
+                // If we can't validate it properly, block it
+                logger.warn("Failed to validate URL for SSRF protection: {}", url, e);
+                return true;
+            }
+        }
     // Inner class to help with ranking calculations
     private static class ItemStats {
         private final Item item;

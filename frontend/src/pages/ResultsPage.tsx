@@ -68,12 +68,23 @@ const ResultsPage: React.FC = () => {
         }
 
         if (user) {
-          // Fetch user's battles from backend
-          const resultsData = await bracketApi.getUserBracketResults(parseInt(id), user.uid);
-          setResults(resultsData);
+          // Fetch user's battles from backend with proper error handling
+          try {
+            const resultsData = await bracketApi.getUserBracketResults(parseInt(id), user.uid);
+            setResults(resultsData);
 
-          if (resultsData.length > 0) {
-            setSelectedResult(resultsData[0]);
+            if (resultsData.length > 0) {
+              setSelectedResult(resultsData[0]);
+            }
+          } catch (error: any) {
+            // Handle 403 Forbidden or other auth errors gracefully
+            if (error?.response?.status === 403 || error?.response?.status === 401) {
+              console.log('Authentication error fetching user results, user may need to re-login:', error);
+              setResults([]);
+            } else {
+              console.error('Error fetching user results:', error);
+              setResults([]);
+            }
           }
         } else {
           // Get session battles from context
@@ -94,16 +105,22 @@ const ResultsPage: React.FC = () => {
     fetchData();
   }, [id, user, getSessionBattlesForBracket]);
 
-  const getRankedItems = (result: Result | SessionBattle): Item[] => {
+  // IMPORTANT: All hooks must be called before any conditional returns
+  // This is a React rule - hooks must be called in the same order every render
+
+  // Optimize item lookups with a Map for O(1) access instead of O(n)
+  const itemsMap = React.useMemo(() =>
+    new Map(items.map(item => [item.id, item])),
+  [items]);
+
+  const getRankedItems = React.useCallback((result: Result | SessionBattle): Item[] => {
     if (!result.ranking) return [];
+    return result.ranking
+      .map((itemId: number) => itemsMap.get(itemId))
+      .filter(Boolean) as Item[];
+  }, [itemsMap]);
 
-    return result.ranking.map((itemId: number) =>
-      items.find(item => item.id === itemId)
-    ).filter(Boolean) as Item[];
-  };
-
-  const getGlobalAggregatedRanking = (): ItemWithStats[] => {
-    // If we have server-calculated rankings, use them (preferred!)
+  const globalRanking = React.useMemo(() => {
     if (serverRankings.length > 0) {
       return serverRankings.map(ranking => ({
         ...ranking.item,
@@ -113,10 +130,8 @@ const ResultsPage: React.FC = () => {
       }));
     }
 
-    // Fallback to client-side calculation if server rankings not available
     if (allResults.length === 0) return [];
 
-    // Calculate average position and win statistics for each item across ALL users
     const itemScores: Record<number, { item: Item; totalScore: number; count: number; wins: number; totalMatches: number }> = {};
 
     allResults.forEach(result => {
@@ -129,11 +144,10 @@ const ResultsPage: React.FC = () => {
           itemScores[itemId].totalScore += (result.ranking.length - index);
           itemScores[itemId].count += 1;
 
-          // Calculate wins against other items based on ranking position
           result.ranking.forEach((otherItemId: number, otherIndex: number) => {
             if (itemId !== otherItemId) {
               itemScores[itemId].totalMatches += 1;
-              if (index < otherIndex) { // Higher ranked = won the match
+              if (index < otherIndex) {
                 itemScores[itemId].wins += 1;
               }
             }
@@ -142,7 +156,6 @@ const ResultsPage: React.FC = () => {
       });
     });
 
-    // Sort by average score and add win percentage
     return Object.values(itemScores)
       .sort((a, b) => (b.totalScore / b.count) - (a.totalScore / a.count))
       .map(score => ({
@@ -151,13 +164,12 @@ const ResultsPage: React.FC = () => {
         totalMatches: score.totalMatches,
         winPercentage: score.totalMatches > 0 ? Math.round((score.wins / score.totalMatches) * 100) : 0
       }));
-  };
+  }, [serverRankings, allResults, items]);
 
-  const getPersonalAggregatedRanking = (): ItemWithStats[] => {
+  const personalRanking = React.useMemo(() => {
     const personalBattles = user ? results : sessionBattles;
     if (personalBattles.length === 0) return [];
 
-    // Calculate average position and win statistics for each item from personal battles only
     const itemScores: Record<number, { item: Item; totalScore: number; count: number; wins: number; totalMatches: number }> = {};
 
     personalBattles.forEach(result => {
@@ -170,11 +182,10 @@ const ResultsPage: React.FC = () => {
           itemScores[itemId].totalScore += (result.ranking.length - index);
           itemScores[itemId].count += 1;
 
-          // Calculate wins against other items based on ranking position
           result.ranking.forEach((otherItemId: number, otherIndex: number) => {
             if (itemId !== otherItemId) {
               itemScores[itemId].totalMatches += 1;
-              if (index < otherIndex) { // Higher ranked = won the match
+              if (index < otherIndex) {
                 itemScores[itemId].wins += 1;
               }
             }
@@ -183,7 +194,6 @@ const ResultsPage: React.FC = () => {
       });
     });
 
-    // Sort by average score and add win percentage
     return Object.values(itemScores)
       .sort((a, b) => (b.totalScore / b.count) - (a.totalScore / a.count))
       .map(score => ({
@@ -192,8 +202,42 @@ const ResultsPage: React.FC = () => {
         totalMatches: score.totalMatches,
         winPercentage: score.totalMatches > 0 ? Math.round((score.wins / score.totalMatches) * 100) : 0
       }));
-  };
+  }, [results, sessionBattles, items, user]);
 
+  const allBattles = user ? results : sessionBattles;
+
+  const getCurrentRanking = React.useCallback((): (ItemWithStats | Item)[] => {
+    if (selectedResult === 'personal') {
+      return personalRanking;
+    } else if (selectedResult && typeof selectedResult === 'object') {
+      return getRankedItems(selectedResult);
+    } else {
+      return globalRanking;
+    }
+  }, [selectedResult, personalRanking, globalRanking, getRankedItems]);
+
+  const currentRanking = getCurrentRanking();
+
+  const hasStats = React.useCallback((item: ItemWithStats | Item): item is ItemWithStats => {
+    return 'winPercentage' in item;
+  }, []);
+
+  const isSelectedBattle = React.useCallback((battle: Result | SessionBattle) => {
+    if (!selectedResult || selectedResult === 'personal') return false;
+    if ('id' in battle && 'id' in selectedResult) {
+      return battle.id === selectedResult.id;
+    }
+    if ('sessionId' in battle && 'sessionId' in selectedResult) {
+      return battle.sessionId === selectedResult.sessionId;
+    }
+    return false;
+  }, [selectedResult]);
+
+  const getBattleKey = React.useCallback((battle: Result | SessionBattle) => {
+    return 'id' in battle ? `result_${battle.id}` : `session_${battle.sessionId}`;
+  }, []);
+
+  // NOW we can do conditional returns AFTER all hooks have been called
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -212,52 +256,6 @@ const ResultsPage: React.FC = () => {
       </div>
     );
   }
-
-  const globalRanking = React.useMemo(
-    () => getGlobalAggregatedRanking(),
-    [serverRankings, allResults, items]
-  );
-
-  const personalRanking = React.useMemo(
-    () => getPersonalAggregatedRanking(),
-    [results, sessionBattles, items, user]
-  );
-
-  const allBattles = user ? results : sessionBattles;
-
-  // Fix the currentRanking calculation
-  const getCurrentRanking = (): (ItemWithStats | Item)[] => {
-    if (selectedResult === 'personal') {
-      return personalRanking;
-    } else if (selectedResult && typeof selectedResult === 'object') {
-      // For individual battles, return items without stats since we don't have win data for single battles
-      return getRankedItems(selectedResult);
-    } else {
-      return globalRanking;
-    }
-  };
-
-  const currentRanking = getCurrentRanking();
-
-  // Helper function to check if an item has stats
-  const hasStats = (item: ItemWithStats | Item): item is ItemWithStats => {
-    return 'winPercentage' in item;
-  };
-
-  const isSelectedBattle = (battle: Result | SessionBattle) => {
-    if (!selectedResult || selectedResult === 'personal') return false;
-    if ('id' in battle && 'id' in selectedResult) {
-      return battle.id === selectedResult.id;
-    }
-    if ('sessionId' in battle && 'sessionId' in selectedResult) {
-      return battle.sessionId === selectedResult.sessionId;
-    }
-    return false;
-  };
-
-  const getBattleKey = (battle: Result | SessionBattle) => {
-    return 'id' in battle ? `result_${battle.id}` : `session_${battle.sessionId}`;
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

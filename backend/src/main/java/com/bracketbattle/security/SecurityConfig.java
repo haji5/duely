@@ -69,12 +69,13 @@ public class SecurityConfig {
             .headers(headers -> {
                 headers.httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000));
                 headers.contentSecurityPolicy(csp -> csp
-                    .policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"));
+                    .policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://i.ytimg.com https://*.googleusercontent.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://*.googlevideo.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"));
                 headers.xssProtection(xss -> xss.headerValue(XXssProtectionHeaderWriter.HeaderValue.ENABLED_MODE_BLOCK));
                 headers.contentTypeOptions(Customizer.withDefaults());
                 headers.referrerPolicy(rp -> rp.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN));
                 headers.permissionsPolicy(pp -> pp.policy("geolocation=(), microphone=(), camera=(), fullscreen=(self)"));
                 headers.frameOptions(fo -> fo.deny());
+                headers.cacheControl(cc -> cc.disable()); // Let application control caching
             })
             .addFilterBefore(firebaseAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .httpBasic(Customizer.withDefaults());
