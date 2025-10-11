@@ -55,7 +55,9 @@ const BrowsePage: React.FC = () => {
               console.error('Cannot fetch brackets by creator - authentication required or access denied');
               allBrackets = [];
             } else {
-              throw error;
+              // Log other errors but continue with empty array
+              console.error('Error fetching brackets by creator:', error);
+              allBrackets = [];
             }
           }
         } else if (sortBy === 'popular') {
