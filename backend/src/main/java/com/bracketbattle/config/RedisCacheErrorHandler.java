@@ -7,7 +7,7 @@ import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.stereotype.Component;
 
 /**
- * Custom cache error handler to prevent application failures when Redis is unavailable.
+ * Custom cache error handler to prevent application failures when Valkey is unavailable.
  * This allows the application to continue functioning without cache, logging errors instead of throwing.
  */
 @Component
@@ -43,4 +43,3 @@ public class RedisCacheErrorHandler implements CacheErrorHandler {
         // Swallow the exception - application continues without cache
     }
 }
-

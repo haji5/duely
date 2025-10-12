@@ -6,6 +6,10 @@ import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.stereotype.Component;
 
+/**
+ * Health indicator for Valkey (Redis-compatible key-value store).
+ * Uses Redis client libraries as Valkey is fully API-compatible.
+ */
 @Component
 public class RedisHealthIndicator implements HealthIndicator {
 
@@ -21,21 +25,20 @@ public class RedisHealthIndicator implements HealthIndicator {
             String pong = connection.ping();
             if ("PONG".equalsIgnoreCase(pong)) {
                 return Health.up()
-                        .withDetail("redis", "Connection successful")
+                        .withDetail("valkey", "Connection successful")
                         .withDetail("response", pong)
                         .build();
             } else {
                 return Health.down()
-                        .withDetail("redis", "Unexpected response")
+                        .withDetail("valkey", "Unexpected response")
                         .withDetail("response", pong)
                         .build();
             }
         } catch (Exception e) {
             return Health.down()
-                    .withDetail("redis", "Connection failed")
+                    .withDetail("valkey", "Connection failed")
                     .withDetail("error", e.getMessage())
                     .build();
         }
     }
 }
-

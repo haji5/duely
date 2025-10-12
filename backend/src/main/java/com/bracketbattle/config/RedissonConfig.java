@@ -10,28 +10,29 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Configuration for Redisson distributed lock client.
  * Used to prevent cache stampede in high-traffic scenarios.
+ * Valkey is Redis-compatible, so Redisson works seamlessly.
  */
 @Configuration
 public class RedissonConfig {
 
     @Value("${spring.data.redis.host:localhost}")
-    private String redisHost;
+    private String valkeyHost;
 
     @Value("${spring.data.redis.port:6379}")
-    private int redisPort;
+    private int valkeyPort;
 
     @Value("${spring.data.redis.password:}")
-    private String redisPassword;
+    private String valkeyPassword;
 
     @Bean
     public RedissonClient redissonClient() {
         Config config = new Config();
 
-        String address = "redis://" + redisHost + ":" + redisPort;
+        String address = "redis://" + valkeyHost + ":" + valkeyPort;
 
         config.useSingleServer()
                 .setAddress(address)
-                .setPassword(redisPassword.isEmpty() ? null : redisPassword)
+                .setPassword(valkeyPassword.isEmpty() ? null : valkeyPassword)
                 .setConnectionPoolSize(30)
                 .setConnectionMinimumIdleSize(10)
                 .setTimeout(3000)

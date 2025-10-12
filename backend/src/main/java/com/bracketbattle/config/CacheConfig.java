@@ -23,6 +23,10 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Cache configuration using Valkey (Redis-compatible).
+ * Spring Data Redis works seamlessly with Valkey.
+ */
 @Configuration
 @EnableCaching
 public class CacheConfig implements CachingConfigurer {
@@ -56,7 +60,7 @@ public class CacheConfig implements CachingConfigurer {
 
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
-        // Create serializer with custom ObjectMapper specifically for Redis
+        // Create serializer with custom ObjectMapper specifically for Valkey/Redis
         ObjectMapper cacheMapper = redisObjectMapper();
         GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(cacheMapper);
 

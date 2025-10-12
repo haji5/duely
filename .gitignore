@@ -48,6 +48,8 @@ build/Release/
 .env.development.local
 .env.test.local
 .env.production.local
+# Allow example env files to be committed
+!.env.example
 
 # -----------------
 # Coverage
@@ -70,6 +72,7 @@ pids/
 # Java / Maven
 # -----------------
 *.class
+# Allow JAR files in lib directories if needed
 *.jar
 *.war
 *.ear
@@ -137,11 +140,19 @@ nbdist/
 ._*
 .Spotlight-V100
 .Trashes
+.AppleDouble
+.LSOverride
 
 # Windows
 Thumbs.db
+Thumbs.db:encryptable
 ehthumbs.db
+ehthumbs_vista.db
 desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
 
 # -----------------
 # Temporary / swap / backups
@@ -149,7 +160,6 @@ desktop.ini
 .tmp/
 tmp/
 temp/
-*~
 *.swp
 *.swo
 *.bak

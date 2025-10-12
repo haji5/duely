@@ -26,10 +26,10 @@ A full-stack web application for creating and participating in tournament-style 
 - **Battle history** - Track all your previous battles and results
 - **Popular brackets** - Discover trending content from the community
 - **Media optimization** - Lazy loading, error handling, and performance optimization
-- **Redis caching** - High-performance caching for brackets and results with cache management
+- **Valkey caching** - High-performance caching for brackets and results with cache management
 - **Rate limiting** - Protection against abuse with 5 submissions per minute per user
 - **Input sanitization** - XSS protection with HTML sanitization using Jsoup
-- **Health monitoring** - Actuator endpoints for database and Redis health checks
+- **Health monitoring** - Actuator endpoints for database and Valkey health checks
 
 ## 🏗️ Architecture
 
@@ -38,7 +38,7 @@ A full-stack web application for creating and participating in tournament-style 
 - **Authentication**: Firebase Auth with Google provider
 - **Backend**: Java 21 + Spring Boot 3.3.3
 - **Database**: PostgreSQL 15 with Liquibase migrations
-- **Cache**: Redis 8 with Lettuce client
+- **Cache**: Valkey 8 with Lettuce client (Redis-compatible)
 - **API**: RESTful JSON endpoints with CORS support
 - **Security**: Spring Security with Firebase token validation
 - **Containerization**: Docker + Docker Compose
@@ -60,7 +60,7 @@ A full-stack web application for creating and participating in tournament-style 
 - Spring Boot 3.3.3
 - Spring Data JPA with Hibernate
 - Spring Security for authentication/authorization
-- Spring Data Redis for caching
+- Spring Data Redis for caching (Valkey-compatible)
 - PostgreSQL driver
 - Liquibase for database migrations
 - Firebase Admin SDK 9.2 for token verification
@@ -71,7 +71,7 @@ A full-stack web application for creating and participating in tournament-style 
 
 ### Infrastructure
 - PostgreSQL 15 (Alpine)
-- Redis 8 (Alpine) with persistence
+- Valkey 8 (Alpine) with persistence
 - Docker & Docker Compose
 - Nginx (for frontend in production)
 
@@ -85,7 +85,7 @@ A full-stack web application for creating and participating in tournament-style 
 - **Node.js** 22 or higher
 - **Java** 21 or higher
 - **PostgreSQL** 15 or higher (optional if using Docker)
-- **Redis** 8 or higher (optional if using Docker)
+- **Valkey** 8 or higher (optional if using Docker)
 - **Docker** (optional, for containerized setup)
 - **Firebase Project** (for authentication - see setup below)
 
@@ -151,15 +151,17 @@ cd backend
 # Create PostgreSQL database
 createdb bracket_battle
 
-# Ensure Redis is running
+# Ensure Valkey is running (or use Redis - Valkey is Redis-compatible)
+valkey-server
+# OR
 redis-server
 
 # Set environment variables (or use application.properties)
 set DB_URL=jdbc:postgresql://localhost:5432/bracket_battle
 set DB_USERNAME=postgres
 set DB_PASSWORD=your_password
-set REDIS_HOST=localhost
-set REDIS_PORT=6379
+set VALKEY_HOST=localhost
+set VALKEY_PORT=6379
 
 # Run the application (Windows)
 mvnw.cmd spring-boot:run
@@ -196,9 +198,9 @@ SERVER_PORT=8080
 # CORS Configuration
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 
-# Redis Configuration (optional, defaults provided)
-REDIS_HOST=redis
-REDIS_PORT=6379
+# Valkey Configuration (optional, defaults provided)
+VALKEY_HOST=valkey
+VALKEY_PORT=6379
 
 # Firebase Frontend Configuration
 VITE_FIREBASE_API_KEY=your_api_key
@@ -237,9 +239,9 @@ FIREBASE_CREDENTIALS_JSON=your_base64_encoded_service_account_json
 4. Paste the base64 string into `backend/.env` as `FIREBASE_CREDENTIALS_JSON`
 5. Alternatively, set `GOOGLE_APPLICATION_CREDENTIALS` to the file path
 
-### Redis Configuration
+### Valkey Configuration
 
-Redis is used for caching brackets, items, and results to improve performance. Configuration options in `application.properties`:
+Valkey is used for caching brackets, items, and results to improve performance. Valkey is a Redis fork and is 100% API-compatible with Redis. Configuration options in `application.properties`:
 
 - **Cache TTL**: 10 minutes (600,000ms)
 - **Connection Pool**: Max 8 active, 2 min idle
@@ -449,10 +451,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Verify database `bracket_battle` exists
 - Check Docker container logs: `docker-compose logs postgres`
 
-**Redis Connection Issues:**
-- Ensure Redis is running and accessible
-- Check Redis health: `docker-compose logs redis`
-- Verify Redis connection in actuator: http://localhost:8080/actuator/health
+**Valkey Connection Issues:**
+- Ensure Valkey is running and accessible
+- Check Valkey health: `docker-compose logs valkey`
+- Verify Valkey connection in actuator: http://localhost:8080/actuator/health
+- Note: Valkey is Redis-compatible, so you can also use Redis if preferred
 
 **Firebase Authentication Issues:**
 - Verify Firebase configuration in `.env` file
@@ -473,7 +476,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 **Cache Issues:**
 - Clear all caches via admin endpoint: `POST /admin/cache/clear`
 - Check cache statistics: `GET /admin/cache/stats`
-- Verify Redis is running and connected
+- Verify Valkey is running and connected
 
 ## 📞 Support
 
