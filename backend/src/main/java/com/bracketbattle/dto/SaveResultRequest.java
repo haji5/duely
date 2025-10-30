@@ -7,15 +7,20 @@ import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
+/**
+ * Request DTO for saving bracket voting results.
+ * Contains a ranked list of item IDs representing the user's preferences.
+ * Maximum of 500 items can be ranked to prevent memory exhaustion.
+ */
 public class SaveResultRequest {
 
-    @NotNull
-    @NotEmpty
-    @Size(max = 500, message = "Ranking cannot exceed 500 items")
-    private List<@NotNull @Positive Long> ranking;
+    @NotNull(message = "Ranking list must not be null")
+    @NotEmpty(message = "Ranking list cannot be empty")
+    @Size(min = 1, max = 500, message = "Ranking must contain between 1 and 500 items")
+    private List<@NotNull(message = "Item ID must not be null") @Positive(message = "Item ID must be positive") Long> ranking;
 
-    @NotNull
-    @Size(max = 255, message = "Submission token too long")
+    @NotNull(message = "Submission token must not be null")
+    @Size(min = 1, max = 255, message = "Submission token must be between 1 and 255 characters")
     private String submissionToken;
 
     public List<Long> getRanking() { return ranking; }
