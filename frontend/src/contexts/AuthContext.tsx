@@ -6,6 +6,7 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../config/firebase';
 import { resetApiAuthState } from '@/services/api';
+import { csrfService } from '@/services/csrf';
 
 interface UserProfile {
   uid: string;
@@ -57,6 +58,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setCurrentUser(userProfile);
         // Store user data in localStorage for persistence
         localStorage.setItem('user', JSON.stringify(userProfile));
+
+        // Fetch CSRF token after successful login
+        try {
+          await csrfService.getToken();
+          console.log('[Auth] CSRF token obtained after login');
+        } catch (error) {
+          console.error('[Auth] Failed to fetch CSRF token after login:', error);
+        }
       }
     } catch (error) {
       console.error('Error signing in with Google:', error);
@@ -66,6 +75,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async (): Promise<void> => {
     try {
+      // Invalidate CSRF token on the server before logging out
+      await csrfService.invalidateToken();
+
       await signOut(auth);
       setCurrentUser(null);
       localStorage.removeItem('user');
@@ -112,6 +124,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setCurrentUser(userProfile);
         localStorage.setItem('user', JSON.stringify(userProfile));
         prevUserRef.current = userProfile;
+
+        // Fetch CSRF token for authenticated user
+        csrfService.getToken().then(() => {
+          console.log('[Auth] CSRF token obtained for authenticated user');
+        }).catch(error => {
+          console.error('[Auth] Failed to fetch CSRF token:', error);
+        });
       } else {
         setCurrentUser(null);
         localStorage.removeItem('user');

@@ -1,5 +1,6 @@
 package com.bracketbattle.security;
 
+import com.bracketbattle.security.csrf.CsrfTokenFilter;
 import com.bracketbattle.security.firebase.FirebaseAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -27,24 +28,28 @@ public class SecurityConfig {
     private List<String> allowedOrigins;
 
     private final FirebaseAuthenticationFilter firebaseAuthenticationFilter;
+    private final CsrfTokenFilter csrfTokenFilter;
 
-    public SecurityConfig(FirebaseAuthenticationFilter firebaseAuthenticationFilter) {
+    public SecurityConfig(FirebaseAuthenticationFilter firebaseAuthenticationFilter,
+                         CsrfTokenFilter csrfTokenFilter) {
         this.firebaseAuthenticationFilter = firebaseAuthenticationFilter;
+        this.csrfTokenFilter = csrfTokenFilter;
     }
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .cors(Customizer.withDefaults())
-            // CSRF disabled for stateless JWT authentication (Firebase tokens provide CSRF protection)
-            .csrf(csrf -> csrf.disable())
+            // CSRF protection enabled with custom filter for stateless JWT authentication
+            // Using double-submit cookie pattern instead of default session-based CSRF
+            .csrf(csrf -> csrf.disable()) // Disable default CSRF, use custom filter instead
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/", "/actuator/**", "/brackets",
                         "/brackets/*", "/brackets/*/items",
                         "/brackets/*/results", "/brackets/*/rankings",
-                        "/brackets/popular").permitAll()
+                        "/brackets/popular", "/csrf-token").permitAll()
                 // User-specific endpoints require authentication
                 .requestMatchers("/users/*/results", "/brackets/*/users/*/results", "/brackets/by-creator/*").authenticated()
                 .anyRequest().authenticated()
@@ -61,6 +66,7 @@ public class SecurityConfig {
                 headers.cacheControl(cc -> cc.disable()); // Let application control caching
             })
             .addFilterBefore(firebaseAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(csrfTokenFilter, FirebaseAuthenticationFilter.class) // Add CSRF filter after authentication
             .httpBasic(Customizer.withDefaults());
 
         return http.build();
@@ -71,7 +77,8 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization","Cache-Control","Content-Type"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization","Cache-Control","Content-Type","X-CSRF-Token"));
+        configuration.setExposedHeaders(Arrays.asList("X-CSRF-Token")); // Allow frontend to read CSRF token header
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

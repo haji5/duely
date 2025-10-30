@@ -429,64 +429,238 @@ public class BracketService {
         /**
          * Check if URL might be targeting internal/private networks (SSRF protection)
          */
+        /**
+         * Enhanced SSRF protection that validates URLs against multiple security threats:
+         * - Private IP ranges (IPv4 and IPv6)
+         * - Localhost variants
+         * - Cloud metadata endpoints (AWS, Azure, GCP)
+         * - Link-local addresses
+         * - DNS resolution timeout to prevent DNS-based DoS
+         *
+         * @param url The URL to validate
+         * @return true if the URL is potentially dangerous, false if it appears safe
+         */
         private boolean isPotentiallyDangerousUrl(String url) {
             try {
                 java.net.URI uri = new java.net.URI(url);
                 String host = uri.getHost();
 
                 if (host == null) {
+                    logger.warn("SSRF Protection: Blocked URL with null host: {}", url);
                     return true;
                 }
 
                 // Block localhost and common local hostnames
                 if (host.equalsIgnoreCase("localhost") ||
+                    host.equalsIgnoreCase("local") ||
                     host.equals("127.0.0.1") ||
                     host.equals("::1") ||
-                    host.equalsIgnoreCase("0.0.0.0")) {
+                    host.equals("0:0:0:0:0:0:0:1") ||
+                    host.equalsIgnoreCase("0.0.0.0") ||
+                    host.equals("::") ||
+                    host.equals("0:0:0:0:0:0:0:0")) {
+                    logger.warn("SSRF Protection: Blocked localhost/loopback: {}", host);
                     return true;
                 }
 
-                // Try to resolve the hostname to IP address
-                java.net.InetAddress addr = java.net.InetAddress.getByName(host);
+                // Block cloud metadata endpoints (AWS, Azure, GCP, Oracle Cloud)
+                if (isCloudMetadataEndpoint(host)) {
+                    logger.warn("SSRF Protection: Blocked cloud metadata endpoint: {}", host);
+                    return true;
+                }
 
-                // Block private IP ranges
+                // Try to resolve the hostname to IP address with timeout
+                java.net.InetAddress addr = resolveHostWithTimeout(host, 2000); // 2 second timeout
+
+                // Block private IP ranges using Java's built-in methods
                 if (addr.isLoopbackAddress() ||
                     addr.isLinkLocalAddress() ||
                     addr.isSiteLocalAddress() ||
                     addr.isAnyLocalAddress()) {
+                    logger.warn("SSRF Protection: Blocked private/local IP: {}", addr.getHostAddress());
                     return true;
                 }
 
-                // Block common internal network ranges
-                String ipAddress = addr.getHostAddress();
-                if (ipAddress.startsWith("10.") ||
-                    ipAddress.startsWith("192.168.") ||
-                    ipAddress.startsWith("172.16.") ||
-                    ipAddress.startsWith("172.17.") ||
-                    ipAddress.startsWith("172.18.") ||
-                    ipAddress.startsWith("172.19.") ||
-                    ipAddress.startsWith("172.20.") ||
-                    ipAddress.startsWith("172.21.") ||
-                    ipAddress.startsWith("172.22.") ||
-                    ipAddress.startsWith("172.23.") ||
-                    ipAddress.startsWith("172.24.") ||
-                    ipAddress.startsWith("172.25.") ||
-                    ipAddress.startsWith("172.26.") ||
-                    ipAddress.startsWith("172.27.") ||
-                    ipAddress.startsWith("172.28.") ||
-                    ipAddress.startsWith("172.29.") ||
-                    ipAddress.startsWith("172.30.") ||
-                    ipAddress.startsWith("172.31.") ||
-                    ipAddress.startsWith("169.254.")) {
+                // Additional checks for IPv4 and IPv6 private ranges
+                if (isPrivateOrInternalAddress(addr)) {
+                    logger.warn("SSRF Protection: Blocked private/internal address: {}", addr.getHostAddress());
                     return true;
                 }
 
                 return false;
+            } catch (java.net.UnknownHostException e) {
+                // Could be a typo or DNS timeout - block it
+                logger.warn("SSRF Protection: Failed to resolve host (possible DNS issue): {}", url);
+                return true;
+            } catch (java.util.concurrent.TimeoutException e) {
+                // DNS resolution timeout - potential DNS-based DoS
+                logger.warn("SSRF Protection: DNS resolution timeout for: {}", url);
+                return true;
             } catch (Exception e) {
                 // If we can't validate it properly, block it
-                logger.warn("Failed to validate URL for SSRF protection: {}", url, e);
+                logger.warn("SSRF Protection: Failed to validate URL: {}", url, e);
                 return true;
             }
+        }
+
+        /**
+         * Check if the host is a cloud metadata endpoint.
+         * These endpoints expose sensitive instance metadata and credentials.
+         */
+        private boolean isCloudMetadataEndpoint(String host) {
+            return host.equals("169.254.169.254") ||        // AWS, Azure, GCP, Oracle Cloud
+                   host.equals("metadata.google.internal") || // GCP alternative
+                   host.equals("169.254.170.2") ||           // AWS ECS task metadata
+                   host.startsWith("fd00:ec2::") ||          // AWS IPv6 metadata
+                   host.equals("100.100.100.200");           // Alibaba Cloud metadata
+        }
+
+        /**
+         * Resolve hostname to IP address with a timeout to prevent DNS-based DoS attacks.
+         */
+        private java.net.InetAddress resolveHostWithTimeout(String host, long timeoutMs)
+                throws java.net.UnknownHostException, java.util.concurrent.TimeoutException {
+            java.util.concurrent.FutureTask<java.net.InetAddress> task =
+                new java.util.concurrent.FutureTask<>(() -> java.net.InetAddress.getByName(host));
+
+            Thread thread = new Thread(task);
+            thread.setDaemon(true);
+            thread.start();
+
+            try {
+                return task.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (java.util.concurrent.TimeoutException e) {
+                thread.interrupt();
+                throw e;
+            } catch (java.util.concurrent.ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof java.net.UnknownHostException) {
+                    throw (java.net.UnknownHostException) cause;
+                }
+                throw new RuntimeException("DNS resolution failed", cause);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("DNS resolution interrupted", e);
+            }
+        }
+
+        /**
+         * Comprehensive check for private and internal IP addresses (IPv4 and IPv6).
+         * Covers ranges not caught by Java's built-in methods.
+         */
+        private boolean isPrivateOrInternalAddress(java.net.InetAddress addr) {
+            byte[] bytes = addr.getAddress();
+
+            if (bytes.length == 4) {
+                // IPv4 checks
+                return isPrivateIPv4(bytes);
+            } else if (bytes.length == 16) {
+                // IPv6 checks
+                return isPrivateIPv6(bytes);
+            }
+
+            return false;
+        }
+
+        /**
+         * Check for private IPv4 address ranges:
+         * - 10.0.0.0/8 (10.0.0.0 - 10.255.255.255)
+         * - 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+         * - 192.168.0.0/16 (192.168.0.0 - 192.168.255.255)
+         * - 169.254.0.0/16 (link-local, includes cloud metadata)
+         * - 127.0.0.0/8 (loopback)
+         * - 0.0.0.0/8 (current network)
+         */
+        private boolean isPrivateIPv4(byte[] bytes) {
+            int first = bytes[0] & 0xFF;
+            int second = bytes[1] & 0xFF;
+
+            // 10.0.0.0/8
+            if (first == 10) {
+                return true;
+            }
+
+            // 172.16.0.0/12 (172.16-31.x.x)
+            if (first == 172 && second >= 16 && second <= 31) {
+                return true;
+            }
+
+            // 192.168.0.0/16
+            if (first == 192 && second == 168) {
+                return true;
+            }
+
+            // 169.254.0.0/16 (link-local, includes cloud metadata endpoints)
+            if (first == 169 && second == 254) {
+                return true;
+            }
+
+            // 127.0.0.0/8 (loopback)
+            if (first == 127) {
+                return true;
+            }
+
+            // 0.0.0.0/8 (current network)
+            if (first == 0) {
+                return true;
+            }
+
+            return false;
+        }
+
+        /**
+         * Check for private IPv6 address ranges:
+         * - fc00::/7 (Unique Local Addresses - private)
+         * - fe80::/10 (Link-local addresses)
+         * - ::1/128 (loopback)
+         * - ::/128 (unspecified)
+         * - ff00::/8 (multicast)
+         */
+        private boolean isPrivateIPv6(byte[] bytes) {
+            int firstByte = bytes[0] & 0xFF;
+
+            // fc00::/7 - Unique Local Addresses (private)
+            // Checks for fc00:: through fdff::
+            if ((firstByte & 0xFE) == 0xFC) {
+                return true;
+            }
+
+            // fe80::/10 - Link-local addresses
+            // First byte is 0xFE, second byte's top 2 bits are 10
+            if (firstByte == 0xFE && (bytes[1] & 0xC0) == 0x80) {
+                return true;
+            }
+
+            // ::1 (loopback)
+            boolean isLoopback = true;
+            for (int i = 0; i < 15; i++) {
+                if (bytes[i] != 0) {
+                    isLoopback = false;
+                    break;
+                }
+            }
+            if (isLoopback && bytes[15] == 1) {
+                return true;
+            }
+
+            // :: (unspecified)
+            boolean isUnspecified = true;
+            for (byte b : bytes) {
+                if (b != 0) {
+                    isUnspecified = false;
+                    break;
+                }
+            }
+            if (isUnspecified) {
+                return true;
+            }
+
+            // ff00::/8 - Multicast
+            if (firstByte == 0xFF) {
+                return true;
+            }
+
+            return false;
         }
     // Inner class to help with ranking calculations
     private static class ItemStats {

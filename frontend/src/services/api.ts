@@ -2,6 +2,7 @@ import axios from 'axios';
 import { Bracket, Item, Result, ItemRanking } from '@/types';
 import { auth } from '@/config/firebase';
 import { apiCache, cachedApiCall, createCacheKey } from '@/utils/apiCache';
+import { csrfService } from './csrf';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
@@ -17,9 +18,45 @@ const api = axios.create({
 export function resetApiAuthState() {
   // Clear all cached API data on logout
   apiCache.clear();
+  // Clear CSRF token
+  csrfService.clearToken();
   // If we ever add default Authorization headers, clear them here as well
   if (api.defaults.headers && 'Authorization' in api.defaults.headers.common) {
     delete (api.defaults.headers.common as any)['Authorization'];
+  }
+}
+
+/**
+ * Smart token refresh strategy:
+ * - Firebase ID tokens expire after 1 hour
+ * - Only force refresh if token is close to expiration (within 5 minutes)
+ * - Let Firebase SDK handle automatic refresh for most requests
+ * - Reduces Firebase API calls and improves latency
+ */
+async function getIdTokenWithSmartRefresh(user: any): Promise<string> {
+  try {
+    // First, try to get the token without forcing refresh
+    // Firebase SDK caches tokens and handles refresh automatically
+    const tokenResult = await user.getIdTokenResult(false);
+
+    // Check if token is close to expiration (within 5 minutes)
+    const expirationTime = new Date(tokenResult.expirationTime).getTime();
+    const now = Date.now();
+    const timeUntilExpiry = expirationTime - now;
+    const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+    // Force refresh only if token expires soon
+    if (timeUntilExpiry < FIVE_MINUTES_MS) {
+      console.log('[API Token] Token expires soon, forcing refresh');
+      return await user.getIdToken(true);
+    }
+
+    // Token is still valid, use cached version
+    return tokenResult.token;
+  } catch (error) {
+    // Fallback: if getIdTokenResult fails, try standard getIdToken
+    console.warn('[API Token] Failed to check token expiration, using fallback', error);
+    return await user.getIdToken(false);
   }
 }
 
@@ -30,11 +67,22 @@ api.interceptors.request.use(async (config) => {
 
   if (user) {
     try {
-      // Force token refresh to ensure it's valid
-      const idToken = await user.getIdToken(true);
+      // Use smart token refresh strategy instead of always forcing refresh
+      const idToken = await getIdTokenWithSmartRefresh(user);
       console.log('[API Interceptor] Got ID token, length:', idToken?.length);
       config.headers = config.headers || {};
       (config.headers as any)['Authorization'] = `Bearer ${idToken}`;
+
+      // Add CSRF token for state-changing requests
+      if (config.method && ['post', 'put', 'delete', 'patch'].includes(config.method.toLowerCase())) {
+        const csrfToken = await csrfService.getToken();
+        if (csrfToken) {
+          (config.headers as any)['X-CSRF-Token'] = csrfToken;
+          console.log('[API Interceptor] Added CSRF token to request');
+        } else {
+          console.warn('[API Interceptor] No CSRF token available for state-changing request');
+        }
+      }
     } catch (error) {
       console.error('[API Interceptor] Failed to get Firebase ID token:', error);
       // If we can't get the token, proceed without it
