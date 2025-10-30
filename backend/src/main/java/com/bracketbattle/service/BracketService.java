@@ -265,8 +265,8 @@ public class BracketService {
         if (cleanName == null || cleanName.isBlank()) {
             throw new IllegalArgumentException("Name is required");
         }
-        if (!type.matches("^(song|audio|video|image)$")) {
-            throw new IllegalArgumentException("Invalid type");
+        if (!type.matches("^(song|video|image)$")) {
+            throw new IllegalArgumentException("Invalid type. Must be: song, video, or image");
         }
         Bracket bracket = new Bracket(cleanName, cleanDescription, type, createdBy);
         return bracketRepository.save(bracket);
@@ -274,7 +274,8 @@ public class BracketService {
 
     @Caching(evict = {
         @CacheEvict(value = "brackets", allEntries = true),
-        @CacheEvict(value = "popularBrackets", allEntries = true)
+        @CacheEvict(value = "popularBrackets", allEntries = true),
+        @CacheEvict(value = "userBrackets", key = "'creator:' + #createdBy")
     })
     @Transactional
     public Bracket createBracket(String name, String description, String type, String category, String createdBy) {
@@ -284,8 +285,8 @@ public class BracketService {
         if (cleanName == null || cleanName.isBlank()) {
             throw new IllegalArgumentException("Name is required");
         }
-        if (!type.matches("^(song|audio|video|image)$")) {
-            throw new IllegalArgumentException("Invalid type");
+        if (!type.matches("^(song|video|image)$")) {
+            throw new IllegalArgumentException("Invalid type. Must be: song, video, or image");
         }
         if (cleanCategory == null || cleanCategory.isBlank()) {
             cleanCategory = "General";
@@ -333,8 +334,8 @@ public class BracketService {
                 throw new IllegalArgumentException("URL points to restricted resource");
             }
 
-            if (!mediaType.matches("^(song|audio|video|image)$")) {
-                throw new IllegalArgumentException("Invalid media type");
+            if (!mediaType.matches("^(song|video|image)$")) {
+                throw new IllegalArgumentException("Invalid media type. Must be: song, video, or image");
             }
 
             Item item = new Item(bracketId, cleanTitle, cleanUrl, mediaType);
@@ -398,8 +399,8 @@ public class BracketService {
                     throw new IllegalArgumentException("URL points to restricted resource for item at index " + i + ": " + data.title);
                 }
 
-                if (!data.mediaType.matches("^(song|audio|video|image)$")) {
-                    throw new IllegalArgumentException("Invalid media type for item at index " + i + ": " + data.title);
+                if (!data.mediaType.matches("^(song|video|image)$")) {
+                    throw new IllegalArgumentException("Invalid media type for item at index " + i + ": " + data.title + ". Must be: song, video, or image");
                 }
 
                 Item item = new Item(bracketId, cleanTitle, cleanUrl, data.mediaType);

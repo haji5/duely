@@ -7,6 +7,7 @@ import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -25,11 +26,13 @@ public class ReadRateLimiterInterceptor implements HandlerInterceptor {
     private final RateLimiterRegistry rateLimiterRegistry;
 
     @Autowired
-    public ReadRateLimiterInterceptor() {
-        // Configure rate limiter: 30 requests per minute for read operations
+    public ReadRateLimiterInterceptor(
+            @Value("${ratelimiter.read.limit-for-period:100}") int limitForPeriod,
+            @Value("${ratelimiter.read.limit-refresh-period:60}") int refreshPeriodSeconds) {
+        // Configure rate limiter with values from application.properties
         RateLimiterConfig config = RateLimiterConfig.custom()
-                .limitForPeriod(30)
-                .limitRefreshPeriod(Duration.ofMinutes(1))
+                .limitForPeriod(limitForPeriod)
+                .limitRefreshPeriod(Duration.ofSeconds(refreshPeriodSeconds))
                 .timeoutDuration(Duration.ZERO)
                 .build();
         
@@ -101,10 +104,7 @@ public class ReadRateLimiterInterceptor implements HandlerInterceptor {
         if (ip == null || ip.isEmpty() || ip.length() > 45) {
             return false;
         }
-        // IPv4 pattern
-        String ipv4Pattern = "^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$";
-        // IPv6 pattern (simplified)
-        String ipv6Pattern = "^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$";
-        return ip.matches(ipv4Pattern) || ip.matches(ipv6Pattern);
+        // Basic validation: only allow alphanumeric, dots, colons (for IPv6)
+        return ip.matches("^[0-9a-fA-F.:]+$");
     }
 }

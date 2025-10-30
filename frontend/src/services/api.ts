@@ -13,22 +13,8 @@ const api = axios.create({
   withCredentials: true,
 });
 
-let csrfToken: string | null = null;
-
-async function ensureCsrfToken() {
-  try {
-    if (!csrfToken) {
-      const res = await api.get('/csrf-token');
-      csrfToken = res.data?.token || null;
-    }
-  } catch {
-    // ignore; backend may not require CSRF on GET
-  }
-}
-
 // Provide a way to clear any cached state when logging out
 export function resetApiAuthState() {
-  csrfToken = null;
   // Clear all cached API data on logout
   apiCache.clear();
   // If we ever add default Authorization headers, clear them here as well
@@ -58,18 +44,6 @@ api.interceptors.request.use(async (config) => {
     console.warn('[API Interceptor] No Firebase user available for request to:', config.url);
   }
 
-  // Ensure CSRF header for state-changing methods
-  const method = (config.method || 'get').toLowerCase();
-  if (['post', 'put', 'patch', 'delete'].includes(method)) {
-    await ensureCsrfToken();
-    if (csrfToken) {
-      config.headers = config.headers || {};
-      (config.headers as any)['X-XSRF-TOKEN'] = csrfToken;
-      console.log('[API Interceptor] Added CSRF token');
-    } else {
-      console.warn('[API Interceptor] No CSRF token available for', method, 'request');
-    }
-  }
   return config;
 });
 
@@ -104,7 +78,7 @@ export const bracketApi = {
   // Save bracket result (userId derived on backend)
   saveBracketResult: async (id: number, ranking: number[], submissionToken?: string): Promise<Result> => {
     // Generate a unique submission token if not provided (to prevent duplicate submissions)
-    const token = submissionToken || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const token = submissionToken || `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
     const response = await api.post(`/brackets/${id}/results`, {
       ranking,
@@ -118,8 +92,9 @@ export const bracketApi = {
     // Invalidate user-specific caches if user is logged in
     const user = auth.currentUser;
     if (user) {
-      apiCache.invalidate(createCacheKey(`/brackets/${id}/users/${user.uid}/results`));
-      apiCache.invalidate(createCacheKey(`/users/${user.uid}/results`));
+      // Use the new cache key format (my-results instead of user ID in key)
+      apiCache.invalidate(createCacheKey(`/brackets/${id}/my-results`));
+      apiCache.invalidate(createCacheKey('/my-results'));
     }
 
     // Only invalidate popular brackets if this might affect the list
@@ -139,8 +114,18 @@ export const bracketApi = {
   },
 
   // Get user-specific results for a bracket (cached for 5 minutes)
+  // SECURITY: Only allow fetching results for the currently authenticated user
   getUserBracketResults: async (bracketId: number, userId: string): Promise<Result[]> => {
-    const cacheKey = createCacheKey(`/brackets/${bracketId}/users/${userId}/results`);
+    const currentUser = auth.currentUser;
+
+    // Validate that the requested userId matches the current user
+    if (!currentUser || currentUser.uid !== userId) {
+      throw new Error('Unauthorized: Cannot fetch results for another user');
+    }
+
+    // Use authenticated user's UID in cache key, not the parameter
+    // This prevents cache poisoning if userId parameter is manipulated
+    const cacheKey = createCacheKey(`/brackets/${bracketId}/my-results`);
     return cachedApiCall(cacheKey, async () => {
       const response = await api.get(`/brackets/${bracketId}/users/${userId}/results`);
       return response.data;
@@ -148,8 +133,17 @@ export const bracketApi = {
   },
 
   // Get all results for a specific user (cached for 5 minutes)
+  // SECURITY: Only allow fetching results for the currently authenticated user
   getUserResults: async (userId: string): Promise<Result[]> => {
-    const cacheKey = createCacheKey(`/users/${userId}/results`);
+    const currentUser = auth.currentUser;
+
+    // Validate that the requested userId matches the current user
+    if (!currentUser || currentUser.uid !== userId) {
+      throw new Error('Unauthorized: Cannot fetch results for another user');
+    }
+
+    // Use authenticated user's UID in cache key, not the parameter
+    const cacheKey = createCacheKey('/my-results');
     return cachedApiCall(cacheKey, async () => {
       const response = await api.get(`/users/${userId}/results`);
       return response.data;
@@ -183,8 +177,15 @@ export const bracketApi = {
       category: category || 'General',
     });
     
-    // Don't invalidate list caches - let them expire naturally for eventual consistency
-    // User can still see their bracket via the direct endpoint
+    // Invalidate relevant caches - user will see their new bracket immediately
+    apiCache.invalidate(createCacheKey('/brackets'));
+    apiCache.invalidate(createCacheKey('/brackets/popular'));
+
+    // Invalidate user's own brackets cache
+    const user = auth.currentUser;
+    if (user) {
+      apiCache.invalidate(createCacheKey(`/brackets/by-creator/${user.uid}`));
+    }
 
     return response.data;
   },

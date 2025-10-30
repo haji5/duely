@@ -40,6 +40,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Track previous user to detect user switches
+  const prevUserRef = React.useRef<UserProfile | null>(null);
+
   const signInWithGoogle = async (): Promise<void> => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -89,6 +92,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Listen for authentication state changes
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const prevUser = prevUserRef.current;
+
       if (user) {
         const userProfile: UserProfile = {
           uid: user.uid,
@@ -96,13 +101,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           displayName: user.displayName,
           photoURL: user.photoURL
         };
+
+        // SECURITY: Clear cache if user switches accounts
+        // This prevents User A's cached data from being shown to User B
+        if (prevUser && prevUser.uid !== user.uid) {
+          console.log('[Auth] User switched from', prevUser.uid, 'to', user.uid, '- clearing cache');
+          resetApiAuthState();
+        }
+
         setCurrentUser(userProfile);
         localStorage.setItem('user', JSON.stringify(userProfile));
+        prevUserRef.current = userProfile;
       } else {
         setCurrentUser(null);
         localStorage.removeItem('user');
         // Also reset API state if the user signs out elsewhere
         resetApiAuthState();
+        prevUserRef.current = null;
       }
       setLoading(false);
     });

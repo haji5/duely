@@ -11,7 +11,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -27,9 +26,6 @@ public class SecurityConfig {
     @Value("${spring.web.cors.allowed-origins:http://localhost:3000}")
     private List<String> allowedOrigins;
 
-    @Value("${security.csrf.cookie.secure:false}")
-    private boolean csrfCookieSecure;
-
     private final FirebaseAuthenticationFilter firebaseAuthenticationFilter;
 
     public SecurityConfig(FirebaseAuthenticationFilter firebaseAuthenticationFilter) {
@@ -38,32 +34,19 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        CookieCsrfTokenRepository csrfRepo = CookieCsrfTokenRepository.withHttpOnlyFalse();
-        csrfRepo.setCookieCustomizer(cookie -> {
-            cookie.secure(csrfCookieSecure);
-            cookie.sameSite("Lax");
-            cookie.path("/");
-        });
-
         http
             .cors(Customizer.withDefaults())
-            .csrf(csrf -> csrf
-                .csrfTokenRepository(csrfRepo)
-                .requireCsrfProtectionMatcher(request -> {
-                    // Disable CSRF for stateless JWT auth (Firebase tokens provide CSRF protection)
-                    // Only enable CSRF for session-based endpoints if needed
-                    return false;
-                })
-            )
+            // CSRF disabled for stateless JWT authentication (Firebase tokens provide CSRF protection)
+            .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/", "/actuator/health", "/csrf-token", "/brackets",
+                .requestMatchers(HttpMethod.GET, "/", "/actuator/**", "/brackets",
                         "/brackets/*", "/brackets/*/items",
-                        "/brackets/*/results",
+                        "/brackets/*/results", "/brackets/*/rankings",
                         "/brackets/popular").permitAll()
                 // User-specific endpoints require authentication
-                .requestMatchers("/users/*/results", "/brackets/*/users/*/results").authenticated()
+                .requestMatchers("/users/*/results", "/brackets/*/users/*/results", "/brackets/by-creator/*").authenticated()
                 .anyRequest().authenticated()
             )
             .headers(headers -> {
@@ -88,7 +71,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization","Cache-Control","Content-Type","X-XSRF-TOKEN"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization","Cache-Control","Content-Type"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

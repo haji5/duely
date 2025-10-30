@@ -12,19 +12,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Autowired
     private ReadRateLimiterInterceptor readRateLimiterInterceptor;
 
-    @Autowired
-    private ReadRateLimitInterceptor readRateLimitInterceptor;
-
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // Add rate limiter for read operations
+        // Add rate limiter for read operations (GET requests)
         registry.addInterceptor(readRateLimiterInterceptor)
-                .addPathPatterns("/brackets/**", "/users/**")
-                .excludePathPatterns("/actuator/**");
-
-        // Add the read rate limit interceptor for DoS protection
-        registry.addInterceptor(readRateLimitInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns("/actuator/health");
+                .excludePathPatterns("/actuator/**"); // Exclude all actuator endpoints
     }
 }

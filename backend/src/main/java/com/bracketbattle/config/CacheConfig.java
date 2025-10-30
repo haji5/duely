@@ -96,6 +96,9 @@ public class CacheConfig implements CachingConfigurer {
         // User results - 10 minutes
         cacheConfigurations.put("userResults", defaultConfig.entryTtl(Duration.ofMinutes(10)));
 
+        // User brackets (brackets created by a user) - 1 minute (prevents spam, still fresh)
+        cacheConfigurations.put("userBrackets", defaultConfig.entryTtl(Duration.ofMinutes(1)));
+
         return RedisCacheManager.builder(redisConnectionFactory)
                 .cacheDefaults(defaultConfig)
                 .withInitialCacheConfigurations(cacheConfigurations)

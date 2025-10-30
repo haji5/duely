@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { bracketApi } from '../services/api';
 import { Bracket, Item, Result, ItemRanking } from '@/types';
@@ -25,6 +25,7 @@ const ResultsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { getSessionBattlesForBracket } = useSessionBattles();
+  const [searchParams] = useSearchParams();
 
   const [bracket, setBracket] = React.useState<Bracket | null>(null);
   const [items, setItems] = React.useState<Item[]>([]);
@@ -33,6 +34,7 @@ const ResultsPage: React.FC = () => {
   const [serverRankings, setServerRankings] = React.useState<ItemRanking[]>([]);
   const [sessionBattles, setSessionBattles] = React.useState<SessionBattle[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [authError, setAuthError] = React.useState<string | null>(null);
   const [selectedResult, setSelectedResult] = React.useState<Result | SessionBattle | 'personal' | null>(null);
 
   React.useEffect(() => {
@@ -71,15 +73,30 @@ const ResultsPage: React.FC = () => {
           // Fetch user's battles from backend with proper error handling
           try {
             const resultsData = await bracketApi.getUserBracketResults(parseInt(id), user.uid);
-            setResults(resultsData);
+            // Sort by createdAt to ensure newest battles are last in array
+            const sortedResults = resultsData.sort((a, b) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            );
+            setResults(sortedResults);
 
-            if (resultsData.length > 0) {
-              setSelectedResult(resultsData[0]);
+            // Set default selection based on how user arrived at this page
+            if (searchParams.get('fromBattle') === 'true' && sortedResults.length > 0) {
+              // Coming from completed battle - show the newest battle (last in sorted array)
+              setSelectedResult(sortedResults[sortedResults.length - 1]);
+            } else if (sortedResults.length > 0) {
+              // Coming from bracket selection - keep global rankings (null)
+              setSelectedResult(null);
             }
           } catch (error: any) {
-            // Handle 403 Forbidden or other auth errors gracefully
+            // Handle authentication errors properly
             if (error?.response?.status === 403 || error?.response?.status === 401) {
-              console.log('Authentication error fetching user results, user may need to re-login:', error);
+              console.warn('Authentication error fetching user results:', error);
+              setAuthError('Authentication failed. Please refresh the page to reload your results.');
+              setResults([]);
+            } else if (error?.message?.includes('Unauthorized')) {
+              // Client-side validation error from api.ts
+              console.error('Client-side auth validation failed:', error);
+              setAuthError('Security error: Cannot load results. Please sign in again.');
               setResults([]);
             } else {
               console.error('Error fetching user results:', error);
@@ -87,12 +104,19 @@ const ResultsPage: React.FC = () => {
             }
           }
         } else {
-          // Get session battles from context
+          // Get session battles from context (already sorted newest first by the context)
           const sessionData = getSessionBattlesForBracket(parseInt(id));
-          setSessionBattles(sessionData);
+          // Reverse to match user data ordering (oldest first, newest last)
+          const sortedSessionData = [...sessionData].reverse();
+          setSessionBattles(sortedSessionData);
 
-          if (sessionData.length > 0) {
-            setSelectedResult(sessionData[0]);
+          // Set default selection based on how user arrived at this page
+          if (searchParams.get('fromBattle') === 'true' && sortedSessionData.length > 0) {
+            // Coming from completed battle - show the newest battle (last in array)
+            setSelectedResult(sortedSessionData[sortedSessionData.length - 1]);
+          } else if (sortedSessionData.length > 0) {
+            // Coming from bracket selection - keep global rankings (null)
+            setSelectedResult(null);
           }
         }
       } catch (error) {
@@ -267,6 +291,26 @@ const ResultsPage: React.FC = () => {
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mb-6">{bracket.description}</p>
 
+          {authError && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
+              <div className="flex items-start">
+                <svg className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <p className="text-red-800 dark:text-red-200 font-medium">Authentication Error</p>
+                  <p className="text-red-700 dark:text-red-300 text-sm mt-1">{authError}</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="mt-2 text-sm text-red-600 dark:text-red-400 hover:underline font-medium"
+                  >
+                    Refresh Page
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!user && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
               <p className="text-blue-800 dark:text-blue-200 text-sm">
@@ -342,22 +386,26 @@ const ResultsPage: React.FC = () => {
                     )}
                   </h4>
                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {allBattles.slice(0, 10).map((battle, index) => (
-                      <button
-                        key={getBattleKey(battle)}
-                        onClick={() => setSelectedResult(battle)}
-                        className={`w-full text-left p-2 rounded-lg transition-colors text-sm ${
-                          isSelectedBattle(battle)
-                            ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700' 
-                            : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        <div className="font-medium">Battle #{allBattles.length - index}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(battle.createdAt).toLocaleDateString()}
-                        </div>
-                      </button>
-                    ))}
+                    {[...allBattles].reverse().slice(0, 10).map((battle, index) => {
+                      // Newest battle = highest number (at index 0 after reverse)
+                      const battleNumber = allBattles.length - index;
+                      return (
+                        <button
+                          key={getBattleKey(battle)}
+                          onClick={() => setSelectedResult(battle)}
+                          className={`w-full text-left p-2 rounded-lg transition-colors text-sm ${
+                            isSelectedBattle(battle)
+                              ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700' 
+                              : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          <div className="font-medium">Battle #{battleNumber}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {new Date(battle.createdAt).toLocaleDateString()}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}

@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 /**
  * Component that scrolls the window to the top whenever the route changes.
  * This ensures a clean user experience when navigating between pages.
  */
-const ScrollToTop: React.FC = () => {
+const ScrollToTop: FC = () => {
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -16,4 +16,3 @@ const ScrollToTop: React.FC = () => {
 };
 
 export default ScrollToTop;
-

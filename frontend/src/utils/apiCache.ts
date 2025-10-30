@@ -12,6 +12,7 @@ interface CacheEntry<T> {
 class ApiCache {
   private cache: Map<string, CacheEntry<any>> = new Map();
   private readonly defaultTTL = 5 * 60 * 1000; // 5 minutes default
+  private readonly maxEntries = 100; // Maximum cache entries (LRU eviction)
 
   /**
    * Get data from cache if it exists and hasn't expired
@@ -31,13 +32,26 @@ class ApiCache {
       return null;
     }
 
+    // Move to end (most recently used) by re-inserting
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+
     return entry.data as T;
   }
 
   /**
    * Store data in cache with optional TTL
+   * Implements LRU eviction when cache exceeds maxEntries
    */
   set<T>(key: string, data: T, ttl?: number): void {
+    // If cache is full, remove oldest entry (first in Map)
+    if (this.cache.size >= this.maxEntries && !this.cache.has(key)) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey) {
+        this.cache.delete(firstKey);
+      }
+    }
+
     this.cache.set(key, {
       data,
       timestamp: Date.now(),

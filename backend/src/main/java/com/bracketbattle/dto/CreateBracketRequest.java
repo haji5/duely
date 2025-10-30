@@ -14,7 +14,7 @@ public class CreateBracketRequest {
     private String description;
 
     @NotBlank
-    @Pattern(regexp = "^(song|audio|video|image)$", message = "Invalid type")
+    @Pattern(regexp = "^(song|video|image)$", message = "Invalid type. Must be: song, video, or image")
     private String type;
 
     @NotBlank

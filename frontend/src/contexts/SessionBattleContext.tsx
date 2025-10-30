@@ -42,7 +42,7 @@ export const SessionBattleProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const addSessionBattle = (bracketId: number, bracketName: string, ranking: number[]) => {
     const newBattle: SessionBattle = {
-      sessionId: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sessionId: `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       bracketId,
       bracketName,
       ranking,

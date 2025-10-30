@@ -15,7 +15,7 @@ public class AddItemRequest {
     private String mediaUrl;
 
     @NotBlank
-    @Pattern(regexp = "^(song|audio|video|image)$", message = "Invalid mediaType")
+    @Pattern(regexp = "^(song|video|image)$", message = "Invalid mediaType. Must be: song, video, or image")
     private String mediaType;
 
     public String getTitle() { return title; }
