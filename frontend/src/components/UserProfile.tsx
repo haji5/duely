@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
+import SettingsIcon from './SettingsIcon';
 
 const UserProfile: React.FC = () => {
   const { currentUser, logout } = useAuth();
