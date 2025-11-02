@@ -7,6 +7,7 @@ import BracketPage from './pages/BracketPage';
 import ResultsPage from './pages/ResultsPage';
 import CustomBracketPage from './pages/CustomBracketPage';
 import BrowsePage from './pages/BrowsePage';
+import SettingsPage from './pages/SettingsPage';
 import Navbar from './components/Navbar';
 import ScrollToTop from './components/ScrollToTop';
 
