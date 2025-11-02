@@ -27,6 +27,7 @@ function App() {
                   <Route path="/create" element={<CustomBracketPage />} />
                   <Route path="/bracket/:id" element={<BracketPage />} />
                   <Route path="/results/:id" element={<ResultsPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
                 </Routes>
               </main>
             </div>
