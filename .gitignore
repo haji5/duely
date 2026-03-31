@@ -10,8 +10,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-# Ignore root lockfile only; keep frontend/package-lock.json tracked
+# Ignore root package files only; keep frontend/package-lock.json tracked
 /package-lock.json
+/package.json
 
 # Vite/React build outputs
 # Vite default output
