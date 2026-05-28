@@ -142,7 +142,43 @@ Note: The frontend includes an `.nvmrc` set to `22` to help Node version manager
    - Backend API: http://localhost:8080
    - Health Check: http://localhost:8080/actuator/health
 
-### Method 2: Local Development
+### Method 2: LAN Hosting (Share with Friends)
+
+Share your local Duely instance with friends on the same Wi-Fi / LAN network.
+
+1. **Ensure Docker Desktop is running**
+
+2. **Run the hosting script**
+   ```powershell
+   .\host.ps1 start
+   ```
+   The script will:
+   - Auto-detect your LAN IP address
+   - Configure CORS and build the frontend for LAN access
+   - Start all containers via Docker Compose
+   - Open a Windows Firewall rule for port 3000 (if running as Admin)
+   - Print the URL to share with friends
+
+3. **Share the URL** — e.g., `http://192.168.1.42:3000`
+
+4. **Optional: Enable Google sign-in for friends**
+   - Go to [Firebase Console](https://console.firebase.google.com) → Authentication → Settings → Authorized domains
+   - Add your LAN IP (e.g., `192.168.1.42`)
+
+5. **Stop hosting**
+   ```powershell
+   .\host.ps1 stop
+   ```
+
+6. **Check status**
+   ```powershell
+   .\host.ps1 status
+   ```
+
+> **Note:** To switch back to normal development, just use `docker-compose up` — it uses the original configuration with `localhost` only.
+
+### Method 3: Local Development
+
 
 #### Backend Setup
 ```bash

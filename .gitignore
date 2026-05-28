@@ -198,3 +198,19 @@ spring.log
 # Liquibase
 # -----------------
 liquibase.properties
+
+# -----------------
+# Scratch / test files
+# -----------------
+scrape.js
+spotify_api.js
+test.html
+test2.html
+test_cors.js
+test_yt.html
+
+# -----------------
+# Analysis / notes (local only)
+# -----------------
+PROJECT_FLAWS_ANALYSIS.md
+ANALYSIS_REPORT.md

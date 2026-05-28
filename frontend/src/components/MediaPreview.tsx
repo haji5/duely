@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { motion } from 'framer-motion';
 import { Item } from '@/types';
-import { isSafeHttpUrl, getYouTubeEmbedUrl, getYouTubeThumbnail } from '../utils/mediaUtils';
+import { isSafeHttpUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSpotifyUrl, getSpotifyEmbedUrl } from '../utils/mediaUtils';
 
 interface MediaPreviewProps {
     item: Item;
@@ -16,6 +16,8 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
     const [isVideoStarted, setIsVideoStarted] = React.useState(false);
     const audioRef = React.useRef<HTMLAudioElement>(null);
     const iframeRef = React.useRef<HTMLIFrameElement>(null);
+    const spotifyIframeRef = React.useRef<HTMLIFrameElement>(null);
+    const [isSpotifyReady, setIsSpotifyReady] = React.useState(false);
 
     // --- Global video audio arbitration (only one unmuted at a time) ---
     React.useEffect(() => {
@@ -46,12 +48,38 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
         window.dispatchEvent(event);
     };
 
+    // --- Spotify API ---
+    const postSpotifyCommand = (command: string) => {
+        if (spotifyIframeRef.current && spotifyIframeRef.current.contentWindow && isSpotifyReady) {
+            spotifyIframeRef.current.contentWindow.postMessage({ command }, '*');
+        }
+    };
+    const pauseSpotify = () => postSpotifyCommand('pause');
+    const playSpotify = () => postSpotifyCommand('play');
+
+    React.useEffect(() => {
+        const handleSpotifyMessage = (e: MessageEvent) => {
+            if (spotifyIframeRef.current && e.source === spotifyIframeRef.current.contentWindow) {
+                if (e.data && e.data.type === 'ready') {
+                    spotifyIframeRef.current.contentWindow?.postMessage({ command: 'load_complete_ack' }, '*');
+                    setIsSpotifyReady(true);
+                }
+            }
+        };
+        window.addEventListener('message', handleSpotifyMessage);
+        return () => window.removeEventListener('message', handleSpotifyMessage);
+    }, []);
+
     // --- Hover handlers ---
     const handleMouseEnter = () => {
         setIsHovered(true);
-        if (item.mediaType === 'song' && audioRef.current && isSafeHttpUrl(item.mediaUrl)) {
-            audioRef.current.currentTime = 0;
-            audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        if (item.mediaType === 'song') {
+            if (isSpotifyUrl(item.mediaUrl)) {
+                playSpotify();
+            } else if (audioRef.current && isSafeHttpUrl(item.mediaUrl)) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+            }
         } else if (item.mediaType === 'video' && isVideoStarted) {
             setTimeout(() => unmuteVideo(), 150);
         }
@@ -59,9 +87,13 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
 
     const handleMouseLeave = () => {
         setIsHovered(false);
-        if (item.mediaType === 'song' && audioRef.current) {
-            audioRef.current.pause();
-            setIsPlaying(false);
+        if (item.mediaType === 'song') {
+            if (isSpotifyUrl(item.mediaUrl)) {
+                pauseSpotify();
+            } else if (audioRef.current) {
+                audioRef.current.pause();
+                setIsPlaying(false);
+            }
         } else if (item.mediaType === 'video' && isVideoStarted) {
             muteVideo();
         }
@@ -82,6 +114,22 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
         const sizeClasses = size === 'thumbnail' ? 'w-32 h-32' : 'w-48 h-48';
         switch (item.mediaType) {
             case 'song': {
+                if (isSpotifyUrl(item.mediaUrl)) {
+                    const baseEmbedUrl = getSpotifyEmbedUrl(item.mediaUrl);
+                    const embedUrl = baseEmbedUrl.includes('?') ? `${baseEmbedUrl}&utm_source=iframe-api` : `${baseEmbedUrl}?utm_source=iframe-api`;
+                    return (
+                        <div className="relative w-full max-w-lg select-none">
+                            <iframe
+                                ref={spotifyIframeRef}
+                                src={embedUrl}
+                                className={`w-full ${size === 'thumbnail' ? 'h-32' : 'h-80'} border-0 rounded-lg`}
+                                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                                title={item.title}
+                            />
+                        </div>
+                    );
+                }
+
                 const safeAudio = isSafeHttpUrl(item.mediaUrl);
                 return (
                     <div className="relative">

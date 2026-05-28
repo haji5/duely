@@ -1,0 +1,112 @@
+package com.bracketbattle.controller;
+
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+
+import java.net.URLEncoder;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/metadata")
+public class MediaMetadataController {
+
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    @GetMapping("/youtube/search")
+    public ResponseEntity<Map<String, String>> searchYouTube(@RequestParam String query) {
+        try {
+            String encodedQuery = URLEncoder.encode(query, "UTF-8");
+            Document doc = Jsoup.connect("https://www.youtube.com/results?search_query=" + encodedQuery)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    .get();
+
+            String html = doc.html();
+            Pattern pattern = Pattern.compile("\"videoId\":\"([a-zA-Z0-9_-]{11})\"");
+            Matcher matcher = pattern.matcher(html);
+
+            if (matcher.find()) {
+                String videoId = matcher.group(1);
+                Map<String, String> result = new HashMap<>();
+                result.put("mediaUrl", "https://www.youtube.com/watch?v=" + videoId);
+                return ResponseEntity.ok(result);
+            }
+
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/spotify/playlist")
+    public ResponseEntity<List<Map<String, String>>> getSpotifyPlaylistTracks(@RequestParam String url) {
+        try {
+            // Very rudimentary validation
+            if (!url.contains("spotify.com") || !url.contains("playlist")) {
+                return ResponseEntity.badRequest().build();
+            }
+
+            // Convert to embed URL
+            String embedUrl = url;
+            if (!embedUrl.contains("/embed/")) {
+                embedUrl = embedUrl.replace("spotify.com/playlist/", "spotify.com/embed/playlist/");
+            }
+
+            Document doc = Jsoup.connect(embedUrl).get();
+            Element script = doc.getElementById("__NEXT_DATA__");
+            if (script == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            Map<String, Object> data = mapper.readValue(script.html(), new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> props = (Map<String, Object>) data.get("props");
+            Map<String, Object> pageProps = (Map<String, Object>) props.get("pageProps");
+            Map<String, Object> state = (Map<String, Object>) pageProps.get("state");
+            Map<String, Object> stateData = (Map<String, Object>) state.get("data");
+            Map<String, Object> entity = (Map<String, Object>) stateData.get("entity");
+            List<Map<String, Object>> trackList = (List<Map<String, Object>>) entity.get("trackList");
+
+            List<Map<String, String>> result = new ArrayList<>();
+            for (Map<String, Object> track : trackList) {
+                String uri = (String) track.get("uri");
+                if (uri != null && uri.startsWith("spotify:track:")) {
+                    String id = uri.substring("spotify:track:".length());
+                    String trackUrl = "https://open.spotify.com/track/" + id;
+                    String title = (String) track.get("title");
+                    String subtitle = (String) track.get("subtitle");
+
+                    // Decode entities in subtitle and replace commas between artists with ampersands
+                    if (subtitle != null && !subtitle.isEmpty()) {
+                        subtitle = org.jsoup.parser.Parser.unescapeEntities(subtitle, false).replace("\u00A0", " ");
+                        subtitle = subtitle.replace(",", " &");
+                    }
+
+                    String fullTitle = title + (subtitle != null && !subtitle.isEmpty() ? " - " + subtitle : "");
+
+                    // Decode HTML entities in title
+                    if (fullTitle != null) {
+                       fullTitle = org.jsoup.parser.Parser.unescapeEntities(fullTitle, false).replace("\u00A0", " ");
+                    }
+
+                    Map<String, String> t = new HashMap<>();
+                    t.put("title", fullTitle);
+                    t.put("mediaUrl", trackUrl);
+                    result.add(t);
+                }
+            }
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+}

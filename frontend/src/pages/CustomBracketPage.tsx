@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { bracketApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
-import { isSafeHttpUrl, isYouTubeUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, fetchYouTubeTitle } from '../utils/mediaUtils';
+import { isSafeHttpUrl, isYouTubeUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, fetchYouTubeTitle, isSpotifyUrl, getSpotifyEmbedUrl, fetchSpotifyTitle } from '../utils/mediaUtils';
 
 interface BracketItem {
   title: string;
@@ -78,6 +78,26 @@ const CustomBracketPage: React.FC = () => {
         }
       } catch (error) {
         console.error('Failed to fetch YouTube title:', error);
+        updatedItems[index].isFetchingTitle = false;
+        setItems([...updatedItems]);
+      }
+    } else if (bracketType === 'song' && isSpotifyUrl(url) && url.trim()) {
+      // Auto fetch title for Spotify links as well
+      updatedItems[index].isFetchingTitle = true;
+      setItems(updatedItems);
+
+      try {
+        const title = await fetchSpotifyTitle(url);
+        if (title) {
+          updatedItems[index].title = title;
+          updatedItems[index].isFetchingTitle = false;
+          setItems([...updatedItems]);
+        } else {
+          updatedItems[index].isFetchingTitle = false;
+          setItems([...updatedItems]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch Spotify title:', error);
         updatedItems[index].isFetchingTitle = false;
         setItems([...updatedItems]);
       }
@@ -181,6 +201,22 @@ const CustomBracketPage: React.FC = () => {
 
     switch (bracketType) {
       case 'song':
+        if (isSpotifyUrl(item.mediaUrl)) {
+          const embedUrl = getSpotifyEmbedUrl(item.mediaUrl);
+          return (
+            <div className="mt-2 relative bg-tertiary rounded overflow-hidden">
+              <iframe
+                src={embedUrl}
+                width="100%"
+                height="80"
+                frameBorder="0"
+                allow="encrypted-media"
+                className="rounded"
+                title={`Spotify preview ${index + 1}`}
+              />
+            </div>
+          );
+        }
         return (
           <div className="mt-2">
             <audio controls className="w-full h-8">
@@ -327,178 +363,268 @@ const CustomBracketPage: React.FC = () => {
               </select>
             </div>
 
-            {/* Items Section */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-primary">Items</h3>
-                <span className="text-sm text-tertiary">
-                  {items.filter(item => item.title.trim() && item.mediaUrl.trim()).length} items added
-                </span>
-              </div>
-
-              {/* YouTube Auto-fill Notice - Only shown for video type */}
-              {bracketType === 'video' && (
-                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <div className="flex items-start space-x-2">
-                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            {/* Playlist Autofill (For Song and Video Types) */}
+            {(bracketType === 'song' || bracketType === 'video') && (
+              <div className="p-4 bg-tertiary border border-primary rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <svg className="w-5 h-5 text-[#1DB954]" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.54.659.301 1.02zm1.44-3.3c-.301.42-.84.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.54-1.02.72-1.56.3z" />
                     </svg>
-                    <p className="text-sm text-blue-800 dark:text-blue-300">
-                      <strong>Tip:</strong> Paste a YouTube URL and the video title will automatically be fetched for you!
-                    </p>
+                    <h3 className="text-sm font-medium text-primary">Import from Spotify Playlist</h3>
+                  </div>
+                  <div className="flex space-x-2">
+                    <input
+                      type="url"
+                      id="playlistUrl"
+                      className="flex-1 px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="Paste Spotify Playlist URL"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const urlInput = document.getElementById('playlistUrl') as HTMLInputElement;
+                        const url = urlInput?.value;
+                        if (!url || (!url.includes('spotify.com') && !url.includes('playlist'))) return;
+
+                        // Set specific item to show loading
+                        setItems([...items, { title: 'Loading playlist...', mediaUrl: url, mediaType: bracketType, isFetchingTitle: true }]);
+
+                        try {
+                          // Call our new backend metadata API endpoint
+                          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}/metadata/spotify/playlist?url=${encodeURIComponent(url)}`);
+                          if (response.ok) {
+                            const tracks = await response.json();
+                            if (tracks && tracks.length > 0) {
+                              const newItems = tracks.map((t: any) => ({
+                                title: t.title,
+                                mediaUrl: t.mediaUrl,
+                                mediaType: bracketType,
+                                isFetchingTitle: bracketType === 'video'
+                              }));
+
+                              // Remove empty initial items if there are any
+                              const filteredItems = items.filter(item =>
+                                !(item.title === '' && item.mediaUrl === '' && !item.isFetchingTitle) &&
+                                !(item.title === 'Loading playlist...' && item.mediaUrl === url)
+                              );
+
+                              setItems([...filteredItems, ...newItems]);
+                              urlInput.value = ''; // clear input
+
+                              if (bracketType === 'video') {
+                                // sequentially fetch YouTube URLs for each track
+                                for (let i = 0; i < newItems.length; i++) {
+                                  try {
+                                    const ytRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}/metadata/youtube/search?query=${encodeURIComponent(newItems[i].title)}`);
+                                    if (ytRes.ok) {
+                                      const ytData = await ytRes.json();
+                                      newItems[i].mediaUrl = ytData.mediaUrl;
+                                    }
+                                  } catch (err) {
+                                    console.error('Failed to fetch YouTube URL for', newItems[i].title, err);
+                                  }
+                                  newItems[i].isFetchingTitle = false;
+
+                                  setItems(prev => {
+                                    const copy = [...prev];
+                                    const matchIndex = filteredItems.length + i;
+                                    if (copy[matchIndex]) {
+                                      copy[matchIndex] = { ...newItems[i] };
+                                    }
+                                    return copy;
+                                  });
+                                }
+                              }
+                            }
+                          } else {
+                             // Remove loading item
+                             setItems(items.filter(i => !(i.title === 'Loading playlist...' && i.mediaUrl === url)));
+                          }
+                        } catch (error) {
+                          console.error("Failed to parse Spotify playlist", error);
+                          setItems(items.filter(i => !(i.title === 'Loading playlist...' && i.mediaUrl === url)));
+                        }
+                      }}
+                      className="px-4 py-2 bg-[#1DB954] text-white rounded hover:bg-[#1ed760] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1DB954]"
+                    >
+                      Import
+                    </button>
                   </div>
                 </div>
               )}
 
-              <div className="space-y-4">
-                {items.map((item, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="border border-primary rounded-lg p-4 bg-tertiary"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center space-x-2 text-primary-600">
-                        {getTypeIcon(bracketType)}
-                        <span className="text-sm font-medium">Item {index + 1}</span>
-                      </div>
-                      {items.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() => removeItem(index)}
-                          className="text-error hover:text-red-700 p-1"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
+              {/* Bracket Items */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-primary">Items</h3>
+                  <span className="text-sm text-tertiary">
+                    {items.filter(item => item.title.trim() && item.mediaUrl.trim()).length} items added
+                  </span>
+                </div>
+
+                {/* YouTube Auto-fill Notice - Only shown for video type */}
+                {(bracketType === 'video' || bracketType === 'song') && (
+                  <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <div className="flex items-start space-x-2">
+                      <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-sm text-blue-800 dark:text-blue-300">
+                        <strong>Tip:</strong> Paste a {bracketType === 'song' ? 'Spotify' : 'YouTube'} URL and the title will automatically be fetched for you!
+                      </p>
                     </div>
+                  </div>
+                )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">
-                          Title
-                          {item.isFetchingTitle && (
-                            <span className="ml-2 text-xs text-blue-600 flex items-center">
-                              <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600 mr-1"></div>
-                              Fetching title...
-                            </span>
-                          )}
-                        </label>
-                        <input
-                          type="text"
-                          value={item.title}
-                          onChange={(e) => updateItem(index, 'title', e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                          placeholder={`${bracketType === 'song' ? 'Song' : bracketType === 'video' ? 'Video' : 'Image'} title`}
-                          disabled={item.isFetchingTitle}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">
-                          {bracketType === 'song' ? 'Spotify/Audio URL' :
-                           bracketType === 'video' ? 'YouTube/Video URL' : 'Image URL'}
-                        </label>
-                        <input
-                          type="url"
-                          value={item.mediaUrl}
-                          onChange={(e) => updateItemUrl(index, e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                          placeholder={`Paste ${bracketType} URL here`}
-                        />
-                      </div>
-                    </div>
-
-                    {getMediaPreview(item, index)}
-                  </motion.div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={addItem}
-                className="w-full mt-4 py-3 border-2 border-dashed border-primary rounded-lg text-secondary hover:text-primary hover:bg-tertiary transition-colors duration-200 flex items-center justify-center space-x-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                <span>Add Another Item</span>
-              </button>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="p-4 bg-error/10 border border-error/20 rounded-lg">
-                <p className="text-error text-sm">{error}</p>
-              </div>
-            )}
-
-            {/* Authentication Warning */}
-            {!currentUser && (
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="flex items-start space-x-3">
-                  <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                  <div>
-                    <h3 className="text-sm font-medium text-yellow-800">Sign in required</h3>
-                    <p className="text-sm text-yellow-700 mt-1">
-                      You need to be logged in to create a bracket. You can fill out all the details, but you'll need to sign in before creating the bracket.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={signInWithGoogle}
-                      className="mt-2 text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
+                <div className="space-y-4">
+                  {items.map((item, index) => (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="border border-primary rounded-lg p-4 bg-tertiary"
                     >
-                      Sign in with Google
-                    </button>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-2 text-primary-600">
+                          {getTypeIcon(bracketType)}
+                          <span className="text-sm font-medium">Item {index + 1}</span>
+                        </div>
+                        {items.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(index)}
+                            className="text-error hover:text-red-700 p-1"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-secondary mb-1">
+                            Title
+                            {item.isFetchingTitle && (
+                              <span className="ml-2 text-xs text-blue-600 flex items-center">
+                                <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600 mr-1"></div>
+                                Fetching title...
+                              </span>
+                            )}
+                          </label>
+                          <input
+                            type="text"
+                            value={item.title}
+                            onChange={(e) => updateItem(index, 'title', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                            placeholder={`${bracketType === 'song' ? 'Song' : bracketType === 'video' ? 'Video' : 'Image'} title`}
+                            disabled={item.isFetchingTitle}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-secondary mb-1">
+                            {bracketType === 'song' ? 'Spotify/Audio URL' :
+                             bracketType === 'video' ? 'YouTube/Video URL' : 'Image URL'}
+                          </label>
+                          <input
+                            type="url"
+                            value={item.mediaUrl}
+                            onChange={(e) => updateItemUrl(index, e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                            placeholder={`Paste ${bracketType} URL here`}
+                          />
+                        </div>
+                      </div>
+
+                      {getMediaPreview(item, index)}
+                    </motion.div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="w-full mt-4 py-3 border-2 border-dashed border-primary rounded-lg text-secondary hover:text-primary hover:bg-tertiary transition-colors duration-200 flex items-center justify-center space-x-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  <span>Add Another Item</span>
+                </button>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="p-4 bg-error/10 border border-error/20 rounded-lg">
+                  <p className="text-error text-sm">{error}</p>
+                </div>
+              )}
+
+              {/* Authentication Warning */}
+              {!currentUser && (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <div>
+                      <h3 className="text-sm font-medium text-yellow-800">Sign in required</h3>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        You need to be logged in to create a bracket. You can fill out all the details, but you'll need to sign in before creating the bracket.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={signInWithGoogle}
+                        className="mt-2 text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
+                      >
+                        Sign in with Google
+                      </button>
+                    </div>
                   </div>
                 </div>
+              )}
+
+              {/* Submit Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-6">
+                <button
+                  type="button"
+                  onClick={() => navigate('/')}
+                  className="btn btn-secondary flex-1"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`btn flex-1 ${!currentUser ? 'btn-disabled cursor-not-allowed opacity-50' : 'btn-primary'}`}
+                  disabled={loading || !currentUser}
+                  title={!currentUser ? 'You must be logged in to create a bracket' : ''}
+                >
+                  {loading ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      <span>Creating...</span>
+                    </div>
+                  ) : !currentUser ? (
+                    'Sign in to Create Bracket'
+                  ) : (
+                    'Create Bracket'
+                  )}
+                </button>
               </div>
-            )}
 
-            {/* Submit Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-6">
-              <button
-                type="button"
-                onClick={() => navigate('/')}
-                className="btn btn-secondary flex-1"
-                disabled={loading}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className={`btn flex-1 ${!currentUser ? 'btn-disabled cursor-not-allowed opacity-50' : 'btn-primary'}`}
-                disabled={loading || !currentUser}
-                title={!currentUser ? 'You must be logged in to create a bracket' : ''}
-              >
-                {loading ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    <span>Creating...</span>
-                  </div>
-                ) : !currentUser ? (
-                  'Sign in to Create Bracket'
-                ) : (
-                  'Create Bracket'
-                )}
-              </button>
-            </div>
-
-            {/* Info Note about Caching Delay - New Addition */}
-            <div className="mt-4 p-3 text-sm text-center text-tertiary border border-tertiary rounded-lg">
-              <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m-3-3H9m3-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Note: Your bracket will appear in "My Brackets" immediately, but may take up to 5 minutes to show on the public browse page due to caching.
-            </div>
-          </form>
-        </div>
-      </motion.div>
+              {/* Info Note about Caching Delay - New Addition */}
+              <div className="mt-4 p-3 text-sm text-center text-tertiary border border-tertiary rounded-lg">
+                <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m-3-3H9m3-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Note: Your bracket will appear in "My Brackets" immediately, but may take up to 5 minutes to show on the public browse page due to caching.
+              </div>
+            </form>
+          </div>
+        </motion.div>
     </div>
   );
 };
