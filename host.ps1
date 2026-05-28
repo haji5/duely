@@ -1,28 +1,32 @@
-﻿<#
+<#
 .SYNOPSIS
-    Duely LAN Hosting Script — share your local Duely instance with friends on the same network.
+    Duely Hosting Script — share your local Duely instance with friends.
 
 .DESCRIPTION
-    This script starts/stops Duely in LAN hosting mode using Docker Compose.
+    This script starts/stops Duely in LAN or Internet hosting mode using Docker Compose.
     It auto-detects your local IP address, configures CORS and nginx accordingly,
     and optionally opens the Windows Firewall for port 3000.
+    In Internet mode, it creates a secure Cloudflare Quick Tunnel for public access.
 
 .EXAMPLE
-    .\host.ps1 start        # Start LAN hosting
-    .\host.ps1 stop         # Stop all containers
-    .\host.ps1 status       # Show current status and URL
+    .\host.ps1 start                  # Start LAN hosting
+    .\host.ps1 start -Internet        # Start Internet hosting (Cloudflare Tunnel)
+    .\host.ps1 stop                   # Stop all containers and tunnels
+    .\host.ps1 status                 # Show current status and URLs
 
 .NOTES
     Requirements:
     - Docker Desktop must be running
-    - Friends must be on the same Wi-Fi / LAN network
-    - For Google sign-in, add your LAN IP to Firebase Authorized Domains
+    - For Google sign-in to work remotely, you MUST add the generated URL (LAN or Tunnel)
+      to Firebase Authorized Domains in your Firebase Console.
 #>
 
 param(
     [Parameter(Position = 0)]
     [ValidateSet("start", "stop", "status")]
-    [string]$Action = "start"
+    [string]$Action = "start",
+
+    [switch]$Internet
 )
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -91,9 +95,15 @@ switch ($Action) {
 
     "start" {
         Write-Host ""
-        Write-Host "  =======================================" -ForegroundColor Cyan
-        Write-Host "       Duely - LAN Hosting Mode          " -ForegroundColor Cyan
-        Write-Host "  =======================================" -ForegroundColor Cyan
+        if ($Internet) {
+            Write-Host "  =======================================" -ForegroundColor Cyan
+            Write-Host "       Duely - Internet Hosting Mode     " -ForegroundColor Cyan
+            Write-Host "  =======================================" -ForegroundColor Cyan
+        } else {
+            Write-Host "  =======================================" -ForegroundColor Cyan
+            Write-Host "       Duely - LAN Hosting Mode          " -ForegroundColor Cyan
+            Write-Host "  =======================================" -ForegroundColor Cyan
+        }
         Write-Host ""
 
         # 1. Detect LAN IP
@@ -113,18 +123,23 @@ switch ($Action) {
         }
         Write-Host "  [Docker]  Docker is running" -ForegroundColor Green
 
-        # 3. Open firewall
+        # 3. Open firewall (only strictly needed for LAN, but good to have)
         Add-FirewallRule
 
         # 4. Set environment and start containers
         $env:LAN_IP = $lanIP
+
         Write-Host ""
         Write-Host "  Building and starting containers..." -ForegroundColor Yellow
         Write-Host "  (This may take a few minutes on the first run)" -ForegroundColor DarkGray
         Write-Host ""
 
         Push-Location $ProjectRoot
-        docker-compose -f docker-compose.yml -f docker-compose.local.yml up --build -d
+        if ($Internet) {
+            docker-compose -f docker-compose.yml -f docker-compose.local.yml --profile internet up --build -d
+        } else {
+            docker-compose -f docker-compose.yml -f docker-compose.local.yml up --build -d
+        }
         $exitCode = $LASTEXITCODE
         Pop-Location
 
@@ -134,36 +149,80 @@ switch ($Action) {
             exit 1
         }
 
-        $shareUrl = "http://" + $lanIP + ":3000"
+        # 5. Handle Internet Tunnel if requested
+        $tunnelUrl = ""
+        if ($Internet) {
+            Write-Host ""
+            Write-Host "  [Tunnel]  Waiting for public URL..." -ForegroundColor Yellow
+            
+            # Wait for URL to appear in logs (max 15 seconds)
+            $retries = 0
+            while ($retries -lt 15) {
+                Start-Sleep -Seconds 1
+                Push-Location $ProjectRoot
+                $logOutput = docker-compose -f docker-compose.yml -f docker-compose.local.yml logs tunnel 2>&1 | Select-String "https://.*\.trycloudflare\.com"
+                Pop-Location
+                if ($logOutput) {
+                    $null = $logOutput.Line -match "(https://[a-zA-Z0-9-]+\.trycloudflare\.com)"
+                    $tunnelUrl = $Matches[1]
+                    if ($tunnelUrl) {
+                        break
+                    }
+                }
+                $retries++
+            }
+
+            if (-not $tunnelUrl) {
+                Write-Host "  [ERROR] Failed to get Cloudflare Tunnel URL. Check logs: docker-compose logs tunnel" -ForegroundColor Red
+                exit 1
+            }
+            Write-Host "  [Tunnel]  Tunnel connected successfully!" -ForegroundColor Green
+        }
+
+        $lanUrl = "http://" + $lanIP + ":3000"
         Write-Host ""
         Write-Host "  ================================================" -ForegroundColor Green
         Write-Host ""  -ForegroundColor Green
         Write-Host "    Duely is live!" -ForegroundColor Green
         Write-Host ""  -ForegroundColor Green
-        Write-Host "    Share this URL with your friends:" -ForegroundColor Green
-        Write-Host "    --> $shareUrl" -ForegroundColor White
-        Write-Host ""  -ForegroundColor Green
-        Write-Host "    You can also use:" -ForegroundColor Green
+
+        if ($Internet) {
+            Write-Host "    Share this PUBLIC URL with your friends:" -ForegroundColor Green
+            Write-Host "    --> $tunnelUrl" -ForegroundColor White
+            Write-Host ""  -ForegroundColor Green
+        } else {
+            Write-Host "    Share this LOCAL URL with your friends (same Wi-Fi only):" -ForegroundColor Green
+            Write-Host "    --> $lanUrl" -ForegroundColor White
+            Write-Host ""  -ForegroundColor Green
+        }
+
+        Write-Host "    You can access it locally via:" -ForegroundColor Green
         Write-Host "    --> http://localhost:3000" -ForegroundColor DarkGray
         Write-Host ""  -ForegroundColor Green
         Write-Host "  ================================================" -ForegroundColor Green
         Write-Host ""
-        Write-Host "  [TIP] For Google sign-in to work for friends, add $lanIP" -ForegroundColor DarkYellow
-        Write-Host "        to Firebase Console > Authentication > Settings > Authorized domains" -ForegroundColor DarkYellow
+        
+        $primaryUrl = if ($Internet) { $tunnelUrl } else { $lanUrl }
+        Write-Host "  [FIREBASE TIP] For Google Sign-in to work for your friends," -ForegroundColor DarkYellow
+        Write-Host "  you MUST add the domain below to Firebase Authorized Domains:" -ForegroundColor DarkYellow
+        $domainOnly = $primaryUrl -replace "^https?://", ""
+        Write-Host "  --> $domainOnly" -ForegroundColor White
+        Write-Host "  (Firebase Console > Authentication > Settings > Authorized domains)" -ForegroundColor Gray
+        Write-Host "  If you don't do this, they can still play as Guests!" -ForegroundColor DarkGray
         Write-Host ""
         Write-Host "  To stop:  .\host.ps1 stop" -ForegroundColor Gray
         Write-Host ""
 
-        # 5. Open in browser
-        Start-Process $shareUrl
+        # 6. Open in browser
+        Start-Process $primaryUrl
     }
 
     "stop" {
         Write-Host ""
-        Write-Host "  Stopping Duely LAN hosting..." -ForegroundColor Yellow
+        Write-Host "  Stopping Duely hosting..." -ForegroundColor Yellow
 
         Push-Location $ProjectRoot
-        docker-compose -f docker-compose.yml -f docker-compose.local.yml down
+        docker-compose -f docker-compose.yml -f docker-compose.local.yml --profile internet down
         Pop-Location
 
         Remove-FirewallRule
@@ -189,6 +248,19 @@ switch ($Action) {
             Write-Host "  [Network] Could not detect LAN IP" -ForegroundColor Red
         }
 
+        # Check tunnel
+        Push-Location $ProjectRoot
+        $tunnelLog = docker-compose -f docker-compose.yml -f docker-compose.local.yml logs tunnel 2>&1 | Select-String "https://.*\.trycloudflare\.com"
+        Pop-Location
+        $tunnelUrl = ""
+        if ($tunnelLog) {
+            $null = $tunnelLog.Line -match "(https://[a-zA-Z0-9-]+\.trycloudflare\.com)"
+            $tunnelUrl = $Matches[1]
+            if ($tunnelUrl) {
+                Write-Host "  [Tunnel]  Active public URL: $tunnelUrl" -ForegroundColor Green
+            }
+        }
+
         # Check if containers are running
         Push-Location $ProjectRoot
         $containers = docker-compose -f docker-compose.yml -f docker-compose.local.yml ps 2>$null
@@ -199,14 +271,17 @@ switch ($Action) {
             Write-Host "  Running containers:" -ForegroundColor White
             $containers | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
             Write-Host ""
-            if ($lanIP) {
-                $shareUrl = "http://" + $lanIP + ":3000"
-                Write-Host "  URL for friends: $shareUrl" -ForegroundColor Green
+            
+            if ($tunnelUrl) {
+                Write-Host "  URL for friends (Internet): $tunnelUrl" -ForegroundColor Green
+            } elseif ($lanIP) {
+                $lanUrl = "http://" + $lanIP + ":3000"
+                Write-Host "  URL for friends (LAN): $lanUrl" -ForegroundColor Green
             }
         }
         else {
             Write-Host "  [Status] No containers running" -ForegroundColor Yellow
-            Write-Host "  Run .\host.ps1 start to begin hosting" -ForegroundColor Gray
+            Write-Host "  Run .\host.ps1 start [-Internet] to begin hosting" -ForegroundColor Gray
         }
 
         # Check firewall rule
