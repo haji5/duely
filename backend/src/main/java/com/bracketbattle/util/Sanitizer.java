@@ -1,6 +1,7 @@
 package com.bracketbattle.util;
 
 import org.jsoup.Jsoup;
+import org.jsoup.parser.Parser;
 import org.jsoup.safety.Safelist;
 
 import java.net.URI;
@@ -16,7 +17,10 @@ public final class Sanitizer {
 
     public static String stripToPlain(String input, int maxLen) {
         if (input == null) return null;
-        String clean = Jsoup.clean(input, BASIC);
+        // Jsoup.clean() strips HTML tags AND encodes special chars (& → &amp;).
+        // We unescape after cleaning so plain-text fields store actual characters,
+        // not HTML entities. XSS safety is preserved because tags are already removed.
+        String clean = Parser.unescapeEntities(Jsoup.clean(input, BASIC), false);
         if (clean.length() > maxLen) {
             return clean.substring(0, maxLen);
         }
@@ -25,8 +29,9 @@ public final class Sanitizer {
 
     public static String sanitizeDescription(String input, int maxLen) {
         if (input == null) return null;
-        // Allow very restricted formatting if needed; using none to avoid XSS
-        String clean = Jsoup.clean(input, Safelist.none());
+        // Strip all HTML tags to prevent XSS, then unescape entities so
+        // descriptions store readable text (e.g. & not &amp;).
+        String clean = Parser.unescapeEntities(Jsoup.clean(input, Safelist.none()), false);
         if (clean.length() > maxLen) return clean.substring(0, maxLen);
         return clean;
     }

@@ -32,17 +32,56 @@ public class MediaMetadataController {
             Pattern pattern = Pattern.compile("\"videoId\":\"([a-zA-Z0-9_-]{11})\"");
             Matcher matcher = pattern.matcher(html);
 
-            if (matcher.find()) {
-                String videoId = matcher.group(1);
-                Map<String, String> result = new HashMap<>();
-                result.put("mediaUrl", "https://www.youtube.com/watch?v=" + videoId);
-                return ResponseEntity.ok(result);
+            // Collect up to 5 unique candidate video IDs
+            LinkedHashSet<String> candidateIds = new LinkedHashSet<>();
+            while (matcher.find() && candidateIds.size() < 5) {
+                candidateIds.add(matcher.group(1));
             }
 
-            return ResponseEntity.notFound().build();
+            if (candidateIds.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Check each candidate for embeddability via YouTube's oEmbed endpoint.
+            // oEmbed returns 200 for embeddable videos, 401 for restricted ones.
+            for (String videoId : candidateIds) {
+                if (isEmbeddable(videoId)) {
+                    Map<String, String> result = new HashMap<>();
+                    result.put("mediaUrl", "https://www.youtube.com/watch?v=" + videoId);
+                    return ResponseEntity.ok(result);
+                }
+            }
+
+            // Fallback: if oEmbed check fails for all (e.g. network issue), return the first result
+            String fallbackId = candidateIds.iterator().next();
+            Map<String, String> result = new HashMap<>();
+            result.put("mediaUrl", "https://www.youtube.com/watch?v=" + fallbackId);
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Checks whether a YouTube video allows embedding by hitting the oEmbed endpoint.
+     * Returns true if embeddable (HTTP 200), false if restricted (HTTP 401/other).
+     */
+    private boolean isEmbeddable(String videoId) {
+        try {
+            String oembedUrl = "https://www.youtube.com/oembed?url="
+                    + URLEncoder.encode("https://www.youtube.com/watch?v=" + videoId, "UTF-8")
+                    + "&format=json";
+            int status = Jsoup.connect(oembedUrl)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    .ignoreContentType(true)
+                    .ignoreHttpErrors(true)
+                    .execute()
+                    .statusCode();
+            return status == 200;
+        } catch (Exception e) {
+            // If the check itself fails, assume embeddable to avoid blocking results
+            return true;
         }
     }
 
