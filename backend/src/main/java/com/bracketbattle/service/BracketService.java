@@ -83,7 +83,7 @@ public class BracketService {
         @CacheEvict(value = "popularBrackets", allEntries = true),
         @CacheEvict(value = "bracket", key = "#bracketId")
     })
-    public Result saveBracketResult(Long bracketId, String userId, List<Long> ranking, String submissionToken) {
+    public Result saveBracketResult(Long bracketId, String userId, List<Long> ranking, String submissionToken, String displayName, String comment) {
         // Check for idempotency - if this submission token already exists, return the existing result
         Optional<Result> existingResult = resultRepository.findBySubmissionToken(submissionToken);
         if (existingResult.isPresent()) {
@@ -133,6 +133,14 @@ public class BracketService {
 
         // Create result with submission token
         Result result = new Result(bracketId, userId, ranking, submissionToken);
+
+        // Sanitize and set optional display name and comment
+        if (displayName != null && !displayName.isBlank()) {
+            result.setDisplayName(Sanitizer.stripToPlain(displayName, 100));
+        }
+        if (comment != null && !comment.isBlank()) {
+            result.setComment(Sanitizer.stripToPlain(comment, 500));
+        }
 
         try {
             return resultRepository.save(result);

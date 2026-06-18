@@ -117,6 +117,12 @@ const BracketPage: React.FC = () => {
     } | null>(null);
     const [selectedSize, setSelectedSize] = React.useState<number | null>(null);
 
+    const [completionForm, setCompletionForm] = React.useState<{
+        displayName: string;
+        comment: string;
+    } | null>(null);
+    const [isSaving, setIsSaving] = React.useState(false);
+
     // Initialize audio context
     const audioRef = React.useRef<ReturnType<typeof createAudioContext> | null>(null);
 
@@ -386,9 +392,12 @@ const BracketPage: React.FC = () => {
             if (nextRealMatchTournament) {
                 setTournament(nextRealMatchTournament);
 
-                // If tournament is complete, save results
+                // If tournament is complete, prompt for name and comment
                 if (nextRealMatchTournament.isComplete) {
-                    saveTournamentResult(nextRealMatchTournament);
+                    setCompletionForm({
+                        displayName: user?.displayName || '',
+                        comment: '',
+                    });
                 }
             }
 
@@ -439,49 +448,42 @@ const BracketPage: React.FC = () => {
         });
     };
 
-    const saveTournamentResult = async (completedTournament: ExtendedTournament) => {
+    const saveTournamentResult = async (completedTournament: ExtendedTournament, displayName?: string, comment?: string) => {
         if (!id) return;
 
         try {
             const ranking = completedTournament.finalRanking.map(item => item.id);
+            const userPart = user?.uid || 'anon';
+            const submissionToken = `${id}-${userPart}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-            if (user) {
-                // Generate a unique submission token for this specific tournament completion
-                const submissionToken = `${id}-${user.uid}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+            // Always save to backend (authenticated or not) so comments/results appear globally
+            await bracketApi.saveBracketResult(parseInt(id), ranking, submissionToken, displayName, comment);
 
-                // User is logged in - save to backend with user ID and submission token
-                await bracketApi.saveBracketResult(parseInt(id), ranking, submissionToken);
-            } else {
-                // User not logged in - save to session memory only
+            // Also save to session memory for anonymous users so they can see their own history locally
+            if (!user) {
                 addSessionBattle(
                     parseInt(id),
                     completedTournament.bracket.name,
-                    ranking
+                    ranking,
+                    displayName,
+                    comment
                 );
             }
         } catch (error) {
             console.error('Error saving tournament result:', error);
-            // Fallback to session storage even if backend fails
-            if (user) {
-                const ranking = completedTournament.finalRanking.map(item => item.id);
-                addSessionBattle(
-                    parseInt(id),
-                    completedTournament.bracket.name,
-                    ranking
-                );
-            }
+            // Fallback to session storage if backend fails
+            const ranking = completedTournament.finalRanking.map(item => item.id);
+            addSessionBattle(
+                parseInt(id),
+                completedTournament.bracket.name,
+                ranking,
+                displayName,
+                comment
+            );
         }
     };
 
-    const handleRestart = () => {
-        if (tournament) {
-            const originalItems = tournament.items;
-            const newTournament = createTournament(tournament.bracket, originalItems, tournament.targetSize);
-            // Skip any initial bye rounds
-            const tournamentWithRealMatch = findNextRealMatch(newTournament);
-            setTournament(tournamentWithRealMatch || newTournament);
-        }
-    };
+
 
     const handleViewResults = () => {
         navigate(`/results/${id}?fromBattle=true`);
@@ -713,12 +715,9 @@ const BracketPage: React.FC = () => {
                                     // Play start sound
                                     audioRef.current?.playTick(1000, 0.1, 0.08);
 
-                                    const chosenItems = [...selectionPopup.items]
-                                        .sort(() => Math.random() - 0.5)
-                                        .slice(0, selectedSize);
                                     const newTournament = createTournament(
                                         selectionPopup.bracket,
-                                        chosenItems,
+                                        [...selectionPopup.items].sort(() => Math.random() - 0.5).slice(0, selectedSize),
                                         selectedSize
                                     );
                                     // Skip any initial bye rounds
@@ -755,12 +754,112 @@ const BracketPage: React.FC = () => {
     }
 
     if (tournament.isComplete) {
+        // Show saving state
+        if (isSaving) {
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-themed-primary">
+                    <div className="text-center">
+                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                        <p className="text-themed-secondary text-lg font-medium">Saving your results...</p>
+                    </div>
+                </div>
+            );
+        }
+
+        const winner = tournament.finalRanking?.[0];
+        const formData = completionForm || { displayName: user?.displayName || '', comment: '' };
+
         return (
-            <TournamentComplete
-                tournament={tournament}
-                onRestart={handleRestart}
-                onViewResults={handleViewResults}
-            />
+            <div className="bg-themed-primary py-12 min-h-screen">
+                <div className="max-w-2xl mx-auto px-4">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.5 }}
+                        className="card p-8"
+                    >
+                        <div className="text-center mb-8">
+                            <div className="w-20 h-20 mx-auto mb-4 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg shadow-yellow-400/20">
+                                <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732L14.146 12.8l-1.179 4.456a1 1 0 01-1.934 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732L9.854 7.2l1.179-4.456A1 1 0 0112 2z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                            <h1 className="text-3xl font-bold text-themed-primary mb-2">
+                                🏆 We Have a Winner!
+                            </h1>
+                            {winner && (
+                                <p className="text-xl text-primary-600 font-semibold">
+                                    {winner.title}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="space-y-5">
+                            <div>
+                                <label htmlFor="displayName" className="block text-sm font-medium text-themed-secondary mb-2">
+                                    Your Name
+                                </label>
+                                <input
+                                    id="displayName"
+                                    type="text"
+                                    maxLength={100}
+                                    value={formData.displayName}
+                                    onChange={(e) => setCompletionForm(prev => ({ ...(prev || formData), displayName: e.target.value }))}
+                                    placeholder="Enter your name..."
+                                    className="w-full p-3 border border-themed-primary rounded-lg bg-themed-secondary text-themed-primary placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="comment" className="block text-sm font-medium text-themed-secondary mb-2">
+                                    Leave a Comment (Optional)
+                                </label>
+                                <textarea
+                                    id="comment"
+                                    maxLength={500}
+                                    rows={3}
+                                    value={formData.comment}
+                                    onChange={(e) => setCompletionForm(prev => ({ ...(prev || formData), comment: e.target.value }))}
+                                    placeholder="Why did you pick this winner? Share your thoughts..."
+                                    className="w-full p-3 border border-themed-primary rounded-lg bg-themed-secondary text-themed-primary placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 resize-none"
+                                />
+                                <p className="text-xs text-gray-500 mt-1 text-right">{formData.comment.length}/500</p>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                                <button
+                                    onClick={async () => {
+                                        setIsSaving(true);
+                                        await saveTournamentResult(
+                                            tournament as ExtendedTournament,
+                                            formData.displayName.trim() || undefined,
+                                            formData.comment.trim() || undefined
+                                        );
+                                        setCompletionForm(null);
+                                        setIsSaving(false);
+                                        handleViewResults();
+                                    }}
+                                    className="btn btn-primary flex-1 py-3 text-lg font-semibold shadow-lg shadow-primary-500/30"
+                                >
+                                    Submit & View Results
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        setIsSaving(true);
+                                        await saveTournamentResult(tournament as ExtendedTournament);
+                                        setCompletionForm(null);
+                                        setIsSaving(false);
+                                        handleViewResults();
+                                    }}
+                                    className="btn btn-secondary flex-1 py-3"
+                                >
+                                    Skip
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                </div>
+            </div>
         );
     }
 
@@ -989,107 +1088,6 @@ const BattleItem: React.FC<{
     );
 };
 
-const TournamentComplete: React.FC<{
-    tournament: Tournament;
-    onRestart: () => void;
-    onViewResults: () => void;
-}> = ({ tournament, onRestart, onViewResults }) => {
-    const winner = tournament.finalRanking?.[0];
-    if (!winner) {
-        return (
-            <div className="bg-themed-primary flex items-center justify-center py-20 min-h-screen">
-                <div className="max-w-2xl mx-auto text-center px-4">
-                    <div className="card p-12">
-                        <h1 className="text-4xl font-bold text-themed-primary mb-4">
-                            Tournament Complete!
-                        </h1>
-                        <p className="text-xl text-themed-secondary mb-8">
-                            There was an issue determining the winner. Please try again.
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                            <button onClick={onRestart} className="btn btn-primary">
-                                Restart Tournament
-                            </button>
-                            <button onClick={() => window.location.href = '/'} className="btn btn-secondary">
-                                Go Home
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
 
-    return (
-        <div className="bg-themed-primary flex items-center justify-center py-20 min-h-screen">
-            <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.6 }}
-                className="max-w-2xl mx-auto text-center px-4 relative"
-            >
-                {/* Celebration particles positioned relative to the card */}
-                <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                    {[...Array(20)].map((_, i) => (
-                        <motion.div
-                            key={i}
-                            className="absolute w-2 h-2 bg-primary-400 rounded-full"
-                            initial={{
-                                x: '50%',
-                                y: '50%',
-                                scale: 0,
-                                opacity: 1
-                            }}
-                            animate={{
-                                x: `${50 + (Math.random() - 0.5) * 300}%`,
-                                y: `${50 + (Math.random() - 0.5) * 300}%`,
-                                scale: [0, 1, 0],
-                                opacity: [1, 1, 0]
-                            }}
-                            transition={{
-                                duration: Math.random() * 3 + 2,
-                                delay: Math.random() * 2,
-                                repeat: Infinity,
-                                repeatDelay: Math.random() * 5 + 3
-                            }}
-                        />
-                    ))}
-                </div>
-
-                <div className="card p-12 relative z-10">
-                    <div className="mb-8">
-                        <div className="w-24 h-24 mx-auto mb-6 bg-yellow-400 rounded-full flex items-center justify-center">
-                            <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732L14.146 12.8l-1.179 4.456a1 1 0 01-1.934 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732L9.854 7.2l1.179-4.456A1 1 0 0112 2z" clipRule="evenodd" />
-                            </svg>
-                        </div>
-                        <h1 className="text-4xl font-bold text-themed-primary mb-4">
-                            We Have a Winner!
-                        </h1>
-                        <p className="text-xl text-themed-secondary mb-8">
-                            The ultimate champion of {tournament.bracket.name}
-                        </p>
-                    </div>
-                    <div className="mb-8">
-                        <div className="bg-themed-tertiary border border-themed-primary rounded-xl p-6 max-w-md mx-auto shadow-themed-lg">
-                            <MediaPreview item={winner} />
-                            <h2 className="text-2xl font-bold text-themed-primary mt-4">
-                                {winner.title}
-                            </h2>
-                        </div>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                        <button onClick={onViewResults} className="btn btn-primary">
-                            View Full Rankings
-                        </button>
-                        <button onClick={onRestart} className="btn btn-secondary">
-                            Battle Again
-                        </button>
-                    </div>
-                </div>
-            </motion.div>
-        </div>
-    );
-};
 
 export default BracketPage;

@@ -91,4 +91,16 @@
         </createIndex>
     </changeSet>
 
+    <!-- Add display name and comment to results -->
+    <changeSet id="4" author="bracket-battle">
+        <addColumn tableName="results">
+            <column name="display_name" type="VARCHAR(100)">
+                <constraints nullable="true"/>
+            </column>
+            <column name="comment" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
 </databaseChangeLog>

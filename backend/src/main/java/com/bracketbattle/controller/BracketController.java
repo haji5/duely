@@ -97,22 +97,28 @@ public class BracketController {
         return ResponseEntity.ok(items);
     }
 
-    @PreAuthorize("hasRole('USER')")
     @PostMapping("/brackets/{id}/results")
     public ResponseEntity<?> saveBracketResult(
             @PathVariable Long id,
             @Valid @RequestBody SaveResultRequest payload,
-            Authentication authentication) {
+            Authentication authentication,
+            jakarta.servlet.http.HttpServletRequest request) {
 
-        String userId = (String) authentication.getPrincipal();
+        final String userId;
+        if (authentication != null && authentication.isAuthenticated() && !"anonymousUser".equals(authentication.getPrincipal())) {
+            userId = (String) authentication.getPrincipal();
+        } else {
+            userId = null;
+        }
 
-        // Get per-user rate limiter
-        RateLimiter rateLimiter = rateLimiterConfig.getRateLimiterForUser(userId, rateLimiterRegistry);
+        // Get per-user rate limiter (fallback to IP for anonymous users)
+        String rateLimitKey = userId != null ? userId : "ip:" + request.getRemoteAddr();
+        RateLimiter rateLimiter = rateLimiterConfig.getRateLimiterForUser(rateLimitKey, rateLimiterRegistry);
 
         try {
             // Attempt to acquire permission from rate limiter
             return RateLimiter.decorateSupplier(rateLimiter, () -> {
-                Result result = bracketService.saveBracketResult(id, userId, payload.getRanking(), payload.getSubmissionToken());
+                Result result = bracketService.saveBracketResult(id, userId, payload.getRanking(), payload.getSubmissionToken(), payload.getDisplayName(), payload.getComment());
                 return ResponseEntity.ok(result);
             }).get();
         } catch (RequestNotPermitted e) {

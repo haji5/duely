@@ -60,6 +60,27 @@ async function getIdTokenWithSmartRefresh(user: any): Promise<string> {
   }
 }
 
+/**
+ * Wait for Firebase auth to be ready (currentUser to be available).
+ * This prevents race conditions where AuthContext has user from localStorage
+ * but Firebase auth hasn't initialized yet.
+ */
+async function waitForAuthReady(timeoutMs: number = 3000): Promise<void> {
+  if (auth.currentUser) return;
+  
+  return new Promise((resolve) => {
+    const unsubscribe = auth.onAuthStateChanged(() => {
+      unsubscribe();
+      resolve();
+    });
+    // Timeout fallback
+    setTimeout(() => {
+      unsubscribe();
+      resolve();
+    }, timeoutMs);
+  });
+}
+
 api.interceptors.request.use(async (config) => {
   // Attach Firebase ID token if available
   const user = auth.currentUser;
@@ -124,13 +145,15 @@ export const bracketApi = {
   },
 
   // Save bracket result (userId derived on backend)
-  saveBracketResult: async (id: number, ranking: number[], submissionToken?: string): Promise<Result> => {
+  saveBracketResult: async (id: number, ranking: number[], submissionToken?: string, displayName?: string, comment?: string): Promise<Result> => {
     // Generate a unique submission token if not provided (to prevent duplicate submissions)
     const token = submissionToken || `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
     const response = await api.post(`/brackets/${id}/results`, {
       ranking,
       submissionToken: token,
+      displayName: displayName || undefined,
+      comment: comment || undefined,
     });
     
     // Invalidate ONLY the specific bracket's caches (not all brackets!)
@@ -164,6 +187,8 @@ export const bracketApi = {
   // Get user-specific results for a bracket (cached for 5 minutes)
   // SECURITY: Only allow fetching results for the currently authenticated user
   getUserBracketResults: async (bracketId: number, userId: string): Promise<Result[]> => {
+    // Wait for Firebase auth to initialize (prevents race with localStorage-based AuthContext)
+    await waitForAuthReady();
     const currentUser = auth.currentUser;
 
     // Validate that the requested userId matches the current user
@@ -183,6 +208,8 @@ export const bracketApi = {
   // Get all results for a specific user (cached for 5 minutes)
   // SECURITY: Only allow fetching results for the currently authenticated user
   getUserResults: async (userId: string): Promise<Result[]> => {
+    // Wait for Firebase auth to initialize (prevents race with localStorage-based AuthContext)
+    await waitForAuthReady();
     const currentUser = auth.currentUser;
 
     // Validate that the requested userId matches the current user
@@ -207,13 +234,13 @@ export const bracketApi = {
     }, 10 * 60 * 1000); // 10 minutes
   },
 
-  // Get pre-calculated rankings from server (cached for 5 minutes)
+  // Get pre-calculated rankings from server (cached for 1 minute)
   getBracketRankings: async (id: number): Promise<ItemRanking[]> => {
     const cacheKey = createCacheKey(`/brackets/${id}/rankings`);
     return cachedApiCall(cacheKey, async () => {
       const response = await api.get(`/brackets/${id}/rankings`);
       return response.data;
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 1 * 60 * 1000); // 1 minute
   },
 
   // Create new bracket

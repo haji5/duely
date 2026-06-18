@@ -43,6 +43,12 @@ public class Result {
     @JsonIgnore
     private Bracket bracket;
 
+    @Column(name = "display_name", length = 100)
+    private String displayName;
+
+    @Column(name = "comment", columnDefinition = "TEXT")
+    private String comment;
+
     // Use a static ObjectMapper to avoid recreation on deserialization
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -138,5 +144,21 @@ public class Result {
 
     public void setBracket(Bracket bracket) {
         this.bracket = bracket;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public String getComment() {
+        return comment;
+    }
+
+    public void setComment(String comment) {
+        this.comment = comment;
     }
 }

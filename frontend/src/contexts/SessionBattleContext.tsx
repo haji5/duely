@@ -7,11 +7,13 @@ interface SessionBattle {
   bracketName: string;
   ranking: number[];
   createdAt: Date;
+  displayName?: string;
+  comment?: string;
 }
 
 interface SessionBattleContextType {
   sessionBattles: SessionBattle[];
-  addSessionBattle: (bracketId: number, bracketName: string, ranking: number[]) => void;
+  addSessionBattle: (bracketId: number, bracketName: string, ranking: number[], displayName?: string, comment?: string) => void;
   getSessionBattlesForBracket: (bracketId: number) => SessionBattle[];
   clearSessionBattles: () => void;
 }
@@ -40,13 +42,15 @@ export const SessionBattleProvider: React.FC<{ children: React.ReactNode }> = ({
     // Session battles will be used as fallback for non-logged-in state
   }, [user]);
 
-  const addSessionBattle = (bracketId: number, bracketName: string, ranking: number[]) => {
+  const addSessionBattle = (bracketId: number, bracketName: string, ranking: number[], displayName?: string, comment?: string) => {
     const newBattle: SessionBattle = {
       sessionId: `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       bracketId,
       bracketName,
       ranking,
-      createdAt: new Date()
+      createdAt: new Date(),
+      displayName,
+      comment
     };
 
     setSessionBattles(prev => [newBattle, ...prev]);

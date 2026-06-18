@@ -23,9 +23,21 @@ public class SaveResultRequest {
     @Size(min = 1, max = 255, message = "Submission token must be between 1 and 255 characters")
     private String submissionToken;
 
+    @Size(max = 100, message = "Display name must not exceed 100 characters")
+    private String displayName;
+
+    @Size(max = 500, message = "Comment must not exceed 500 characters")
+    private String comment;
+
     public List<Long> getRanking() { return ranking; }
     public void setRanking(List<Long> ranking) { this.ranking = ranking; }
 
     public String getSubmissionToken() { return submissionToken; }
     public void setSubmissionToken(String submissionToken) { this.submissionToken = submissionToken; }
+
+    public String getDisplayName() { return displayName; }
+    public void setDisplayName(String displayName) { this.displayName = displayName; }
+
+    public String getComment() { return comment; }
+    public void setComment(String comment) { this.comment = comment; }
 }

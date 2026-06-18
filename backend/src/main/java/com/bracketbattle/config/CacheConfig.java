@@ -90,8 +90,8 @@ public class CacheConfig implements CachingConfigurer {
         // Bracket results - 5 minutes (frequently updated)
         cacheConfigurations.put("bracketResults", defaultConfig.entryTtl(Duration.ofMinutes(5)));
 
-        // Bracket rankings - 10 minutes (pre-calculated aggregations, computationally expensive)
-        cacheConfigurations.put("bracketRankings", defaultConfig.entryTtl(Duration.ofMinutes(10)));
+        // Bracket rankings - 2 minutes (updated frequently by user submissions)
+        cacheConfigurations.put("bracketRankings", defaultConfig.entryTtl(Duration.ofMinutes(2)));
 
         // User results - 10 minutes
         cacheConfigurations.put("userResults", defaultConfig.entryTtl(Duration.ofMinutes(10)));

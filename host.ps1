@@ -213,8 +213,8 @@ switch ($Action) {
         Write-Host "  To stop:  .\host.ps1 stop" -ForegroundColor Gray
         Write-Host ""
 
-        # 6. Open in browser
-        Start-Process $primaryUrl
+        # 6. Open in browser (always use localhost — tunnel/LAN URLs are for friends)
+        Start-Process "http://localhost:3000"
     }
 
     "stop" {

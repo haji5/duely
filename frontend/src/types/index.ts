@@ -22,6 +22,8 @@ export interface Result {
   userId?: string;
   ranking: number[];
   createdAt: string;
+  displayName?: string;
+  comment?: string;
 }
 
 export interface ItemRanking {

@@ -57,16 +57,16 @@ const ResultsPage: React.FC = () => {
           setServerRankings(rankings);
         } catch (error) {
           console.log('Server rankings not available, falling back to client-side calculation:', error);
+        }
 
-          // Fallback: Fetch all results for client-side calculation
-          try {
-            const allResultsData = await bracketApi.getBracketResults(parseInt(id));
-            console.log('Fetched global results for client-side calculation:', allResultsData.length, 'results');
-            setAllResults(allResultsData);
-          } catch (error) {
-            console.log('No global results available yet:', error);
-            setAllResults([]);
-          }
+        // Always fetch global results because we need them for the Community Voices comments section
+        try {
+          const allResultsData = await bracketApi.getBracketResults(parseInt(id));
+          console.log('Fetched global results for comments:', allResultsData.length, 'results');
+          setAllResults(allResultsData);
+        } catch (error) {
+          console.log('No global results available yet:', error);
+          setAllResults([]);
         }
 
         if (user) {
@@ -414,8 +414,11 @@ const ResultsPage: React.FC = () => {
 
           {/* Rankings Display */}
           <div className="lg:col-span-3">
-            <div className="card p-6 bg-white dark:bg-gray-800 border dark:border-gray-700">
-              <div className="flex items-center justify-between mb-6">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+              {/* Rankings List */}
+              <div className={!selectedResult ? "xl:col-span-2" : "xl:col-span-3"}>
+                <div className="card p-6 bg-white dark:bg-gray-800 border dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                   {!selectedResult ? '🌍 Global Rankings' :
                    selectedResult === 'personal' ? '👤 Your Personal Rankings' :
@@ -499,20 +502,74 @@ const ResultsPage: React.FC = () => {
 
                       {/* Trophy for winner */}
                       {index === 0 && (
-                        <div className="flex-shrink-0">
-                          <motion.div
-                            animate={{ rotate: [0, 5, -5, 0] }}
-                            transition={{ duration: 2, repeat: Infinity }}
-                            className="text-yellow-500 dark:text-yellow-400"
-                          >
-                            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732L14.146 12.8l-1.179 4.456a1 1 0 01-1.934 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732L9.854 7.2l1.179-4.456A1 1 0 0112 2z" clipRule="evenodd" />
-                            </svg>
-                          </motion.div>
+                        <div className="flex-shrink-0 text-3xl ml-4">
+                          🏆
                         </div>
                       )}
                     </motion.div>
                   ))}
+                </div>
+              )}
+                </div>
+              </div>
+
+              {/* Community Voices (Only shown on Global Rankings) */}
+              {!selectedResult && (
+                <div className="xl:col-span-1 space-y-4">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+                    Community Voices
+                  </h2>
+                  
+                  {allResults.filter(r => r.comment && r.comment.trim() !== '').length === 0 ? (
+                    <div className="card p-6 text-center bg-white dark:bg-gray-800 border dark:border-gray-700">
+                      <p className="text-gray-500 dark:text-gray-400">No comments yet. Be the first to share your thoughts!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2 pb-4">
+                      {allResults
+                        .filter(r => r.comment && r.comment.trim() !== '')
+                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                        .map(r => {
+                          const winner = itemsMap.get(r.ranking[0]);
+                          const name = r.displayName || 'Anonymous';
+                          
+                          return (
+                            <motion.div 
+                              key={`comment-${r.id}`}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="card p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
+                            >
+                              <div className="flex items-center space-x-3 mb-3">
+                                <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-700 dark:text-primary-400 font-bold text-lg border border-primary-200 dark:border-primary-800 shadow-sm">
+                                  {name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-gray-900 dark:text-white">{name}</div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">{new Date(r.createdAt).toLocaleDateString()}</div>
+                                </div>
+                              </div>
+                              
+                              <p className="text-gray-700 dark:text-gray-300 italic mb-4 leading-relaxed">
+                                "{r.comment}"
+                              </p>
+                              
+                              {winner && (
+                                <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg flex items-center space-x-3 border border-gray-100 dark:border-gray-600">
+                                  <span className="text-xl shrink-0 drop-shadow-sm">🏆</span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold mb-0.5">Winner</div>
+                                    <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                      {winner.title}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </motion.div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
