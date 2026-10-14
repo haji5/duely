@@ -21,12 +21,13 @@ const LoginButton: React.FC = () => {
     <button
       onClick={handleGoogleSignIn}
       disabled={isLoading}
-      className="flex items-center justify-center px-4 py-2 border border-themed-primary rounded-md shadow-themed-sm bg-themed-secondary text-sm font-medium text-themed-primary hover:bg-themed-tertiary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="btn btn-secondary px-3 py-2"
+      aria-label="Sign in with Google"
     >
       {isLoading ? (
-        <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mr-2"></div>
+        <span className="spinner" />
       ) : (
-        <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+        <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" aria-hidden="true">
           <path
             fill="#4285F4"
             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -45,7 +46,7 @@ const LoginButton: React.FC = () => {
           />
         </svg>
       )}
-      {isLoading ? 'Signing in...' : 'Sign in with Google'}
+      <span className="hidden sm:inline">{isLoading ? 'Signing in…' : 'Sign in'}</span>
     </button>
   );
 };

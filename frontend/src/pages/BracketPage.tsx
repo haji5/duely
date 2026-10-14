@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { bracketApi } from '../services/api';
 import { Bracket, Item, BracketMatch, Tournament } from '@/types';
 import MediaPreview from '../components/MediaPreview';
+import { PageLoader, TypeIcon } from '../components/BracketCard';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
 
@@ -634,21 +635,20 @@ const BracketPage: React.FC = () => {
     };
 
     if (loading) {
-        return (
-            <div className="flex items-center justify-center py-20">
-                <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
-            </div>
-        );
+        return <PageLoader label="Loading bracket" />;
     }
 
     if (error) {
         return (
-            <div className="flex items-center justify-center py-20">
-                <div className="text-center">
-                    <h2 className="text-2xl font-bold text-themed-primary mb-4">Oops!</h2>
-                    <p className="text-themed-secondary mb-6">{error}</p>
+            <div className="page flex min-h-[60vh] flex-col items-start justify-center py-16">
+                <h1 className="font-display text-[2.75rem] font-black leading-none">This bracket can’t start</h1>
+                <p className="mt-3 max-w-lg text-lg text-themed-secondary">{error}</p>
+                <div className="mt-8 flex flex-wrap gap-3">
                     <button onClick={() => navigate('/')} className="btn btn-primary">
-                        Go Back Home
+                        Go to home
+                    </button>
+                    <button onClick={() => navigate('/browse')} className="btn btn-secondary">
+                        Browse brackets
                     </button>
                 </div>
             </div>
@@ -656,94 +656,84 @@ const BracketPage: React.FC = () => {
     }
 
     if (selectionPopup) {
+        const itemCount = selectionPopup.items.length;
         return (
-            <div className="min-h-screen flex items-center justify-center bg-themed-primary py-12 px-4">
-                <div className="card p-8 max-w-lg mx-auto text-center">
-                    <h2 className="text-3xl font-bold mb-4 text-themed-primary">
-                        {selectionPopup.bracket.name}
-                    </h2>
-                    <p className="text-themed-secondary mb-6">
-                        {selectionPopup.bracket.description}
+            <div className="page max-w-3xl pb-24 pt-10 sm:pt-16">
+                <p className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-themed-secondary">
+                    <TypeIcon type={selectionPopup.bracket.type} />
+                    {itemCount} entries in this bracket
+                </p>
+                <h1 className="font-display text-[3rem] font-black leading-[0.95] text-themed-primary sm:text-[4rem]">
+                    {selectionPopup.bracket.name}
+                </h1>
+                {selectionPopup.bracket.description && (
+                    <p className="mt-4 max-w-2xl text-lg text-themed-secondary">{selectionPopup.bracket.description}</p>
+                )}
+
+                <fieldset className="mt-10">
+                    <legend className="font-display text-2xl font-extrabold text-themed-primary">How many go in?</legend>
+                    <p className="mt-1 text-themed-secondary">
+                        Bigger brackets take longer and give every entry a fair shot.
+                        {selectionPopup.options[0] > itemCount && ' Spare spots become byes, so some entries skip a round.'}
                     </p>
-
-                    <div className="bg-themed-tertiary rounded-lg p-4 mb-6 border border-themed-primary">
-                        <div className="flex items-center justify-center gap-2 mb-2">
-                            <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 00-2 2v2m0 0V9a2 2 0 012-2m0 0h14m-2 2v-2" />
-                            </svg>
-                            <span className="font-semibold text-primary-600">Battle Arena</span>
-                        </div>
-                        <p className="text-sm text-themed-secondary">
-                            <span className="font-bold">{selectionPopup.items.length} items</span> ready to compete
-                        </p>
+                    <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Bracket size">
+                        {selectionPopup.options.map(opt => {
+                            const rounds = Math.log2(opt);
+                            const hasByes = opt > itemCount;
+                            return (
+                                <button
+                                    key={opt}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={selectedSize === opt}
+                                    onClick={() => {
+                                        setSelectedSize(opt);
+                                        // Play selection sound
+                                        audioRef.current?.playTick(800, 0.1, 0.06);
+                                    }}
+                                    className="choice px-4 py-3"
+                                >
+                                    <span className="block font-display text-[1.6rem] font-extrabold leading-none text-themed-primary">
+                                        {roundName(opt)}
+                                    </span>
+                                    <span className="mt-1.5 block text-sm font-medium text-themed-tertiary">
+                                        {rounds} {rounds === 1 ? 'round' : 'rounds'}, {opt - 1} {opt - 1 === 1 ? 'match' : 'matches'}
+                                        {hasByes && ', with byes'}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
+                </fieldset>
 
-                    <h3 className="text-xl font-bold mb-4 text-themed-primary">Select Tournament Size</h3>
-                    <p className="text-themed-secondary mb-6">
-                        Choose your tournament format. Larger rounds create more intense competition.
-                    </p>
+                <div className="mt-8 flex flex-col gap-3 border-t border-themed-primary pt-8 sm:flex-row">
+                    <button
+                        disabled={!selectedSize}
+                        onClick={() => {
+                            if (!selectedSize) return;
+                            // Play start sound
+                            audioRef.current?.playTick(1000, 0.1, 0.08);
 
-                    <div className="mb-6">
-                        <select
-                            className="w-full p-4 border border-themed-primary rounded-lg bg-themed-secondary text-themed-primary font-medium focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
-                            onChange={(e) => {
-                                const selectedValue = parseInt(e.target.value);
-                                if (selectedValue) {
-                                    setSelectedSize(selectedValue);
-                                    // Play selection sound
-                                    audioRef.current?.playTick(800, 0.1, 0.06);
-                                }
-                            }}
-                            defaultValue=""
-                        >
-                            <option value="" disabled>
-                                Select tournament format...
-                            </option>
-                            {selectionPopup.options.map(opt => (
-                                <option key={opt} value={opt}>
-                                    Round of {opt} ({Math.log2(opt)} {Math.log2(opt) === 1 ? 'round' : 'rounds'} • {opt - 1} {opt - 1 === 1 ? 'match' : 'total matches'}{opt > selectionPopup.items.length ? ' • includes BYEs' : ''})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Start Tournament Button */}
-                    {selectedSize && (
-                        <div className="mb-6">
-                            <button
-                                onClick={() => {
-                                    // Play start sound
-                                    audioRef.current?.playTick(1000, 0.1, 0.08);
-
-                                    const newTournament = createTournament(
-                                        selectionPopup.bracket,
-                                        [...selectionPopup.items].sort(() => Math.random() - 0.5).slice(0, selectedSize),
-                                        selectedSize
-                                    );
-                                    // Skip any initial bye rounds
-                                    const tournamentWithRealMatch = findNextRealMatch(newTournament);
-                                    setTournament(tournamentWithRealMatch || newTournament);
-                                    setSelectionPopup(null);
-                                }}
-                                className="btn btn-primary w-full py-4 text-lg font-bold hover:shadow-lg transition-all duration-200"
-                            >
-                                🏆 Start Round of {selectedSize} Tournament
-                            </button>
-                        </div>
-                    )}
-
-                    {/* View Stats Button */}
-                    <div className="border-t border-themed-primary pt-6 mt-6">
-                        <button
-                            onClick={() => navigate(`/results/${id}`)}
-                            className="btn btn-secondary w-full flex items-center justify-center gap-2 hover:shadow-lg transition-all duration-200"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                            </svg>
-                            View Stats & Results
-                        </button>
-                    </div>
+                            const newTournament = createTournament(
+                                selectionPopup.bracket,
+                                [...selectionPopup.items].sort(() => Math.random() - 0.5).slice(0, selectedSize),
+                                selectedSize
+                            );
+                            // Skip any initial bye rounds
+                            const tournamentWithRealMatch = findNextRealMatch(newTournament);
+                            setTournament(tournamentWithRealMatch || newTournament);
+                            setSelectionPopup(null);
+                        }}
+                        className="btn btn-primary btn-lg sm:min-w-[16rem]"
+                    >
+                        {selectedSize ? `Start the ${roundName(selectedSize).toLowerCase()}` : 'Pick a size to start'}
+                    </button>
+                    <button
+                        onClick={() => navigate(`/results/${id}`)}
+                        className="btn btn-secondary btn-lg"
+                    >
+                        See results so far
+                    </button>
                 </div>
             </div>
         );
@@ -756,146 +746,168 @@ const BracketPage: React.FC = () => {
     if (tournament.isComplete) {
         // Show saving state
         if (isSaving) {
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-themed-primary">
-                    <div className="text-center">
-                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                        <p className="text-themed-secondary text-lg font-medium">Saving your results...</p>
-                    </div>
-                </div>
-            );
+            return <PageLoader label="Saving your result" />;
         }
 
         const winner = tournament.finalRanking?.[0];
         const formData = completionForm || { displayName: user?.displayName || '', comment: '' };
 
+        const submit = async (withDetails: boolean) => {
+            setIsSaving(true);
+            if (withDetails) {
+                await saveTournamentResult(
+                    tournament as ExtendedTournament,
+                    formData.displayName.trim() || undefined,
+                    formData.comment.trim() || undefined
+                );
+            } else {
+                await saveTournamentResult(tournament as ExtendedTournament);
+            }
+            setCompletionForm(null);
+            setIsSaving(false);
+            handleViewResults();
+        };
+
         return (
-            <div className="bg-themed-primary py-12 min-h-screen">
-                <div className="max-w-2xl mx-auto px-4">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.5 }}
-                        className="card p-8"
+            <div className="page max-w-2xl pb-24 pt-10 sm:pt-16">
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                >
+                    <div
+                        className="relative overflow-hidden rounded-lg px-6 py-8 sm:px-8"
+                        style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)' }}
                     >
-                        <div className="text-center mb-8">
-                            <div className="w-20 h-20 mx-auto mb-4 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg shadow-yellow-400/20">
-                                <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732L14.146 12.8l-1.179 4.456a1 1 0 01-1.934 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732L9.854 7.2l1.179-4.456A1 1 0 0112 2z" clipRule="evenodd" />
-                                </svg>
-                            </div>
-                            <h1 className="text-3xl font-bold text-themed-primary mb-2">
-                                🏆 We Have a Winner!
-                            </h1>
-                            {winner && (
-                                <p className="text-xl text-primary-600 font-semibold">
-                                    {winner.title}
-                                </p>
-                            )}
+                        <svg className="absolute -bottom-6 -right-6 h-36 w-36 opacity-10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M6 1h12v4h4v2a5 5 0 01-5 5h-.4A6 6 0 0113 15.9V19h4v3H7v-3h4v-3.1A6 6 0 017.4 12H7a5 5 0 01-5-5V5h4V1zm0 6H4a3 3 0 002.3 2.9A6 6 0 016 8V7zm12 0v1a6 6 0 01-.3 1.9A3 3 0 0020 7h-2z" />
+                        </svg>
+                        <p className="relative font-semibold" style={{ color: 'inherit' }}>
+                            Your champion of {tournament.bracket.name}
+                        </p>
+                        <h1 className="relative mt-2 pr-10 font-display text-[2.5rem] font-black leading-[0.95] sm:text-[3.25rem]" style={{ color: 'inherit' }}>
+                            {winner ? winner.title : 'Bracket complete'}
+                        </h1>
+                    </div>
+
+                    <form
+                        className="mt-8 space-y-5"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            void submit(true);
+                        }}
+                    >
+                        <p className="text-themed-secondary">
+                            Add your name and a few words to the results page, or skip straight to the rankings.
+                        </p>
+                        <div>
+                            <label htmlFor="displayName" className="field-label">
+                                Your name
+                            </label>
+                            <input
+                                id="displayName"
+                                type="text"
+                                maxLength={100}
+                                value={formData.displayName}
+                                onChange={(e) => setCompletionForm(prev => ({ ...(prev || formData), displayName: e.target.value }))}
+                                placeholder="Shown next to your comment"
+                                className="field"
+                            />
                         </div>
 
-                        <div className="space-y-5">
-                            <div>
-                                <label htmlFor="displayName" className="block text-sm font-medium text-themed-secondary mb-2">
-                                    Your Name
+                        <div>
+                            <div className="flex items-baseline justify-between">
+                                <label htmlFor="comment" className="field-label">
+                                    Comment <span className="font-normal text-themed-tertiary">(optional)</span>
                                 </label>
-                                <input
-                                    id="displayName"
-                                    type="text"
-                                    maxLength={100}
-                                    value={formData.displayName}
-                                    onChange={(e) => setCompletionForm(prev => ({ ...(prev || formData), displayName: e.target.value }))}
-                                    placeholder="Enter your name..."
-                                    className="w-full p-3 border border-themed-primary rounded-lg bg-themed-secondary text-themed-primary placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
-                                />
+                                <span className="field-hint tabular">{formData.comment.length}/500</span>
                             </div>
-
-                            <div>
-                                <label htmlFor="comment" className="block text-sm font-medium text-themed-secondary mb-2">
-                                    Leave a Comment (Optional)
-                                </label>
-                                <textarea
-                                    id="comment"
-                                    maxLength={500}
-                                    rows={3}
-                                    value={formData.comment}
-                                    onChange={(e) => setCompletionForm(prev => ({ ...(prev || formData), comment: e.target.value }))}
-                                    placeholder="Why did you pick this winner? Share your thoughts..."
-                                    className="w-full p-3 border border-themed-primary rounded-lg bg-themed-secondary text-themed-primary placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 resize-none"
-                                />
-                                <p className="text-xs text-gray-500 mt-1 text-right">{formData.comment.length}/500</p>
-                            </div>
-
-                            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                                <button
-                                    onClick={async () => {
-                                        setIsSaving(true);
-                                        await saveTournamentResult(
-                                            tournament as ExtendedTournament,
-                                            formData.displayName.trim() || undefined,
-                                            formData.comment.trim() || undefined
-                                        );
-                                        setCompletionForm(null);
-                                        setIsSaving(false);
-                                        handleViewResults();
-                                    }}
-                                    className="btn btn-primary flex-1 py-3 text-lg font-semibold shadow-lg shadow-primary-500/30"
-                                >
-                                    Submit & View Results
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        setIsSaving(true);
-                                        await saveTournamentResult(tournament as ExtendedTournament);
-                                        setCompletionForm(null);
-                                        setIsSaving(false);
-                                        handleViewResults();
-                                    }}
-                                    className="btn btn-secondary flex-1 py-3"
-                                >
-                                    Skip
-                                </button>
-                            </div>
+                            <textarea
+                                id="comment"
+                                maxLength={500}
+                                rows={3}
+                                value={formData.comment}
+                                onChange={(e) => setCompletionForm(prev => ({ ...(prev || formData), comment: e.target.value }))}
+                                placeholder="Why did this one win?"
+                                className="field resize-none"
+                            />
                         </div>
-                    </motion.div>
-                </div>
+
+                        <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+                            <button type="submit" className="btn btn-primary btn-lg flex-1">
+                                Post and see results
+                            </button>
+                            <button type="button" onClick={() => void submit(false)} className="btn btn-secondary btn-lg">
+                                Skip
+                            </button>
+                        </div>
+                    </form>
+                </motion.div>
             </div>
         );
     }
 
     const matchDisplay = getCurrentMatchDisplay();
+    const totalMatches = tournament.targetSize - 1;
+    const playedMatches = tournament.rounds
+        .slice(0, tournament.currentRound + 1)
+        .reduce((sum, round) => sum + round.winners.length, 0);
 
     return (
-        <div className="bg-themed-primary py-12 min-h-screen">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-12">
-                    <h1 className="text-4xl font-bold text-themed-primary mb-4">
-                        {tournament.bracket.name}
-                    </h1>
-                    <p className="text-themed-secondary mb-6">{tournament.bracket.description}</p>
-
+        <div className="page max-w-6xl pb-16 pt-6 sm:pt-10">
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+                <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-themed-secondary">{tournament.bracket.name}</p>
                     {matchDisplay && (
-                        <div className="bg-themed-secondary rounded-lg p-6 inline-block shadow-themed-lg border border-themed-primary">
-                            <p className="text-2xl font-bold text-primary-600 mb-2">
-                                Round of {matchDisplay.roundOf}
-                            </p>
-                            <p className="text-lg text-themed-secondary">
-                                Match {matchDisplay.current} of {matchDisplay.total}
-                            </p>
-                        </div>
+                        <h1 className="font-display text-[2.6rem] font-black leading-none text-themed-primary sm:text-[3.25rem]">
+                            {roundName(matchDisplay.roundOf)}
+                        </h1>
                     )}
                 </div>
-
-                {tournament.currentMatch && (
-                    <BattleArena
-                        match={tournament.currentMatch}
-                        onChoice={handleChoice}
-                        winnerAnimation={winnerAnimation}
-                    />
+                {matchDisplay && (
+                    <p className="font-display text-2xl font-bold text-themed-secondary tabular">
+                        Match {matchDisplay.current} of {matchDisplay.total}
+                    </p>
                 )}
             </div>
+
+            <div
+                className="mb-8 h-1.5 w-full overflow-hidden rounded-full bg-themed-tertiary"
+                role="progressbar"
+                aria-label="Bracket progress"
+                aria-valuemin={0}
+                aria-valuemax={totalMatches}
+                aria-valuenow={playedMatches}
+            >
+                <div
+                    className="h-full rounded-full transition-[width] duration-500"
+                    style={{
+                        width: `${Math.min(100, (playedMatches / Math.max(1, totalMatches)) * 100)}%`,
+                        backgroundColor: 'var(--accent-primary)'
+                    }}
+                />
+            </div>
+
+            {tournament.currentMatch && (
+                <BattleArena
+                    match={tournament.currentMatch}
+                    onChoice={handleChoice}
+                    winnerAnimation={winnerAnimation}
+                />
+            )}
+
+            <p className="mt-6 text-center text-sm text-themed-tertiary">
+                Press play to preview a clip. Click anywhere else on a card to pick it.
+            </p>
         </div>
     );
+};
+
+const roundName = (size: number) => {
+    if (size === 2) return 'Final';
+    if (size === 4) return 'Semifinals';
+    if (size === 8) return 'Quarterfinals';
+    return `Round of ${size}`;
 };
 
 const BattleArena: React.FC<{
@@ -907,22 +919,16 @@ const BattleArena: React.FC<{
     } | null;
 }> = ({ match, onChoice, winnerAnimation }) => {
     return (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5 }}
-            className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto relative"
-        >
+        <div className="relative grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-6">
             <BattleItem
                 item={match.itemA}
                 onSelect={() => onChoice(match.itemA)}
                 side="left"
                 winnerAnimation={winnerAnimation}
             />
-            <div className="flex items-center justify-center lg:hidden">
-                <div className="bg-themed-secondary rounded-full p-3 shadow-themed-lg border border-themed-primary">
-                    <span className="text-2xl font-bold text-primary-600">VS</span>
-                </div>
+            {/* Stacked layout: VS sits in the flow between the cards */}
+            <div className="flex items-center justify-center md:hidden" aria-hidden="true">
+                <span className="font-display text-[1.9rem] font-black italic leading-none text-themed-primary">VS</span>
             </div>
             <BattleItem
                 item={match.itemB}
@@ -930,12 +936,14 @@ const BattleArena: React.FC<{
                 side="right"
                 winnerAnimation={winnerAnimation}
             />
-            <div className="hidden lg:flex lg:absolute lg:left-1/2 lg:top-1/2 lg:transform lg:-translate-x-1/2 lg:-translate-y-1/2 lg:z-10">
-                <div className="bg-themed-secondary rounded-full p-4 shadow-themed-xl border-4 border-primary-200">
-                    <span className="text-3xl font-bold text-primary-600">VS</span>
-                </div>
+            <div
+                className="pointer-events-none absolute left-1/2 top-1/2 z-10 hidden h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full md:flex"
+                style={{ backgroundColor: 'var(--bg-primary)', boxShadow: '0 0 0 6px var(--bg-primary)' }}
+                aria-hidden="true"
+            >
+                <span className="font-display text-[2.2rem] font-black italic leading-none text-themed-primary">VS</span>
             </div>
-        </motion.div>
+        </div>
     );
 };
 
@@ -951,143 +959,137 @@ const BattleItem: React.FC<{
     const isWinner = winnerAnimation && item.id === winnerAnimation.winnerId;
     const isLoser = winnerAnimation && item.id === winnerAnimation.loserId;
     const isAnimating = winnerAnimation !== null;
+    const canPick = !isAnimating && item.mediaType !== 'bye';
+    const sideColor = side === 'left' ? 'var(--side-a)' : 'var(--side-b)';
 
     const handleClick = () => {
-        if (!isAnimating && !(item.mediaType === 'bye')) {
+        if (canPick) {
             onSelect();
         }
     };
 
     return (
         <motion.div
-            initial={{ x: side === 'left' ? -100 : 100, opacity: 0 }}
+            initial={{ x: side === 'left' ? -40 : 40, opacity: 0 }}
             animate={{
                 x: 0,
-                opacity: 1,
-                scale: isWinner ? 1.05 : isLoser ? 0.95 : 1,
-                rotateY: isWinner ? [0, 5, -5, 0] : 0
+                opacity: isLoser ? 0.55 : 1,
+                scale: isWinner ? 1.02 : isLoser ? 0.97 : 1,
             }}
             transition={{
-                duration: 0.6,
-                delay: 0.2,
+                duration: 0.4,
                 scale: { duration: 0.3 },
-                rotateY: { duration: 0.6, repeat: isWinner ? 2 : 0 }
+                opacity: { duration: 0.3 }
             }}
             className="relative"
         >
             <div
                 onClick={handleClick}
-                className={`item-card p-8 h-[32rem] flex flex-col relative overflow-hidden transition-all duration-300 ${
-                    !isAnimating && item.mediaType !== 'bye' ? 'cursor-pointer group' : 'cursor-default'
-                } ${
-                    isWinner ? 'ring-4 ring-green-400 ring-opacity-75 shadow-2xl' : 
-                    isLoser ? 'ring-4 ring-red-400 ring-opacity-75' : ''
+                onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleClick();
+                    }
+                }}
+                role="button"
+                tabIndex={canPick ? 0 : -1}
+                aria-disabled={!canPick}
+                aria-label={`Pick ${item.title}`}
+                className={`group card relative flex min-h-[24rem] flex-col overflow-hidden border-2 transition-colors duration-200 sm:min-h-[30rem] ${
+                    canPick ? 'cursor-pointer' : 'cursor-default'
                 }`}
+                style={{
+                    borderColor: isWinner ? 'var(--accent-primary)' : undefined,
+                    borderTopColor: isWinner ? 'var(--accent-primary)' : sideColor,
+                    borderTopWidth: 6,
+                }}
             >
-                <div className="flex-1 flex items-center justify-center min-h-0 mb-6">
+                <div className="flex min-h-0 flex-1 items-center justify-center p-5 sm:p-6">
                     <div className="w-full max-w-md">
                         <MediaPreview item={item} />
                     </div>
                 </div>
-                <div className="flex-shrink-0 text-center space-y-2">
-                    <h3 className={`text-2xl font-bold transition-colors line-clamp-2 ${
-                        isWinner ? 'text-green-600' : 
-                        isLoser ? 'text-red-600' : 
-                        'text-themed-primary group-hover:text-primary-600'
-                    }`}>
-                        {item.title}
-                    </h3>
-                    <p className="text-themed-secondary capitalize text-base font-medium">{item.mediaType === 'bye' ? 'automatic advance' : item.mediaType}</p>
+                <div className="flex flex-shrink-0 items-center gap-4 border-t border-themed-primary px-5 py-4 sm:px-6">
+                    <div className="min-w-0 flex-1">
+                        <h2 className="font-display text-[1.75rem] font-extrabold leading-[1.05] text-themed-primary line-clamp-2">
+                            {item.title}
+                        </h2>
+                        {(isWinner || isLoser || item.mediaType === 'bye') && (
+                            <p className="mt-1 text-sm font-semibold" style={{ color: isWinner ? 'var(--accent-ink)' : 'var(--text-tertiary)' }}>
+                                {item.mediaType === 'bye'
+                                    ? 'Advances automatically'
+                                    : isWinner
+                                        ? 'Through to the next round'
+                                        : 'Knocked out'}
+                            </p>
+                        )}
+                    </div>
+                    {canPick && (
+                        <span
+                            className="pick-chip shrink-0 rounded-md border px-4 py-2 font-semibold"
+                            style={{ '--side': sideColor } as React.CSSProperties}
+                            aria-hidden="true"
+                        >
+                            Pick
+                        </span>
+                    )}
                 </div>
 
-                {/* Winner celebration animation */}
+                {/* Hover wash in the side's colour */}
+                {canPick && (
+                    <div
+                        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-[0.07] group-focus-visible:opacity-[0.07]"
+                        style={{ backgroundColor: sideColor }}
+                    />
+                )}
+
                 {isWinner && (
                     <>
-                        {/* Celebration particles */}
-                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                        {/* Celebration confetti */}
+                        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
                             {[...Array(12)].map((_, i) => (
                                 <motion.div
                                     key={i}
-                                    className="absolute w-3 h-3 bg-yellow-400 rounded-full"
-                                    initial={{
-                                        x: '50%',
-                                        y: '50%',
-                                        scale: 0,
-                                        opacity: 1
-                                    }}
+                                    className="absolute h-2.5 w-2.5 rounded-sm"
+                                    style={{ backgroundColor: i % 3 === 0 ? sideColor : 'var(--accent-primary)' }}
+                                    initial={{ x: '50%', y: '50%', scale: 0, opacity: 1 }}
                                     animate={{
                                         x: `${50 + (Math.random() - 0.5) * 200}%`,
                                         y: `${50 + (Math.random() - 0.5) * 200}%`,
                                         scale: [0, 1, 0],
-                                        opacity: [1, 1, 0]
+                                        opacity: [1, 1, 0],
+                                        rotate: Math.random() * 360
                                     }}
-                                    transition={{
-                                        duration: 1.5,
-                                        delay: i * 0.1,
-                                        ease: "easeOut"
-                                    }}
+                                    transition={{ duration: 1.5, delay: i * 0.08, ease: 'easeOut' }}
                                 />
                             ))}
                         </div>
-
-                        {/* Winner badge */}
                         <motion.div
                             initial={{ scale: 0, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            transition={{ delay: 0.3, duration: 0.5, type: "spring" }}
-                            className="absolute top-4 left-4 bg-green-500 text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg z-10"
+                            transition={{ delay: 0.15, duration: 0.4, type: 'spring' }}
+                            className="absolute left-4 top-4 z-10 rounded-md px-3 py-1.5 font-display text-lg font-extrabold"
+                            style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)' }}
                         >
-                            WINNER!
+                            Winner
                         </motion.div>
-
-                        {/* Winner glow effect */}
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: [0, 0.3, 0] }}
-                            transition={{ duration: 1.5, repeat: 1 }}
-                            className="absolute inset-0 bg-green-400 pointer-events-none rounded-lg"
-                        />
                     </>
                 )}
 
-                {/* Loser fade effect */}
                 {isLoser && (
-                    <>
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 0.7 }}
-                            transition={{ duration: 0.5 }}
-                            className="absolute inset-0 bg-themed-tertiary opacity-80 pointer-events-none rounded-lg"
-                        />
-                        <motion.div
-                            initial={{ scale: 0, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            transition={{ delay: 0.3, duration: 0.5 }}
-                            className="absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg z-10"
-                        >
-                            Eliminated
-                        </motion.div>
-                    </>
-                )}
-
-                {/* Default hover effect (only when not animating) */}
-                {!isAnimating && item.mediaType !== 'bye' && (
-                    <>
-                        <div className="absolute inset-0 bg-primary-600 opacity-0 group-hover:opacity-10 transition-opacity duration-300 pointer-events-none" />
-                        <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <div className="bg-primary-600 text-white p-3 rounded-full shadow-lg">
-                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                            </div>
-                        </div>
-                    </>
+                    <motion.div
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: 0.15, duration: 0.3 }}
+                        className="absolute right-4 top-4 z-10 rounded-md bg-themed-tertiary px-3 py-1.5 font-display text-lg font-extrabold text-themed-secondary"
+                    >
+                        Out
+                    </motion.div>
                 )}
             </div>
         </motion.div>
     );
 };
-
-
 
 export default BracketPage;

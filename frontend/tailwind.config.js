@@ -5,37 +5,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Indigo, matching the --accent-* theme variables in index.css
+        // Gold "champion" scale, matching the --accent-* theme variables in index.css
         primary: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
+          50: '#fff8e6',
+          100: '#feedc0',
+          200: '#fde08f',
+          300: '#fbd05e',
+          400: '#f7c24a',
+          500: '#f5b82e',
+          600: '#e0a51f',
+          700: '#b98515',
+          800: '#8a6310',
+          900: '#5c420b',
         },
       },
       fontFamily: {
-        'sans': ['Inter', 'ui-sans-serif', 'system-ui'],
-      },
-      animation: {
-        'fade-in': 'fadeIn 0.5s ease-in-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-      },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUp: {
-          '0%': { transform: 'translateY(20px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        },
+        'sans': ['Barlow', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        'display': ['"Big Shoulders Display"', 'Barlow', 'ui-sans-serif', 'sans-serif'],
       },
     },
   },

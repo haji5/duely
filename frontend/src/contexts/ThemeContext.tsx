@@ -18,18 +18,17 @@ export const useTheme = () => {
 };
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setTheme] = useState<Theme>('dark');
-
-  useEffect(() => {
-    // Check localStorage for saved theme preference
-    const savedTheme = localStorage.getItem('theme') as Theme;
-    if (savedTheme) {
-      setTheme(savedTheme);
-    } else {
-      // Default to dark theme (no system preference check)
-      setTheme('dark');
+  // Read the saved preference synchronously so the first render already has it
+  // (reading it in an effect let the save effect below overwrite it with the default first).
+  // Defaults to dark (no system preference check).
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const savedTheme = localStorage.getItem('theme');
+      return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
+    } catch {
+      return 'dark';
     }
-  }, []);
+  });
 
   useEffect(() => {
     // Apply theme to document root

@@ -1,6 +1,6 @@
 @import "tailwindcss";
 /* Tailwind 4 only reads the JS config when it is referenced explicitly
-   (primary palette, Inter font, custom animations). */
+   (primary palette, Barlow / Big Shoulders fonts). */
 @config "../tailwind.config.js";
 
 /* Tailwind 4 defaults `dark:` to prefers-color-scheme; follow the app's theme toggle
@@ -9,70 +9,83 @@
 
 @layer base {
   :root {
-    /* Light theme variables */
-    --bg-primary: #f9fafb;
+    /* Light theme: cool chalk paper with ink text */
+    --bg-primary: #eceff4;
     --bg-secondary: #ffffff;
-    --bg-tertiary: #f3f4f6;
-    --text-primary: #111827;
-    --text-secondary: #6b7280;
-    --text-tertiary: #9ca3af;
-    --border-primary: #e5e7eb;
-    --border-secondary: #d1d5db;
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --bg-tertiary: #e1e5ec;
+    --text-primary: #151a24;
+    --text-secondary: #4a5262;
+    --text-tertiary: #737c8d;
+    --border-primary: #d2d8e1;
+    --border-secondary: #b6becb;
+    --shadow-sm: 0 1px 2px rgba(21, 26, 36, 0.06);
+    --shadow-md: 0 2px 6px rgba(21, 26, 36, 0.08);
+    --shadow-lg: 0 8px 24px -8px rgba(21, 26, 36, 0.18);
+    --shadow-xl: 0 18px 40px -16px rgba(21, 26, 36, 0.28);
 
-    /* Button and accent colors */
-    --accent-primary: #4f46e5;
-    --accent-primary-hover: #4338ca;
-    --accent-primary-text: #ffffff;
-    --accent-secondary: #6366f1;
-    --accent-secondary-hover: #5b21b6;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --error: #ef4444;
-    --info: #3b82f6;
+    /* Gold = the action / champion colour */
+    --accent-primary: #f5b82e;
+    --accent-primary-hover: #e9a919;
+    --accent-primary-text: #151a24;
+    --accent-ink: #9a6a00; /* gold that reads as text on light surfaces */
+
+    /* The two corners of every match */
+    --side-a: #e0464b;
+    --side-b: #2f63e0;
+
+    --focus-ring: #2f63e0;
+    --success: #1f9d63;
+    --warning: #c98a00;
+    --error: #d63c41;
+    --info: #2f63e0;
   }
 
   [data-theme="dark"] {
-    /* Dark theme variables */
-    --bg-primary: #111827;
-    --bg-secondary: #1f2937;
-    --bg-tertiary: #374151;
-    --text-primary: #f9fafb;
-    --text-secondary: #d1d5db;
-    --text-tertiary: #9ca3af;
-    --border-primary: #374151;
-    --border-secondary: #4b5563;
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+    /* Dark theme: deep slate navy, not black */
+    --bg-primary: #141a26;
+    --bg-secondary: #1c2433;
+    --bg-tertiary: #263042;
+    --text-primary: #eef1f6;
+    --text-secondary: #aab3c3;
+    --text-tertiary: #7d889b;
+    --border-primary: #2d384b;
+    --border-secondary: #3d4a60;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
+    --shadow-xl: 0 22px 48px -18px rgba(0, 0, 0, 0.7);
 
-    /* Button and accent colors - adjusted for dark mode */
-    --accent-primary: #6366f1;
-    --accent-primary-hover: #7c3aed;
-    --accent-primary-text: #ffffff;
-    --accent-secondary: #8b5cf6;
-    --accent-secondary-hover: #a855f7;
-    --success: #34d399;
-    --warning: #fbbf24;
-    --error: #f87171;
-    --info: #60a5fa;
+    --accent-primary: #f7c24a;
+    --accent-primary-hover: #ffd36e;
+    --accent-primary-text: #151a24;
+    --accent-ink: #f7c24a;
+
+    --side-a: #ff6266;
+    --side-b: #6b95ff;
+
+    --focus-ring: #8fb0ff;
+    --success: #3fcf8e;
+    --warning: #f7c24a;
+    --error: #ff6b6f;
+    --info: #6b95ff;
   }
 
-  * {
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  html {
+    color-scheme: light;
+  }
+
+  html[data-theme="dark"] {
+    color-scheme: dark;
   }
 
   body {
     @apply font-sans antialiased;
     background-color: var(--bg-primary);
     color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.55;
   }
 
-  /* Default text elements should use theme-aware colors */
   h1, h2, h3, h4, h5, h6 {
     color: var(--text-primary);
   }
@@ -81,54 +94,32 @@
     color: var(--text-primary);
   }
 
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--accent-primary);
+    color: var(--accent-primary-text);
+  }
+
   /* Theme-aware background utilities */
-  .bg-themed-primary {
-    background-color: var(--bg-primary);
-  }
+  .bg-themed-primary { background-color: var(--bg-primary); }
+  .bg-themed-secondary { background-color: var(--bg-secondary); }
+  .bg-themed-tertiary { background-color: var(--bg-tertiary); }
 
-  .bg-themed-secondary {
-    background-color: var(--bg-secondary);
-  }
+  .text-themed-primary { color: var(--text-primary); }
+  .text-themed-secondary { color: var(--text-secondary); }
+  .text-themed-tertiary { color: var(--text-tertiary); }
 
-  .bg-themed-tertiary {
-    background-color: var(--bg-tertiary);
-  }
+  .border-themed-primary { border-color: var(--border-primary); }
+  .border-themed-secondary { border-color: var(--border-secondary); }
 
-  .text-themed-primary {
-    color: var(--text-primary);
-  }
-
-  .text-themed-secondary {
-    color: var(--text-secondary);
-  }
-
-  .text-themed-tertiary {
-    color: var(--text-tertiary);
-  }
-
-  .border-themed-primary {
-    border-color: var(--border-primary);
-  }
-
-  .border-themed-secondary {
-    border-color: var(--border-secondary);
-  }
-
-  .shadow-themed-sm {
-    box-shadow: var(--shadow-sm);
-  }
-
-  .shadow-themed-md {
-    box-shadow: var(--shadow-md);
-  }
-
-  .shadow-themed-lg {
-    box-shadow: var(--shadow-lg);
-  }
-
-  .shadow-themed-xl {
-    box-shadow: var(--shadow-xl);
-  }
+  .shadow-themed-sm { box-shadow: var(--shadow-sm); }
+  .shadow-themed-md { box-shadow: var(--shadow-md); }
+  .shadow-themed-lg { box-shadow: var(--shadow-lg); }
+  .shadow-themed-xl { box-shadow: var(--shadow-xl); }
 
   /* Input and form elements */
   input, textarea, select {
@@ -141,22 +132,49 @@
     color: var(--text-tertiary);
   }
 
-  input:focus, textarea:focus, select:focus {
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-  }
-
   .line-clamp-2 {
     overflow: hidden;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer components {
+  /* Display face: condensed, scoreboard-like */
+  .font-display {
+    font-family: "Big Shoulders Display", Barlow, ui-sans-serif, sans-serif;
+    letter-spacing: 0.005em;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .page {
+    @apply max-w-6xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
   .btn {
-    @apply px-6 py-3 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md font-semibold text-[0.95rem] whitespace-nowrap select-none;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 100ms ease;
+  }
+
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
   }
 
   .btn-primary {
@@ -165,116 +183,163 @@
     border: 1px solid var(--accent-primary);
   }
 
-  .btn-primary:hover {
+  .btn-primary:hover:not(:disabled) {
     background-color: var(--accent-primary-hover);
     border-color: var(--accent-primary-hover);
   }
 
-  .btn-primary:focus {
-    --tw-ring-color: var(--accent-primary);
-  }
-
   .btn-secondary {
-    background-color: var(--bg-tertiary);
+    background-color: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-primary);
+    border: 1px solid var(--border-secondary);
   }
 
-  .btn-secondary:hover {
-    background-color: var(--border-primary);
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--bg-tertiary);
+    border-color: var(--text-tertiary);
   }
 
-  .btn-secondary:focus {
-    --tw-ring-color: var(--border-secondary);
+  .btn-ghost {
+    background-color: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base;
   }
 
   .card {
     background-color: var(--bg-secondary);
-    @apply rounded-xl border overflow-hidden;
+    @apply rounded-lg border;
     border-color: var(--border-primary);
-    box-shadow: var(--shadow-lg);
     color: var(--text-primary);
   }
 
-  .item-card {
+  .field {
+    @apply block w-full rounded-md border px-3.5 py-2.5 text-[0.95rem];
     background-color: var(--bg-secondary);
-    @apply rounded-xl border overflow-hidden cursor-pointer transition-all duration-300 hover:scale-105;
-    border-color: var(--border-primary);
-    box-shadow: var(--shadow-xl);
+    border-color: var(--border-secondary);
+    color: var(--text-primary);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .field:hover:not(:disabled) {
+    border-color: var(--text-tertiary);
+  }
+
+  .field:focus {
+    outline: none;
+    border-color: var(--focus-ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 25%, transparent);
+  }
+
+  .field:disabled {
+    @apply opacity-60;
+  }
+
+  .field-label {
+    @apply block text-sm font-semibold mb-1.5;
     color: var(--text-primary);
   }
 
-  .item-card:hover {
-    box-shadow: var(--shadow-xl);
+  .field-hint {
+    @apply text-sm;
+    color: var(--text-tertiary);
   }
 
-  /* Primary color classes for consistency */
-  .bg-primary-600 {
-    background-color: var(--accent-primary);
-  }
-
-  .bg-primary-700 {
-    background-color: var(--accent-primary-hover);
-  }
-
-  .text-primary-600 {
-    color: var(--accent-primary);
-  }
-
-  /* Theme Toggle Styles */
-  .theme-toggle {
-    @apply relative p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2;
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-primary);
-  }
-
-  .theme-toggle:focus {
-    --tw-ring-color: var(--accent-primary);
-  }
-
-  .theme-toggle-track {
-    @apply w-12 h-6 rounded-full relative;
-    background-color: var(--border-primary);
-    transition: background-color 0.3s ease;
-  }
-
-  .theme-toggle-thumb {
-    @apply w-5 h-5 rounded-full absolute top-0.5 left-0.5 flex items-center justify-center;
+  /* Segmented choice buttons (type picker, tournament size, result views) */
+  .choice {
+    @apply rounded-md border px-3 py-2 text-left font-semibold;
+    border-color: var(--border-secondary);
+    color: var(--text-secondary);
     background-color: var(--bg-secondary);
-    transition: transform 0.3s ease, background-color 0.3s ease;
+    transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
   }
 
-  /* Status and utility colors */
-  .text-success {
-    color: var(--success);
+  .choice:hover {
+    color: var(--text-primary);
+    border-color: var(--text-tertiary);
   }
 
-  .text-warning {
-    color: var(--warning);
+  .choice[aria-pressed="true"],
+  .choice[aria-checked="true"],
+  .choice[aria-selected="true"] {
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+    background-color: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-secondary));
+    box-shadow: inset 0 0 0 1px var(--accent-primary);
   }
 
-  .text-error {
-    color: var(--error);
+  .notice {
+    @apply rounded-md border-l-4 px-4 py-3 text-sm;
+    background-color: var(--bg-secondary);
+    border-color: var(--border-secondary);
+    color: var(--text-secondary);
   }
 
-  .text-info {
-    color: var(--info);
+  .notice-info { border-left-color: var(--side-b); }
+  .notice-warning { border-left-color: var(--accent-primary); }
+  .notice-error { border-left-color: var(--error); }
+
+  .spinner {
+    @apply inline-block rounded-full animate-spin;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid var(--border-secondary);
+    border-top-color: var(--accent-primary);
   }
 
-  .bg-success {
-    background-color: var(--success);
+  /* Legacy colour hooks kept so older markup still themes correctly */
+  .bg-primary-600 { background-color: var(--accent-primary); }
+  .bg-primary-700 { background-color: var(--accent-primary-hover); }
+  .text-primary-600 { color: var(--accent-ink); }
+
+  .text-success { color: var(--success); }
+  .text-warning { color: var(--warning); }
+  .text-error { color: var(--error); }
+  .text-info { color: var(--info); }
+  .bg-success { background-color: var(--success); }
+  .bg-warning { background-color: var(--warning); }
+  .bg-error { background-color: var(--error); }
+  .bg-info { background-color: var(--info); }
+
+  /* "Pick" affordance on battle cards; fills with the card's side colour */
+  .pick-chip {
+    border-color: var(--side);
+    color: var(--side);
+    transition: background-color 150ms ease, color 150ms ease;
   }
 
-  .bg-warning {
-    background-color: var(--warning);
+  .group:hover .pick-chip,
+  .group:focus-visible .pick-chip {
+    background-color: var(--side);
+    color: #fff;
   }
 
-  .bg-error {
-    background-color: var(--error);
+  /* Hero bracket: the winner's path draws itself once on load */
+  .bracket-path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: bracket-draw 1.6s cubic-bezier(0.65, 0, 0.35, 1) 0.3s forwards;
   }
 
-  .bg-info {
-    background-color: var(--info);
+  .bracket-trophy {
+    opacity: 0;
+    animation: bracket-reveal 0.4s ease-out 1.8s forwards;
+  }
+
+  @keyframes bracket-draw {
+    to { stroke-dashoffset: 0; }
+  }
+
+  @keyframes bracket-reveal {
+    to { opacity: 1; }
   }
 }
 
@@ -291,17 +356,12 @@
   .border-primary { border-color: var(--border-primary); }
   .border-secondary { border-color: var(--border-secondary); }
 
-  .shadow-primary { box-shadow: var(--shadow-sm); }
-  .shadow-secondary { box-shadow: var(--shadow-md); }
-  .shadow-large { box-shadow: var(--shadow-lg); }
-  .shadow-extra-large { box-shadow: var(--shadow-xl); }
+  .text-accent { color: var(--accent-ink); }
+  .text-side-a { color: var(--side-a); }
+  .text-side-b { color: var(--side-b); }
 
-  /* Hover variants */
   .hover\:text-primary:hover { color: var(--text-primary); }
   .hover\:text-secondary:hover { color: var(--text-secondary); }
-  .hover\:bg-primary:hover { background-color: var(--bg-primary); }
-  .hover\:bg-secondary:hover { background-color: var(--bg-secondary); }
   .hover\:bg-tertiary:hover { background-color: var(--bg-tertiary); }
-  .hover\:border-primary:hover { border-color: var(--border-primary); }
   .hover\:border-secondary:hover { border-color: var(--border-secondary); }
 }

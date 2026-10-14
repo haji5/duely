@@ -31,6 +31,15 @@ const UserProfile: React.FC = () => {
     }
   };
 
+  React.useEffect(() => {
+    if (!showDropdown) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowDropdown(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showDropdown]);
+
   if (!currentUser) {
     return null;
   }
@@ -39,60 +48,69 @@ const UserProfile: React.FC = () => {
     <div className="relative">
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors"
+        className="flex items-center gap-1.5 rounded-full p-0.5 text-themed-secondary transition-colors hover:text-themed-primary"
+        aria-haspopup="menu"
+        aria-expanded={showDropdown}
+        aria-label="Account menu"
       >
         {currentUser.photoURL ? (
           <img
             src={currentUser.photoURL}
-            alt={firstName || 'User'}
-            className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
+            alt=""
+            className="h-8 w-8 rounded-full border border-themed-secondary"
+            referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center ring-2 ring-gray-200 dark:ring-gray-700">
-            <span className="text-sm font-semibold text-white">
-              {firstName?.charAt(0) || currentUser.email?.charAt(0) || 'U'}
-            </span>
-          </div>
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-full font-display text-lg font-extrabold"
+            style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)' }}
+          >
+            {(firstName?.charAt(0) || currentUser.email?.charAt(0) || 'U').toUpperCase()}
+          </span>
         )}
         <svg
-          className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
+          aria-hidden="true"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {showDropdown && (
-        <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-50 border border-gray-200 dark:border-gray-700">
-          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-              {firstName || 'User'}
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 truncate" title={currentUser.email || ''}>
+        <div
+          role="menu"
+          className="card absolute right-0 z-50 mt-2 w-64 py-1.5 shadow-themed-xl"
+        >
+          <div className="border-b border-themed-primary px-4 pb-3 pt-2">
+            <p className="font-semibold text-themed-primary">{firstName || 'Signed in'}</p>
+            <p className="truncate text-sm text-themed-tertiary" title={currentUser.email || ''}>
               {currentUser.email}
             </p>
           </div>
           <Link
             to={`/browse?creator=${encodeURIComponent(currentUser.uid)}`}
-            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center space-x-3 group"
+            role="menuitem"
+            className="flex items-center gap-3 px-4 py-2.5 text-[0.95rem] text-themed-secondary transition-colors hover:bg-themed-tertiary hover:text-themed-primary"
             onClick={() => setShowDropdown(false)}
           >
-            <svg className="w-5 h-5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5h5v6h6M4 19h5v-6M15 11v2h5" />
             </svg>
-            <span>My Brackets</span>
+            <span>My brackets</span>
           </Link>
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-3 group"
+            role="menuitem"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[0.95rem] text-themed-secondary transition-colors hover:bg-themed-tertiary hover:text-themed-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
-            <span>{isLoggingOut ? 'Signing out...' : 'Sign out'}</span>
+            <span>{isLoggingOut ? 'Signing out…' : 'Sign out'}</span>
           </button>
         </div>
       )}

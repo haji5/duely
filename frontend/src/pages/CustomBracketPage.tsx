@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { bracketApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -299,85 +298,94 @@ const CustomBracketPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <h1 className="text-4xl font-bold text-primary text-center mb-8">
-          Create Your Own Bracket
-        </h1>
+    <div className="page max-w-3xl pb-24 pt-10 sm:pt-14">
+        <header className="mb-10">
+          <h1 className="font-display text-[3rem] font-black leading-none text-themed-primary sm:text-[3.5rem]">
+            Make a bracket
+          </h1>
+          <p className="mt-3 max-w-xl text-lg text-themed-secondary">
+            Add at least two entries. Players see them two at a time and pick a winner until one is left.
+          </p>
+        </header>
 
-        <div className="card max-w-2xl mx-auto">
-          <form onSubmit={handleSubmit} className="p-8 space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-8">
             {/* Bracket Name */}
             <div>
-              <label htmlFor="bracketName" className="block text-sm font-medium text-primary mb-2">
-                Bracket Name
+              <label htmlFor="bracketName" className="field-label">
+                Name
               </label>
               <input
                 type="text"
                 id="bracketName"
                 value={bracketName}
                 onChange={(e) => setBracketName(e.target.value)}
-                className="w-full px-3 py-2 border border-primary rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                placeholder={bracketType === 'video' ? 'e.g., Best YouTube Videos' : 'e.g., Best Radiohead Songs'}
+                className="field text-base"
+                placeholder={bracketType === 'video' ? 'e.g. Best music videos of the 90s' : bracketType === 'song' ? 'e.g. Best Radiohead songs' : 'e.g. Best album covers'}
                 required
               />
             </div>
 
-            {/* Bracket Type */}
-            <div>
-              <label htmlFor="bracketType" className="block text-sm font-medium text-primary mb-2">
-                Bracket Type
-              </label>
-              <select
-                id="bracketType"
-                value={bracketType}
-                onChange={(e) => updateBracketType(e.target.value as 'song' | 'video' | 'image')}
-                className="w-full px-3 py-2 border border-primary rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              >
-                <option value="song">Songs</option>
-                <option value="video">Videos</option>
-                <option value="image">Images</option>
-              </select>
-            </div>
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_14rem]">
+              {/* Bracket Type */}
+              <fieldset>
+                <legend className="field-label">What are people choosing between?</legend>
+                <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Bracket type">
+                  {(['video', 'song', 'image'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      role="radio"
+                      aria-checked={bracketType === type}
+                      onClick={() => updateBracketType(type)}
+                      className="choice flex items-center justify-center gap-2 py-2.5"
+                    >
+                      {getTypeIcon(type)}
+                      {type === 'video' ? 'Videos' : type === 'song' ? 'Songs' : 'Images'}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
 
-            {/* Bracket Category - New Field */}
-            <div>
-              <label htmlFor="bracketCategory" className="block text-sm font-medium text-primary mb-2">
-                Bracket Category
-              </label>
-              <select
-                id="bracketCategory"
-                value={bracketCategory}
-                onChange={(e) => setBracketCategory(e.target.value)}
-                className="w-full px-3 py-2 border border-primary rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              >
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
+              {/* Bracket Category */}
+              <div>
+                <label htmlFor="bracketCategory" className="field-label">
+                  Category
+                </label>
+                <select
+                  id="bracketCategory"
+                  value={bracketCategory}
+                  onChange={(e) => setBracketCategory(e.target.value)}
+                  className="field"
+                >
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Playlist Autofill (For Song and Video Types) */}
             {(bracketType === 'song' || bracketType === 'video') && (
-              <div className="p-4 bg-tertiary border border-primary rounded-lg">
-                <div className="flex items-center space-x-2 mb-2">
-                  <svg className="w-5 h-5 text-[#1DB954]" fill="currentColor" viewBox="0 0 24 24">
+              <div className="card p-4 sm:p-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <svg className="w-5 h-5 text-[#1DB954]" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.54.659.301 1.02zm1.44-3.3c-.301.42-.84.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.54-1.02.72-1.56.3z" />
                     </svg>
-                    <h3 className="text-sm font-medium text-primary">Import from Spotify Playlist</h3>
+                    <label htmlFor="playlistUrl" className="font-semibold text-themed-primary">Fill from a Spotify playlist</label>
                   </div>
-                  <div className="flex space-x-2">
+                  <p className="field-hint mb-3">
+                    {bracketType === 'video'
+                      ? 'Each track is added as an entry, and we look up a YouTube video for it.'
+                      : 'Each track in the playlist is added as an entry.'}
+                  </p>
+                  <div className="flex gap-2">
                     <input
                       type="url"
                       id="playlistUrl"
-                      className="flex-1 px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      placeholder="Paste Spotify Playlist URL"
+                      className="field flex-1"
+                      placeholder="https://open.spotify.com/playlist/…"
                     />
                     <button
                       type="button"
@@ -445,7 +453,7 @@ const CustomBracketPage: React.FC = () => {
                           setItems(items.filter(i => !(i.title === 'Loading playlist...' && i.mediaUrl === url)));
                         }
                       }}
-                      className="px-4 py-2 bg-[#1DB954] text-white rounded hover:bg-[#1ed760] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1DB954]"
+                      className="btn shrink-0 border border-[#1DB954] bg-[#1DB954] text-[#0b1f12] hover:bg-[#1ed760]"
                     >
                       Import
                     </button>
@@ -455,169 +463,152 @@ const CustomBracketPage: React.FC = () => {
 
               {/* Bracket Items */}
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-primary">Items</h3>
-                  <span className="text-sm text-tertiary">
-                    {items.filter(item => item.title.trim() && item.mediaUrl.trim()).length} items added
+                <div className="mb-1 flex items-baseline justify-between gap-4">
+                  <h2 className="font-display text-[2rem] font-extrabold leading-none text-themed-primary">Entries</h2>
+                  <span className="text-sm text-themed-tertiary tabular">
+                    {items.filter(item => item.title.trim() && item.mediaUrl.trim()).length} ready
                   </span>
                 </div>
+                <p className="field-hint mb-5">
+                  {bracketType === 'image'
+                    ? 'Paste a direct link to each image.'
+                    : `Paste a ${bracketType === 'song' ? 'Spotify' : 'YouTube'} link and the title fills itself in.`}
+                </p>
 
-                {/* YouTube Auto-fill Notice - Only shown for video type */}
-                {(bracketType === 'video' || bracketType === 'song') && (
-                  <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                    <div className="flex items-start space-x-2">
-                      <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-sm text-blue-800 dark:text-blue-300">
-                        <strong>Tip:</strong> Paste a {bracketType === 'song' ? 'Spotify' : 'YouTube'} URL and the title will automatically be fetched for you!
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-4">
+                <ol className="space-y-3">
                   {items.map((item, index) => (
-                    <motion.div
+                    <li
                       key={index}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="border border-primary rounded-lg p-4 bg-tertiary"
+                      className="card flex gap-3 p-4 sm:gap-4"
                     >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center space-x-2 text-primary-600">
-                          {getTypeIcon(bracketType)}
-                          <span className="text-sm font-medium">Item {index + 1}</span>
+                      <span className="w-7 shrink-0 pt-6 text-right font-display text-2xl font-extrabold leading-none text-themed-tertiary tabular" aria-hidden="true">
+                        {index + 1}
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <div>
+                            <label htmlFor={`item-url-${index}`} className="field-label text-sm">
+                              {bracketType === 'song' ? 'Spotify or audio link' :
+                               bracketType === 'video' ? 'YouTube or video link' : 'Image link'}
+                            </label>
+                            <input
+                              id={`item-url-${index}`}
+                              type="url"
+                              value={item.mediaUrl}
+                              onChange={(e) => updateItemUrl(index, e.target.value)}
+                              className="field"
+                              placeholder="https://"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor={`item-title-${index}`} className="field-label flex items-center gap-2 text-sm">
+                              Title
+                              {item.isFetchingTitle && (
+                                <span className="inline-flex items-center gap-1.5 font-normal text-themed-tertiary">
+                                  <span className="spinner" style={{ width: '0.75rem', height: '0.75rem' }} />
+                                  Looking it up…
+                                </span>
+                              )}
+                            </label>
+                            <input
+                              id={`item-title-${index}`}
+                              type="text"
+                              value={item.title}
+                              onChange={(e) => updateItem(index, 'title', e.target.value)}
+                              className="field"
+                              placeholder={`${bracketType === 'song' ? 'Song' : bracketType === 'video' ? 'Video' : 'Image'} title`}
+                              disabled={item.isFetchingTitle}
+                            />
+                          </div>
                         </div>
-                        {items.length > 2 && (
-                          <button
-                            type="button"
-                            onClick={() => removeItem(index)}
-                            className="text-error hover:text-red-700 p-1"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        )}
+
+                        {getMediaPreview(item, index)}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-medium text-secondary mb-1">
-                            Title
-                            {item.isFetchingTitle && (
-                              <span className="ml-2 text-xs text-blue-600 flex items-center">
-                                <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600 mr-1"></div>
-                                Fetching title...
-                              </span>
-                            )}
-                          </label>
-                          <input
-                            type="text"
-                            value={item.title}
-                            onChange={(e) => updateItem(index, 'title', e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                            placeholder={`${bracketType === 'song' ? 'Song' : bracketType === 'video' ? 'Video' : 'Image'} title`}
-                            disabled={item.isFetchingTitle}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-secondary mb-1">
-                            {bracketType === 'song' ? 'Spotify/Audio URL' :
-                             bracketType === 'video' ? 'YouTube/Video URL' : 'Image URL'}
-                          </label>
-                          <input
-                            type="url"
-                            value={item.mediaUrl}
-                            onChange={(e) => updateItemUrl(index, e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-primary rounded focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                            placeholder={`Paste ${bracketType} URL here`}
-                          />
-                        </div>
-                      </div>
-
-                      {getMediaPreview(item, index)}
-                    </motion.div>
+                      {items.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => removeItem(index)}
+                          className="btn btn-ghost -mr-1 -mt-1 h-9 w-9 shrink-0 self-start p-0"
+                          aria-label={`Remove entry ${index + 1}`}
+                          title="Remove entry"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </li>
                   ))}
-                </div>
+                </ol>
 
                 <button
                   type="button"
                   onClick={addItem}
-                  className="w-full mt-4 py-3 border-2 border-dashed border-primary rounded-lg text-secondary hover:text-primary hover:bg-tertiary transition-colors duration-200 flex items-center justify-center space-x-2"
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-themed-secondary py-3 font-semibold text-themed-secondary transition-colors duration-150 hover:bg-themed-tertiary hover:text-themed-primary"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
-                  <span>Add Another Item</span>
+                  <span>Add entry</span>
                 </button>
               </div>
 
               {/* Error Message */}
               {error && (
-                <div className="p-4 bg-error/10 border border-error/20 rounded-lg">
-                  <p className="text-error text-sm">{error}</p>
+                <div className="notice notice-error" role="alert">
+                  <p className="text-themed-primary">{error}</p>
                 </div>
               )}
 
               {/* Authentication Warning */}
               {!currentUser && (
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                  <div className="flex items-start space-x-3">
-                    <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                    <div>
-                      <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Sign in required</h3>
-                      <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                        You need to be logged in to create a bracket. You can fill out all the details, but you'll need to sign in before creating the bracket.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={signInWithGoogle}
-                        className="mt-2 text-sm font-medium text-yellow-800 hover:text-yellow-900 dark:text-yellow-200 dark:hover:text-yellow-100 underline"
-                      >
-                        Sign in with Google
-                      </button>
-                    </div>
-                  </div>
+                <div className="notice notice-warning">
+                  <p className="font-semibold text-themed-primary">Sign in to publish</p>
+                  <p className="mt-0.5">
+                    You can fill everything in now. You’ll need to be signed in before the bracket can be created.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={signInWithGoogle}
+                    className="mt-2 font-semibold text-themed-primary underline underline-offset-4"
+                  >
+                    Sign in with Google
+                  </button>
                 </div>
               )}
 
               {/* Submit Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3 pt-6">
+              <div className="flex flex-col-reverse gap-3 border-t border-themed-primary pt-6 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={() => navigate('/')}
-                  className="btn btn-secondary flex-1"
+                  className="btn btn-secondary btn-lg"
                   disabled={loading}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className={`btn flex-1 ${!currentUser ? 'btn-primary cursor-not-allowed opacity-50' : 'btn-primary'}`}
+                  className="btn btn-primary btn-lg sm:min-w-[14rem]"
                   disabled={loading || !currentUser}
-                  title={!currentUser ? 'You must be logged in to create a bracket' : ''}
+                  title={!currentUser ? 'Sign in to create a bracket' : ''}
                 >
                   {loading ? (
-                    <div className="flex items-center justify-center space-x-2">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                      <span>Creating...</span>
-                    </div>
+                    <>
+                      <span className="spinner" />
+                      <span>Creating…</span>
+                    </>
                   ) : !currentUser ? (
-                    'Sign in to Create Bracket'
+                    'Sign in to create'
                   ) : (
-                    'Create Bracket'
+                    'Create bracket'
                   )}
                 </button>
               </div>
 
             </form>
-          </div>
-        </motion.div>
     </div>
   );
 };

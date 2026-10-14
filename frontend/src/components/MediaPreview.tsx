@@ -134,11 +134,11 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
                 return (
                     <div className="relative">
                         <motion.div
-                            className={`bg-gradient-to-br from-primary-400 to-purple-500 rounded-full flex items-center justify-center shadow-lg ${sizeClasses}`}
+                            className={`rounded-full flex items-center justify-center bg-primary-600 ${sizeClasses}`}
                             animate={{ scale: isHovered ? 1.1 : 1, rotate: isPlaying ? 360 : 0 }}
                             transition={{ scale: { duration: 0.3 }, rotate: { duration: 3, repeat: isPlaying ? Infinity : 0, ease: 'linear' } }}
                         >
-                            <svg className={`${size === 'thumbnail' ? 'w-12 h-12' : 'w-24 h-24'} text-white`} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                            <svg className={`${size === 'thumbnail' ? 'w-12 h-12' : 'w-24 h-24'}`} style={{ color: 'var(--accent-primary-text)' }} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                                 <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM15.657 6.343a1 1 0 011.414 0A9.972 9.972 0 0119 12a9.972 9.972 0 01-1.929 5.657 1 1 0 11-1.414-1.414A7.971 7.971 0 0017 12a7.971 7.971 0 00-1.343-4.243 1 1 0 010-1.414z" clipRule="evenodd" />
                                 <path fillRule="evenodd" d="M13.828 8.172a1 1 0 011.414 0A5.983 5.983 0 0117 12a5.983 5.983 0 01-1.758 3.828 1 1 0 11-1.414-1.414A3.987 3.987 0 0015 12a3.987 3.987 0 00-1.172-2.828 1 1 0 010-1.414z" clipRule="evenodd" />
                             </svg>
@@ -180,7 +180,7 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
                                     title={item.title}
                                 />
                             ) : (
-                                <div className={`relative w-full ${videoHeight} bg-gray-200 flex items-center justify-center ${canEmbed ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} overflow-hidden rounded-lg`} onClick={canEmbed ? handleVideoPlay : undefined}>
+                                <div className={`relative w-full ${videoHeight} bg-themed-tertiary flex items-center justify-center ${canEmbed ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} overflow-hidden rounded-lg`} onClick={canEmbed ? handleVideoPlay : undefined}>
                                     {thumbnailUrl ? (
                                         <img
                                             src={thumbnailUrl}
@@ -190,7 +190,7 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
                                             loading="lazy"
                                         />
                                     ) : (
-                                        <div className="flex flex-col items-center text-gray-500">
+                                        <div className="flex flex-col items-center text-themed-tertiary">
                                             <svg className={`${isThumbnail ? 'w-8 h-8 mb-1' : 'w-16 h-16 mb-3'}`} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                                                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
                                             </svg>
@@ -223,11 +223,11 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
                 const safeImage = isSafeHttpUrl(item.mediaUrl);
                 return (
                     <div className="relative">
-                        <motion.div animate={{ scale: isHovered ? 1.1 : 1, rotateY: isHovered ? 5 : 0 }} transition={{ duration: 0.3 }} className="relative rounded-lg overflow-hidden shadow-lg">
+                        <motion.div animate={{ scale: isHovered ? 1.1 : 1, rotateY: isHovered ? 5 : 0 }} transition={{ duration: 0.3 }} className="relative rounded-lg overflow-hidden">
                             {safeImage ? (
                                 <img src={item.mediaUrl} alt={item.title} className={`w-full ${size === 'thumbnail' ? 'h-16' : 'h-72'} object-cover`} loading="lazy" />
                             ) : (
-                                <div className={`w-full ${size === 'thumbnail' ? 'h-16' : 'h-72'} bg-gray-200 flex items-center justify-center text-gray-500`}>Image unavailable</div>
+                                <div className={`w-full ${size === 'thumbnail' ? 'h-16' : 'h-72'} bg-themed-tertiary flex items-center justify-center text-themed-tertiary`}>Image unavailable</div>
                             )}
                             {isHovered && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />}
                         </motion.div>
@@ -243,8 +243,8 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size 
             }
             default:
                 return (
-                    <div className="w-48 h-48 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <svg className="w-24 h-24 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <div className="w-48 h-48 bg-themed-tertiary rounded-lg flex items-center justify-center">
+                        <svg className="w-24 h-24 text-themed-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V1a1 1 0 011-1h2a1 1 0 011 1v18a1 1 0 01-1 1h-2a1 1 0 01-1-1V3M7 4H5a1 1 0 00-1 1v18a1 1 0 001 1h2a1 1 0 001-1V5a1 1 0 00-1-1z" />
                         </svg>
                     </div>
