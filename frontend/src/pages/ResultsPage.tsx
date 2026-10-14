@@ -314,8 +314,8 @@ const ResultsPage: React.FC = () => {
           {!user && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
               <p className="text-blue-800 dark:text-blue-200 text-sm">
-                <strong>Session Mode:</strong> Your battle results are stored temporarily.
-                Sign in to save your progress permanently and contribute to the global rankings!
+                <strong>Playing as a guest:</strong> your battles count toward the global rankings,
+                but your personal history only lasts for this session. Sign in to keep it.
               </p>
             </div>
           )}

@@ -50,6 +50,8 @@ public class SecurityConfig {
                         "/brackets/*", "/brackets/*/items",
                         "/brackets/*/results", "/brackets/*/rankings",
                         "/brackets/popular", "/csrf-token", "/metadata/**").permitAll()
+                // Anonymous users may submit results (controller falls back to per-IP rate limiting)
+                .requestMatchers(HttpMethod.POST, "/brackets/*/results").permitAll()
                 // User-specific endpoints require authentication
                 .requestMatchers("/users/*/results", "/brackets/*/users/*/results", "/brackets/by-creator/*").authenticated()
                 .anyRequest().authenticated()
@@ -67,7 +69,11 @@ public class SecurityConfig {
             })
             .addFilterBefore(firebaseAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(csrfTokenFilter, FirebaseAuthenticationFilter.class) // Add CSRF filter after authentication
-            .httpBasic(Customizer.withDefaults());
+            // Firebase bearer tokens are the only auth mechanism; HTTP Basic would expose Boot's
+            // auto-generated in-memory user. Unauthenticated requests get a plain 401.
+            .exceptionHandling(eh -> eh.authenticationEntryPoint(
+                    new org.springframework.security.web.authentication.HttpStatusEntryPoint(
+                            org.springframework.http.HttpStatus.UNAUTHORIZED)));
 
         return http.build();
     }

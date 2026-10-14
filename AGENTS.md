@@ -8,11 +8,11 @@ Welcome! This document provides essential knowledge for AI agents working on the
 - **Network Proxying (CRITICAL PITFALL)**:
   - In Docker, `nginx` serves on port 3000 and maps `/api/*` to `http://backend:8080/*` (stripping the `/api` prefix).
   - The backend controllers (like `BracketController`) have **no prefix** mapped (`@GetMapping("/brackets")`, NOT `/api/brackets`).
-  - Locally, Vite doesn't proxy. The frontend points `VITE_API_URL` to `http://localhost:8080/api` which will return a 404 if hitting backend directly in development unless correctly accounted for. Be wary of path resolution issues during testing. 
+  - Locally, the Vite dev server mirrors this: `/api/*` is proxied to `http://localhost:8080` with the prefix stripped, and `VITE_API_URL` defaults to `/api`.
 - **Caching (`Valkey`)**: Heavy reliance on caching via Spring's `@Cacheable`, `@CacheEvict`, natively backed by Valkey (Redis-compatible). See `CacheConfig.java` for TTL bounds. Cache invalidation or mutation updates are strictly necessary when writing POST/PUT routines on brackets and items.
 
 ## 🧑‍💻 Developer Workflows
-- **Backend Testing**: Standard Maven lifecycle (e.g. `.\mvnw test` or `./mvnw test` inside `/backend`). Backend relies heavily on MockBeans for Firebase (`@MockBean FirebaseApp`) in `SsrfProtectionTest`.
+- **Backend Testing**: Standard Maven lifecycle (`mvn test` inside `/backend`; there is no Maven wrapper). There are no backend tests yet; any Spring context test must mock Firebase (`@MockBean FirebaseAuth`), since `FirebaseConfig` refuses to start without credentials.
 - **Frontend Testing**: Vitest with `@testing-library/react` (`npm run test` inside `/frontend`).
 - **Database Migrations**: Changes to schema **MUST** be implemented using Liquibase XML changelogs in `backend/src/main/resources/db/changelog/`. Do not rely on `hibernate.ddl-auto=update`.
 

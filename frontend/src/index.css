@@ -1,4 +1,11 @@
 @import "tailwindcss";
+/* Tailwind 4 only reads the JS config when it is referenced explicitly
+   (primary palette, Inter font, custom animations). */
+@config "../tailwind.config.js";
+
+/* Tailwind 4 defaults `dark:` to prefers-color-scheme; follow the app's theme toggle
+   (ThemeContext adds the `dark` class to <html>) instead. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {

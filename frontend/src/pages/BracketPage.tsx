@@ -701,7 +701,7 @@ const BracketPage: React.FC = () => {
                             </option>
                             {selectionPopup.options.map(opt => (
                                 <option key={opt} value={opt}>
-                                    Round of {opt} ({Math.log2(opt)} rounds • {opt - 1} total matches{opt > selectionPopup.items.length ? ' • includes BYEs' : ''})
+                                    Round of {opt} ({Math.log2(opt)} {Math.log2(opt) === 1 ? 'round' : 'rounds'} • {opt - 1} {opt - 1 === 1 ? 'match' : 'total matches'}{opt > selectionPopup.items.length ? ' • includes BYEs' : ''})
                                 </option>
                             ))}
                         </select>
@@ -985,7 +985,7 @@ const BattleItem: React.FC<{
                 }`}
             >
                 <div className="flex-1 flex items-center justify-center min-h-0 mb-6">
-                    <div className="w-full h-full max-w-md">
+                    <div className="w-full max-w-md">
                         <MediaPreview item={item} />
                     </div>
                 </div>

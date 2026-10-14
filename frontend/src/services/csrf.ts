@@ -30,7 +30,7 @@ class CsrfService {
     // Fetch new token from backend
     try {
       const idToken = await user.getIdToken();
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}/csrf-token`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/csrf-token`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${idToken}`,
@@ -88,7 +88,7 @@ class CsrfService {
       const idToken = await user.getIdToken();
       const token = await this.getToken();
 
-      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}/csrf-token/invalidate`, {
+      await fetch(`${import.meta.env.VITE_API_URL || '/api'}/csrf-token/invalidate`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${idToken}`,

@@ -44,7 +44,8 @@ export function extractYouTubeId(url: string): string | null {
     }
     const qs = (() => { try { return new URL(url).searchParams; } catch { return undefined; } })();
     const vParam = qs?.get('v');
-    if (vParam) return vParam;
+    // Only accept a well-formed ID; it is interpolated into the embed URL path
+    if (vParam && /^[a-zA-Z0-9_-]{6,}$/.test(vParam)) return vParam;
     return null;
 }
 
@@ -58,7 +59,7 @@ export function getYouTubeEmbedUrl(url: string, autoplay: boolean = true): strin
 
 export function getYouTubeThumbnail(url: string): string {
     const id = extractYouTubeId(url);
-    return id ? `https://img.youtube.com/vi/${id}/maxresdefault.jpg` : '';
+    return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : '';
 }
 
 export function getSpotifyEmbedUrl(url: string): string {

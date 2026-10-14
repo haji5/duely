@@ -72,6 +72,14 @@ public class BracketController {
     }
 
     /**
+     * Get or create a per-user rate limiter for bulk item additions. Same limits as bracket
+     * creation, but a separate bucket so populating a new bracket doesn't consume a creation slot.
+     */
+    private RateLimiter getBulkItemCreationLimiter(String userId) {
+        return rateLimiterRegistry.rateLimiter("bulk-item-creation-" + userId, bracketCreationConfig);
+    }
+
+    /**
      * Get or create a per-user rate limiter for item creation.
      */
     private RateLimiter getItemCreationLimiter(String userId) {
@@ -165,7 +173,10 @@ public class BracketController {
             Authentication authentication) {
         // Only allow users to view their own created brackets to prevent user enumeration
         if (authentication != null && authentication.isAuthenticated()) {
-            String requestingUserId = (String) authentication.getPrincipal();
+            Object principal = authentication.getPrincipal();
+            if (!(principal instanceof String requestingUserId) || "anonymousUser".equals(requestingUserId)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
             if (!requestingUserId.equals(creatorId)) {
                 // Return 403 Forbidden if trying to access another user's brackets
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -183,7 +194,10 @@ public class BracketController {
     public ResponseEntity<List<Result>> getUserResults(@PathVariable String userId, Authentication authentication) {
         // Only allow users to view their own results to prevent enumeration
         if (authentication != null && authentication.isAuthenticated()) {
-            String requestingUserId = (String) authentication.getPrincipal();
+            Object principal = authentication.getPrincipal();
+            if (!(principal instanceof String requestingUserId) || "anonymousUser".equals(requestingUserId)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
             if (!requestingUserId.equals(userId)) {
                 // Return 403 Forbidden if trying to access another user's results
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -209,7 +223,10 @@ public class BracketController {
             Authentication authentication) {
         // Only allow users to view their own results to prevent enumeration
         if (authentication != null && authentication.isAuthenticated()) {
-            String requestingUserId = (String) authentication.getPrincipal();
+            Object principal = authentication.getPrincipal();
+            if (!(principal instanceof String requestingUserId) || "anonymousUser".equals(requestingUserId)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
             if (!requestingUserId.equals(userId)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
@@ -295,8 +312,7 @@ public class BracketController {
     /**
      * Bulk add multiple items to a bracket at once.
      * This is much more efficient than calling the single-item endpoint multiple times.
-     * Uses bracket creation limiter (10 per hour) since creating a bracket with items
-     * is typically done as a single operation.
+     * Uses its own per-user limiter with the bracket creation limits (10 per hour).
      */
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/brackets/{id}/items/bulk")
@@ -307,8 +323,8 @@ public class BracketController {
 
         String userId = (String) authentication.getPrincipal();
 
-        // Get per-user rate limiter for bracket creation (bulk operations)
-        RateLimiter rateLimiter = getBracketCreationLimiter(userId);
+        // Get per-user rate limiter for bulk operations
+        RateLimiter rateLimiter = getBulkItemCreationLimiter(userId);
 
         try {
             // Attempt to acquire permission from rate limiter

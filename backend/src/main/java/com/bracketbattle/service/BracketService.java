@@ -88,7 +88,7 @@ public class BracketService {
         Optional<Result> existingResult = resultRepository.findBySubmissionToken(submissionToken);
         if (existingResult.isPresent()) {
             // This is a duplicate submission (e.g., from double-clicking), return the existing result
-            return existingResult.get();
+            return requireSameSubmitter(existingResult.get(), bracketId, userId);
         }
 
         // Basic validation: ensure bracket exists
@@ -148,8 +148,21 @@ public class BracketService {
             // If there's a unique constraint violation on submission_token,
             // it means another thread saved it first - fetch and return that result
             return resultRepository.findBySubmissionToken(submissionToken)
+                    .map(existing -> requireSameSubmitter(existing, bracketId, userId))
                     .orElseThrow(() -> new IllegalStateException("Concurrent submission failed"));
         }
+    }
+
+    /**
+     * Only treat a known submission token as an idempotent retry when it belongs to the same
+     * bracket and submitter; otherwise a guessed/reused token would return someone else's result.
+     */
+    private Result requireSameSubmitter(Result existing, Long bracketId, String userId) {
+        if (!java.util.Objects.equals(existing.getBracketId(), bracketId)
+                || !java.util.Objects.equals(existing.getUserId(), userId)) {
+            throw new IllegalArgumentException("Submission token has already been used");
+        }
+        return existing;
     }
 
     @Cacheable(value = "bracketResults", key = "#bracketId", unless = "#result == null || #result.isEmpty()")

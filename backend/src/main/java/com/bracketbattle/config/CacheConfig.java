@@ -48,9 +48,15 @@ public class CacheConfig implements CachingConfigurer {
         // Register JavaTimeModule for proper LocalDateTime serialization
         mapper.registerModule(new JavaTimeModule());
 
-        // Enable type information for polymorphic types to avoid deserialization issues
+        // Enable type information for polymorphic types to avoid deserialization issues.
+        // SECURITY: Only allow our own model/DTO types and standard JDK value/collection types.
+        // Allowing every subtype of Object lets anyone who can write to Valkey trigger
+        // arbitrary-class deserialization gadgets (remote code execution).
         PolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
-                .allowIfBaseType(Object.class)
+                .allowIfSubType("com.bracketbattle.")
+                .allowIfSubType("java.util.")
+                .allowIfSubType("java.time.")
+                .allowIfSubType("java.lang.")
                 .build();
 
         mapper.activateDefaultTyping(ptv, ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);

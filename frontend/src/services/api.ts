@@ -4,7 +4,7 @@ import { auth } from '@/config/firebase';
 import { apiCache, cachedApiCall, createCacheKey } from '@/utils/apiCache';
 import { csrfService } from './csrf';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -114,6 +114,23 @@ api.interceptors.request.use(async (config) => {
   }
 
   return config;
+});
+
+// CSRF tokens live in backend memory, so a backend restart invalidates the token we cached
+// for up to an hour. On a CSRF rejection, drop the cached token and retry the request once.
+api.interceptors.response.use(undefined, async (error) => {
+  const config = error?.config;
+  if (
+    config &&
+    !config._csrfRetried &&
+    error.response?.status === 403 &&
+    error.response?.data?.error === 'CSRF Validation Failed'
+  ) {
+    config._csrfRetried = true;
+    csrfService.clearToken();
+    return api.request(config);
+  }
+  return Promise.reject(error);
 });
 
 export const bracketApi = {

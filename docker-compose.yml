@@ -6,7 +6,8 @@ services:
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
     ports:
-      - "5432:5432"
+      # Bound to localhost only: never expose the database to the LAN
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -15,7 +16,8 @@ services:
   valkey:
     image: valkey/valkey:8-alpine
     ports:
-      - "6379:6379"
+      # Bound to localhost only: Valkey has no password and holds deserialized cache data
+      - "127.0.0.1:6379:6379"
     volumes:
       - valkey_data:/data
     command: valkey-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
@@ -33,7 +35,8 @@ services:
       - ./.env
       - ./backend/.env
     ports:
-      - "${SERVER_PORT:-8080}:8080"
+      # Bound to localhost only: remote clients must go through nginx (which sets X-Forwarded-For)
+      - "127.0.0.1:${SERVER_PORT:-8080}:8080"
     environment:
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/bracket_battle}
       DB_USERNAME: ${DB_USERNAME:-postgres}

@@ -26,7 +26,8 @@ public class CacheControlFilter implements Filter {
         // Only add no-cache headers for truly sensitive user-specific endpoints
         // that should never be cached by browsers
         if (uri.matches(".*\\/users\\/[^/]+\\/results.*") ||
-            uri.matches(".*\\/brackets\\/\\d+\\/users\\/[^/]+\\/results.*")) {
+            uri.matches(".*\\/brackets\\/\\d+\\/users\\/[^/]+\\/results.*") ||
+            uri.matches(".*\\/brackets\\/by-creator\\/.*")) {
 
             httpResponse.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
             httpResponse.setHeader("Pragma", "no-cache");

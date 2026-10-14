@@ -22,6 +22,9 @@ public class MediaMetadataController {
 
     @GetMapping("/youtube/search")
     public ResponseEntity<Map<String, String>> searchYouTube(@RequestParam String query) {
+        if (query == null || query.isBlank() || query.length() > 200) {
+            return ResponseEntity.badRequest().build();
+        }
         try {
             String encodedQuery = URLEncoder.encode(query, "UTF-8");
             Document doc = Jsoup.connect("https://www.youtube.com/results?search_query=" + encodedQuery)
@@ -88,18 +91,16 @@ public class MediaMetadataController {
     @GetMapping("/spotify/playlist")
     public ResponseEntity<List<Map<String, String>>> getSpotifyPlaylistTracks(@RequestParam String url) {
         try {
-            // Very rudimentary validation
-            if (!url.contains("spotify.com") || !url.contains("playlist")) {
+            // SECURITY: Only accept genuine open.spotify.com playlist URLs and rebuild the
+            // fetch URL from the extracted ID, so user input can never choose the host (SSRF).
+            String playlistId = extractSpotifyPlaylistId(url);
+            if (playlistId == null) {
                 return ResponseEntity.badRequest().build();
             }
 
-            // Convert to embed URL
-            String embedUrl = url;
-            if (!embedUrl.contains("/embed/")) {
-                embedUrl = embedUrl.replace("spotify.com/playlist/", "spotify.com/embed/playlist/");
-            }
+            String embedUrl = "https://open.spotify.com/embed/playlist/" + playlistId;
 
-            Document doc = Jsoup.connect(embedUrl).get();
+            Document doc = Jsoup.connect(embedUrl).followRedirects(false).get();
             Element script = doc.getElementById("__NEXT_DATA__");
             if (script == null) {
                 return ResponseEntity.notFound().build();
@@ -148,4 +149,27 @@ public class MediaMetadataController {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    /**
+     * Extracts the playlist ID from an open.spotify.com playlist URL
+     * (e.g. https://open.spotify.com/playlist/{id} or /embed/playlist/{id}, optionally
+     * with an intl-xx locale segment). Returns null for anything else.
+     */
+    static String extractSpotifyPlaylistId(String url) {
+        if (url == null || url.length() > 500) return null;
+        try {
+            java.net.URI uri = new java.net.URI(url.trim());
+            String scheme = uri.getScheme();
+            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) return null;
+            if (!"open.spotify.com".equalsIgnoreCase(uri.getHost())) return null;
+            if (uri.getPort() != -1 || uri.getUserInfo() != null || uri.getPath() == null) return null;
+            Matcher m = SPOTIFY_PLAYLIST_PATH.matcher(uri.getPath());
+            return m.matches() ? m.group(1) : null;
+        } catch (java.net.URISyntaxException e) {
+            return null;
+        }
+    }
+
+    private static final Pattern SPOTIFY_PLAYLIST_PATH =
+            Pattern.compile("^(?:/intl-[a-zA-Z-]+)?(?:/embed)?/playlist/([a-zA-Z0-9]{1,64})/?$");
 }

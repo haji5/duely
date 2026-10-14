@@ -103,4 +103,27 @@
         </addColumn>
     </changeSet>
 
+    <!-- Earlier versions stored plain-text fields HTML-escaped (e.g. "Noah Kahan &amp; Hozier").
+         Sanitizer now stores real characters, so decode the legacy rows. &amp; is decoded last
+         so double-escaped values only lose one level. -->
+    <changeSet id="5" author="bracket-battle">
+        <sql>
+            UPDATE items SET title = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(title,
+                '&amp;quot;', '"'), '&amp;#39;', ''''), '&amp;lt;', '&lt;'), '&amp;gt;', '&gt;'), '&amp;amp;', '&amp;')
+            WHERE title LIKE '%&amp;%';
+            UPDATE brackets SET name = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(name,
+                '&amp;quot;', '"'), '&amp;#39;', ''''), '&amp;lt;', '&lt;'), '&amp;gt;', '&gt;'), '&amp;amp;', '&amp;')
+            WHERE name LIKE '%&amp;%';
+            UPDATE brackets SET description = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(description,
+                '&amp;quot;', '"'), '&amp;#39;', ''''), '&amp;lt;', '&lt;'), '&amp;gt;', '&gt;'), '&amp;amp;', '&amp;')
+            WHERE description LIKE '%&amp;%';
+            UPDATE results SET display_name = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(display_name,
+                '&amp;quot;', '"'), '&amp;#39;', ''''), '&amp;lt;', '&lt;'), '&amp;gt;', '&gt;'), '&amp;amp;', '&amp;')
+            WHERE display_name LIKE '%&amp;%';
+            UPDATE results SET comment = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(comment,
+                '&amp;quot;', '"'), '&amp;#39;', ''''), '&amp;lt;', '&lt;'), '&amp;gt;', '&gt;'), '&amp;amp;', '&amp;')
+            WHERE comment LIKE '%&amp;%';
+        </sql>
+    </changeSet>
+
 </databaseChangeLog>

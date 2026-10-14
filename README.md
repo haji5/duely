@@ -1,529 +1,244 @@
-# Duely - Bracket Battle Platform
+# Duely
 
-A full-stack web application for creating and participating in tournament-style brackets where users repeatedly choose between two options (songs, videos, or images). Features include user authentication, custom bracket creation, global rankings, and comprehensive results tracking.
+**Tournament-style voting for songs, videos and images.** Pick a bracket, choose between two options at a time until one champion is left, then see how your picks compare with everyone else's.
 
-## 🚀 Features
+[![CI & Docker Images](https://github.com/haji5/duely/actions/workflows/docker-image.yml/badge.svg)](https://github.com/haji5/duely/actions/workflows/docker-image.yml)
+![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Spring Boot 3](https://img.shields.io/badge/Spring_Boot-3.3-6DB33F?logo=springboot&logoColor=white)
+![Java 21](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-### Core Functionality
-- **Tournament-style bracket battles** - Head-to-head elimination rounds
-- **Multi-media support** - Songs, videos (YouTube), and images
-- **Interactive media previews** - Audio playback on hover, video thumbnails with play buttons, image zoom
-- **Real-time bracket progression** - Smooth animations and state management
-- **Comprehensive ranking system** - Individual battles, personal averages, and global rankings
+![Duely home page](docs/screenshots/home.png)
 
-### User Experience
-- **Firebase Authentication** - Google sign-in with session support for anonymous users
-- **Custom bracket creation** - Users can create their own brackets with custom items
-- **Session battles** - Anonymous users can participate without signing up
-- **Results persistence** - Signed-in users save progress permanently
-- **Global vs Personal rankings** - Compare your results with the community
-- **Responsive design** - Works seamlessly on desktop and mobile
-- **Smooth animations** - Powered by Framer Motion
-- **Dark mode support** - Theme toggle with persistent preferences
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/battle.png" alt="Head-to-head battle between two YouTube videos"></td>
+    <td width="50%"><img src="docs/screenshots/results.png" alt="Global rankings and community comments"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Battle</b>: pick a winner, round by round</td>
+    <td align="center"><b>Results</b>: server-calculated global rankings and comments</td>
+  </tr>
+</table>
 
-### Advanced Features
-- **Multiple result views** - Individual battles, personal aggregates, global community rankings
-- **Battle history** - Track all your previous battles and results
-- **Popular brackets** - Discover trending content from the community
-- **Media optimization** - Lazy loading, error handling, and performance optimization
-- **Valkey caching** - High-performance caching for brackets and results with cache management
-- **Rate limiting** - Protection against abuse with 5 submissions per minute per user
-- **Input sanitization** - XSS protection with HTML sanitization using Jsoup
-- **Health monitoring** - Actuator endpoints for database and Valkey health checks
+<p align="center">
+  <img src="docs/screenshots/create.png" alt="Bracket builder with Spotify playlist import" width="560"><br>
+  <b>Bracket builder</b>: paste links or import a whole Spotify playlist
+</p>
 
-## 🏗️ Architecture
+---
 
-- **Frontend**: React 19 + TypeScript + Vite
-- **Styling**: TailwindCSS 4 + Framer Motion 12
-- **Authentication**: Firebase Auth with Google provider
-- **Backend**: Java 21 + Spring Boot 3.3.3
-- **Database**: PostgreSQL 15 with Liquibase migrations
-- **Cache**: Valkey 8 with Lettuce client (Redis-compatible)
-- **API**: RESTful JSON endpoints with CORS support
-- **Security**: Spring Security with Firebase token validation
-- **Containerization**: Docker + Docker Compose
+## What it does
 
-## 🛠️ Technology Stack
+- **Head-to-head battles.** A bracket's items are shuffled into an elimination tournament. Choose a bracket size (a power of two) and any missing slots are filled with byes automatically.
+- **Rich media.** Songs play inline, YouTube videos embed with thumbnails and Spotify tracks use Spotify's player. Image items show full-size previews.
+- **Build your own brackets.** Paste YouTube or Spotify links and titles fill in automatically. You can also **import a whole Spotify playlist**, and each track is matched to an embeddable YouTube video.
+- **Community rankings.** Every finished battle is saved. The results page shows your individual battles, your personal averages and the global leaderboard, plus optional names and comments.
+- **Guests welcome.** Anyone can play and submit results without an account. Signing in with Google lets you create brackets and keeps your history across devices.
+- **Host it for friends.** One script serves the app to your local network or puts it on the internet through a Cloudflare tunnel.
+- Dark mode, responsive layout and Framer Motion animations.
 
-### Frontend
-- React 19.1 with TypeScript 5.7
-- Vite 7 for build tooling
-- TailwindCSS 4 for styling
-- Framer Motion 12 for animations
-- React Router 7 for navigation
-- Axios 1.7 for API communication
-- Firebase SDK 12 for authentication
-- Vitest 3 for testing
+## Engineering highlights
 
-### Backend
-- Java 21
-- Spring Boot 3.3.3
-- Spring Data JPA with Hibernate
-- Spring Security for authentication/authorization
-- Spring Data Redis for caching (Valkey-compatible)
-- PostgreSQL driver
-- Liquibase for database migrations
-- Firebase Admin SDK 9.2 for token verification
-- Resilience4j 2.1 for rate limiting
-- Jsoup 1.18 for HTML sanitization
-- Spring Boot Actuator for monitoring
-- Maven for dependency management
+| Area | What's interesting |
+| --- | --- |
+| **Ranking engine** | Rankings are calculated on the server from every submitted result. Each item gets a position score (a Borda-style average) and a head-to-head win rate. Results are cached in Valkey, and a Redisson distributed lock stops many simultaneous requests from recalculating the same bracket at once. |
+| **Caching** | Spring Cache is backed by Valkey (a Redis-compatible store), with a separate time-to-live for each cache. Writes clear only the affected entries, for example one bracket's results and rankings. If Valkey is down, the app still serves data from the database. The frontend also keeps a small in-memory cache with least-recently-used eviction. |
+| **Auth & security** | A servlet filter checks the Firebase ID token on each request and maps custom claims to Spring Security roles. Writes are protected with double-submit CSRF tokens, and user text is cleaned with Jsoup. The metadata proxy only allows Spotify and YouTube URLs, which blocks server-side request forgery (SSRF), and cache deserialization only accepts known classes. Responses carry strict security headers, including a content security policy. |
+| **Abuse protection** | Resilience4j rate limits apply per user, or per IP address for guests: bracket creation, item additions, result submissions and all reads each have their own limit. Duplicate submissions (double clicks, retries) are detected with a submission token. |
+| **Data integrity** | The schema is managed by Liquibase migrations, and Hibernate only validates it (`ddl-auto=validate`). The server rejects rankings that repeat an item or include items from another bracket. |
+| **Delivery** | Multi-stage Docker builds run as non-root users. nginx serves the single-page app and proxies `/api`. GitHub Actions builds both images and publishes them to GitHub Container Registry. |
 
-### Infrastructure
-- PostgreSQL 15 (Alpine)
-- Valkey 8 (Alpine) with persistence
-- Docker & Docker Compose
-- Nginx (for frontend in production)
+## Architecture
 
-### DevOps & Tools
-- Docker & Docker Compose
-- Vitest for testing
-- GitHub for version control
+```mermaid
+flowchart LR
+    U[Browser<br/>React SPA] -->|Google sign-in| FA[Firebase Auth]
+    U -->|HTTPS| T[cloudflared tunnel<br/>optional]
+    T --> N
+    U -->|HTTP| N[nginx<br/>static files + /api proxy]
+    N -->|/api/* → /*| B[Spring Boot API]
+    B -->|verify ID token| FA
+    B --> P[(PostgreSQL)]
+    B --> V[(Valkey cache<br/>+ Redisson locks)]
+    B -->|playlist / search metadata| X[Spotify & YouTube]
+```
 
-## 📋 Prerequisites
+The backend's routes have no `/api` prefix. nginx in Docker and the Vite dev server locally both strip it before forwarding requests.
 
-- **Node.js** 22 or higher
-- **Java** 21 or higher
-- **PostgreSQL** 15 or higher (optional if using Docker)
-- **Valkey** 8 or higher (optional if using Docker)
-- **Docker** (optional, for containerized setup)
-- **Firebase Project** (for authentication - see setup below)
+## Tech stack
 
-Note: The frontend includes an `.nvmrc` set to `22` to help Node version managers align with the project. On Windows you can use nvm-windows or install Node 22 via Winget/Chocolatey.
+| Layer | Technologies |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite 7, Tailwind CSS 4, Framer Motion, React Router 7, Axios, Firebase JS SDK |
+| Backend | Java 21, Spring Boot 3.3 (Web, Security, Data JPA, Validation, Cache, Actuator), Firebase Admin SDK, Resilience4j, Redisson, Jsoup |
+| Data | PostgreSQL 15, Liquibase, Valkey 8 |
+| Infrastructure | Docker, Docker Compose, nginx, Cloudflare Tunnel, GitHub Actions, GitHub Container Registry |
 
-## 🚀 Quick Start
+## Getting started
 
-### Method 1: Docker Compose (Recommended)
+### Prerequisites
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd duely
-   ```
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine with Compose)
+- A [Firebase](https://console.firebase.google.com) project with **Google** sign-in enabled
+- For running without Docker: Node.js 22 (see `frontend/.nvmrc`), JDK 21 and Maven 3.9
 
-2. **Set up environment variables**
+### 1. Configure Firebase
 
-   Create a `.env` file in the root directory with database and CORS settings:
-   ```env
-   # Database Configuration
-   DB_URL=jdbc:postgresql://postgres:5432/bracket_battle
-   DB_USERNAME=postgres
-   DB_PASSWORD=your_secure_password
+1. In the Firebase Console, add a **Web app** and copy its config values.
+2. Under **Project settings → Service accounts**, click **Generate new private key** and download the JSON file.
 
-   # Server Configuration
-   SERVER_PORT=8080
+### 2. Create the environment files
 
-   # CORS Configuration
-   CORS_ALLOWED_ORIGINS=http://localhost:3000
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+```
 
-   # Firebase Frontend Configuration
-   VITE_FIREBASE_API_KEY=your_api_key
-   VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-   VITE_FIREBASE_PROJECT_ID=your_project_id
-   VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-   VITE_FIREBASE_APP_ID=your_app_id
-   VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
-   ```
+- In `.env`, fill in the `VITE_FIREBASE_*` values and pick a database password.
+- In `backend/.env`, set `FIREBASE_CREDENTIALS_JSON` to the service-account JSON, either raw or base64-encoded. On Windows:
 
-   Create `backend/.env` with Firebase backend credentials:
-   ```env
-   FIREBASE_ENABLED=true
-   FIREBASE_CREDENTIALS_JSON=your_base64_encoded_service_account_json
-   ```
+  ```powershell
+  [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\serviceAccountKey.json")) | Set-Clipboard
+  ```
 
-3. **Run with Docker**
-   ```bash
-   docker-compose up --build
-   ```
+### 3. Run with Docker Compose
 
-4. **Access the application**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8080
-   - Health Check: http://localhost:8080/actuator/health
+```bash
+docker compose up --build
+```
 
-### Method 2: Local & Internet Hosting (Share with Friends)
+| Service | URL |
+| --- | --- |
+| App | http://localhost:3000 |
+| API (through nginx) | http://localhost:3000/api/brackets |
+| Backend health | http://localhost:8080/actuator/health |
 
-Share your local Duely instance with friends on the same Wi-Fi or across the internet!
+Postgres, Valkey and the backend are bound to `127.0.0.1` only. Other devices reach the app through nginx on port 3000.
 
-1. **Ensure Docker Desktop is running**
+### Share it with friends (Windows)
 
-2. **Run the hosting script**
+```powershell
+.\host.ps1 start            # same Wi-Fi: prints http://<your-lan-ip>:3000
+.\host.ps1 start -Internet  # public HTTPS URL through a Cloudflare quick tunnel
+.\host.ps1 status
+.\host.ps1 stop
+```
 
-   **For LAN (Same Wi-Fi) only:**
-   ```powershell
-   .\host.ps1 start
-   ```
+The script finds your LAN IP, sets CORS, starts the stack and (when run as Administrator) opens port 3000 in Windows Firewall. For Google sign-in to work on the shared URL, add its domain under **Firebase Console → Authentication → Settings → Authorized domains**. Guests can play without signing in either way.
 
-   **For Internet (Public URL):**
-   ```powershell
-   .\host.ps1 start -Internet
-   ```
+### Local development without Docker
 
-   The script will:
-   - Auto-detect your LAN IP address (and create a secure Cloudflare Tunnel if `-Internet` is used).
-   - Configure CORS and build the frontend for external access.
-   - Start all containers via Docker Compose.
-   - Open a Windows Firewall rule for port 3000 (if running as Admin).
-   - Print the URL to share with friends.
+Start PostgreSQL (database `bracket_battle`) and Valkey or Redis on their default ports. The easiest way is to run only those containers:
 
-3. **Share the URL** — e.g., `http://192.168.1.42:3000` (LAN) or `https://random-words.trycloudflare.com` (Internet)
+```bash
+docker compose up postgres valkey
+```
 
-4. **Required for Google Sign-in (Firebase):**
-   If you want your friends to be able to log in with Google, you **MUST** add the temporary URL generated by the script to Firebase:
-   - Go to [Firebase Console](https://console.firebase.google.com) → Authentication → Settings → Authorized domains
-   - Add the domain exactly as printed by the script (e.g., `192.168.1.42` or `random-words.trycloudflare.com`)
-   > *Note: If you don't do this step, friends can still play the game completely fine as anonymous Guests!*
+**Backend** (Spring Boot doesn't read `.env` files, so export the variables from `backend/.env.example`):
 
-5. **Stop hosting**
-   ```powershell
-   .\host.ps1 stop
-   ```
-
-6. **Check status**
-   ```powershell
-   .\host.ps1 status
-   ```
-
-> **Note:** To switch back to normal development, just use `docker-compose up` — it uses the original configuration with `localhost` only.
-
-### Method 3: Local Development
-
-
-#### Backend Setup
 ```bash
 cd backend
-
-# Create PostgreSQL database
-createdb bracket_battle
-
-# Ensure Valkey is running (or use Redis - Valkey is Redis-compatible)
-valkey-server
-# OR
-redis-server
-
-# Set environment variables (or use application.properties)
-set DB_URL=jdbc:postgresql://localhost:5432/bracket_battle
-set DB_USERNAME=postgres
-set DB_PASSWORD=your_password
-set VALKEY_HOST=localhost
-set VALKEY_PORT=6379
-
-# Run the application (Windows)
-mvnw.cmd spring-boot:run
+export DB_PASSWORD=change_me FIREBASE_CREDENTIALS_JSON="$(cat /path/to/serviceAccountKey.json)"
+mvn spring-boot:run
 ```
 
-#### Frontend Setup
+**Frontend** (the Vite dev server proxies `/api` to `localhost:8080`):
+
 ```bash
 cd frontend
-
-# Install dependencies
+cp .env.example .env.local   # fill in the VITE_FIREBASE_* values
 npm install
-
-# Set up environment variables
-# Copy frontend\.env.example to frontend\.env.local and configure
-
-# Start development server
-npm run dev
+npm run dev                  # http://localhost:3000
 ```
 
-## 🔧 Configuration
+## Configuration
 
-### Environment Variables
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | `.env` | PostgreSQL connection |
+| `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_PASSWORD` | backend env | Cache connection (default `localhost:6379`) |
+| `CORS_ALLOWED_ORIGINS` | `.env` | Comma-separated origins allowed to call the API directly |
+| `FIREBASE_CREDENTIALS_JSON` / `GOOGLE_APPLICATION_CREDENTIALS` | `backend/.env` | Firebase Admin service account (JSON, base64 JSON, or a file path) |
+| `VITE_FIREBASE_*` | `.env` / `frontend/.env.local` | Firebase web app config, built into the frontend bundle |
+| `VITE_API_URL` | frontend | API base URL (default `/api`) |
+| `READ_RATE_LIMIT`, `BRACKET_CREATION_LIMIT`, `ITEM_CREATION_LIMIT` (and `*_REFRESH_PERIOD`) | backend env | Rate-limit tuning; defaults are 100 reads/min per IP, 10 brackets/hour and 200 items/hour per user |
 
-#### Root `.env` file
-```env
-# Database Configuration
-DB_URL=jdbc:postgresql://postgres:5432/bracket_battle
-DB_USERNAME=postgres
-DB_PASSWORD=your_password
+Grant admin access by setting a Firebase custom claim of `{"admin": true}` or `{"role": "ADMIN"}` on a user.
 
-# Server Configuration
-SERVER_PORT=8080
+## API reference
 
-# CORS Configuration
-CORS_ALLOWED_ORIGINS=http://localhost:3000
+All routes are served under `/api` by the proxy.
 
-# Valkey Configuration (optional, defaults provided)
-VALKEY_HOST=valkey
-VALKEY_PORT=6379
+| Method | Route | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/brackets` | – | All brackets |
+| GET | `/brackets/popular` | – | Brackets ordered by number of results |
+| GET | `/brackets/{id}` | – | One bracket |
+| GET | `/brackets/{id}/items` | – | Items in a bracket |
+| GET | `/brackets/{id}/results` | – | All submitted results |
+| GET | `/brackets/{id}/rankings` | – | Aggregated global ranking |
+| POST | `/brackets` | user | Create a bracket |
+| POST | `/brackets/{id}/items` | owner | Add one item |
+| POST | `/brackets/{id}/items/bulk` | owner | Add up to 500 items |
+| POST | `/brackets/{id}/results` | optional | Submit a ranking (rate-limited, idempotent per submission token) |
+| GET | `/brackets/by-creator/{uid}` | self | Brackets you created |
+| GET | `/users/{uid}/results` | self | Your results |
+| GET | `/brackets/{id}/users/{uid}/results` | self | Your results for one bracket |
+| GET | `/metadata/spotify/playlist?url=` | – | Tracks from a public Spotify playlist |
+| GET | `/metadata/youtube/search?query=` | – | First embeddable YouTube match |
+| GET | `/csrf-token` | user | Issue a CSRF token (required for authenticated writes) |
+| GET / POST | `/admin/cache/info`, `/admin/cache/clear[/{name}]` | admin | Inspect and clear caches |
+| GET | `/actuator/health` | – | Database and Valkey health |
 
-# Firebase Frontend Configuration
-VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
-```
-
-#### Backend `.env` file (`backend/.env`)
-```env
-# Firebase Backend Configuration
-FIREBASE_ENABLED=true
-FIREBASE_CREDENTIALS_JSON=your_base64_encoded_service_account_json
-```
-
-### Firebase Setup
-
-#### Frontend Configuration
-1. Create a new Firebase project at https://console.firebase.google.com
-2. Enable Authentication and configure Google sign-in provider
-3. Get your Firebase configuration from Project Settings > General
-4. Add the configuration to your root `.env` file (VITE_* variables)
-
-#### Backend Configuration
-1. In Firebase Console, go to Project Settings > Service Accounts
-2. Click "Generate New Private Key" to download the service account JSON
-3. Encode the JSON file to base64 (Windows PowerShell):
-   ```powershell
-   $bytes = [System.IO.File]::ReadAllBytes("C:\path\to\serviceAccountKey.json")
-   $base64 = [System.Convert]::ToBase64String($bytes)
-   $base64 | Set-Clipboard
-   ```
-4. Paste the base64 string into `backend/.env` as `FIREBASE_CREDENTIALS_JSON`
-5. Alternatively, set `GOOGLE_APPLICATION_CREDENTIALS` to the file path
-
-### Valkey Configuration
-
-Valkey is used for caching brackets, items, and results to improve performance. Valkey is a Redis fork and is 100% API-compatible with Redis. Configuration options in `application.properties`:
-
-- **Cache TTL**: 10 minutes (600,000ms)
-- **Connection Pool**: Max 8 active, 2 min idle
-- **Timeout**: 2 seconds for operations
-
-Cache keys are prefixed with `bracket-battle:` for organization.
-
-### Rate Limiting
-
-API rate limits are configured per user:
-- **Results submission**: 5 requests per minute per user
-- **Response**: HTTP 429 when exceeded with retry-after information
-
-## 📚 API Reference
-
-### Brackets
-- `GET /brackets` - Get all brackets
-- `GET /brackets/{id}` - Get specific bracket
-- `POST /brackets` - Create new bracket (requires authentication)
-- `GET /brackets/popular` - Get popular brackets
-- `GET /brackets/{id}/items` - Get bracket items
-- `POST /brackets/{id}/items` - Add item to bracket (requires authentication)
-
-### Results
-- `POST /brackets/{id}/results` - Save bracket results (requires authentication, rate limited)
-- `GET /brackets/{id}/results` - Get all bracket results
-- `GET /brackets/{id}/users/{userId}/results` - Get user's bracket results
-- `GET /users/{userId}/results` - Get all user results
-
-### Cache Management
-- `POST /admin/cache/clear` - Clear all caches (requires authentication)
-- `GET /admin/cache/stats` - Get cache statistics (requires authentication)
-
-### Health & Monitoring
-- `GET /actuator/health` - Application health status
-- `GET /actuator/info` - Application information
-- `GET /actuator/caches` - Cache information
-
-All API endpoints are prefixed with `/api` when accessed through the frontend proxy.
-
-## 🗂️ Project Structure
+## Project structure
 
 ```
 duely/
-├── frontend/                   # React TypeScript application
+├── backend/                         Spring Boot API
+│   └── src/main/
+│       ├── java/com/bracketbattle/
+│       │   ├── controller/          REST endpoints (brackets, metadata, CSRF, admin cache)
+│       │   ├── service/             Business logic, ranking calculation, cache eviction
+│       │   ├── security/            Firebase token filter, CSRF filter, security config
+│       │   ├── config/              Cache, rate limiting, Redisson, web config
+│       │   ├── model/ dto/ repository/
+│       │   └── util/Sanitizer.java  Jsoup-based input cleaning
+│       └── resources/
+│           ├── application.properties
+│           └── db/changelog/        Liquibase migrations
+├── frontend/                        React single-page app
 │   ├── src/
-│   │   ├── components/        # Reusable UI components
-│   │   │   ├── LoginButton.tsx
-│   │   │   ├── MediaPreview.tsx
-│   │   │   ├── Navbar.tsx
-│   │   │   ├── ThemeToggle.tsx
-│   │   │   └── UserProfile.tsx
-│   │   ├── pages/            # Application pages
-│   │   │   ├── HomePage.tsx
-│   │   │   ├── BracketPage.tsx
-│   │   │   ├── CustomBracketPage.tsx
-│   │   │   ├── ResultsPage.tsx
-│   │   │   └── BrowsePage.tsx
-│   │   ├── contexts/         # React contexts
-│   │   │   ├── AuthContext.tsx
-│   │   │   ├── ThemeContext.tsx
-│   │   │   └── SessionBattleContext.tsx
-│   │   ├── services/         # API services
-│   │   │   └── api.ts
-│   │   ├── utils/           # Utility functions
-│   │   │   ├── apiCache.ts
-│   │   │   ├── bracketSorting.ts
-│   │   │   ├── debounce.ts
-│   │   │   └── mediaUtils.ts
-│   │   ├── types/           # TypeScript definitions
-│   │   └── config/          # Configuration files
-│   │       └── firebase.ts
-│   ├── public/              # Static assets
-│   ├── .nvmrc               # Node version specification
-│   ├── .env.example         # Environment template
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── vitest.config.ts
-│   ├── tailwind.config.js
-│   ├── postcss.config.js
-│   ├── nginx.conf
-│   └── Dockerfile
-├── backend/                  # Spring Boot API
-│   ├── src/main/java/com/bracketbattle/
-│   │   ├── advice/          # Global exception handling
-│   │   │   └── GlobalExceptionHandler.java
-│   │   ├── config/          # Configuration classes
-│   │   │   ├── CacheConfig.java
-│   │   │   ├── JacksonConfig.java
-│   │   │   ├── RateLimiterConfig.java
-│   │   │   ├── ReadRateLimiterInterceptor.java
-│   │   │   ├── RedisHealthIndicator.java
-│   │   │   └── WebMvcConfig.java
-│   │   ├── controller/      # REST controllers
-│   │   │   ├── BracketController.java
-│   │   │   ├── CacheManagementController.java
-│   │   │   └── CsrfController.java
-│   │   ├── dto/            # Data Transfer Objects
-│   │   │   ├── AddItemRequest.java
-│   │   │   ├── CreateBracketRequest.java
-│   │   │   └── SaveResultRequest.java
-│   │   ├── model/          # JPA entities
-│   │   │   ├── Bracket.java
-│   │   │   ├── Item.java
-│   │   │   └── Result.java
-│   │   ├── repository/     # Data repositories
-│   │   │   ├── BracketRepository.java
-│   │   │   ├── ItemRepository.java
-│   │   │   └── ResultRepository.java
-│   │   ├── security/       # Security configuration
-│   │   │   ├── SecurityConfig.java
-│   │   │   └── firebase/
-│   │   │       ├── FirebaseAuthenticationFilter.java
-│   │   │       └── FirebaseConfig.java
-│   │   ├── service/        # Business logic
-│   │   │   ├── BracketService.java
-│   │   │   └── CacheMonitoringService.java
-│   │   ├── util/           # Utility classes
-│   │   │   └── Sanitizer.java
-│   │   └── BracketBattleApplication.java
-│   ├── src/main/resources/
-│   │   ├── application.properties
-│   │   └── db/changelog/   # Liquibase migrations
-│   │       └── db.changelog-master.xml
-│   ├── .env.example        # Backend environment template
-│   ├── pom.xml
-│   └── Dockerfile
-├── docker-compose.yml       # Container orchestration
-├── .env                    # Environment variables (not in git)
-├── .gitignore
-└── README.md
+│   │   ├── pages/                   Home, Browse, Bracket (battle), Results, Create
+│   │   ├── components/              Media preview, navbar, auth widgets
+│   │   ├── contexts/                Auth, theme, guest session battles
+│   │   ├── services/                Axios client and CSRF handling
+│   │   └── utils/                   API cache, media URL helpers
+│   └── nginx.conf                   Production server and /api proxy
+├── docs/screenshots/                README images
+├── .github/workflows/               CI: build and publish Docker images
+├── docker-compose.yml               Full stack
+├── docker-compose.local.yml         LAN / tunnel overlay used by host.ps1
+└── host.ps1                         One-command hosting script
 ```
 
-## 🧪 Testing
+## Development checks
 
-### Frontend
 ```bash
-cd frontend
-npm test              # Run tests
-npm run test:ui       # Run tests with UI
+cd frontend && npm run build   # TypeScript type-check plus production build
+cd backend  && mvn verify      # compile and package
 ```
 
-### Backend
-```bash
-cd backend
-mvnw.cmd test         # Run all tests (Windows)
-./mvnw test           # Run all tests (Linux/Mac)
-```
+Vitest and Testing Library are set up in the frontend (`npm test`), and `spring-boot-starter-test` is included in the backend.
 
-## 🚀 Deployment
+## Roadmap
 
-### Production Build
+- Automated tests for the tournament engine, ranking calculation and security rules
+- Shared rate-limit and CSRF state (move both into Valkey) for running several backend instances
+- Bracket editing and deletion for owners
 
-**Frontend:**
-```bash
-cd frontend
-npm run build
-# Output in frontend/build directory
-```
+## License
 
-**Backend:**
-```bash
-cd backend
-mvnw.cmd clean package      # Windows
-./mvnw clean package         # Linux/Mac
-# JAR file in backend/target directory
-```
-
-### Docker Production
-For production deployment, ensure you:
-1. Use strong passwords and secure credentials
-2. Configure proper CORS origins for your domain
-3. Enable HTTPS/SSL termination
-4. Set appropriate cache TTL values
-5. Configure Redis persistence and backup
-6. Monitor actuator endpoints for health
-
-## 🛡️ Security Features
-
-- **Firebase Authentication**: Secure Google sign-in with JWT token validation
-- **Spring Security**: Role-based access control (USER role required for mutations)
-- **Rate Limiting**: Per-user rate limits to prevent abuse
-- **Input Sanitization**: XSS protection using Jsoup HTML sanitizer
-- **CORS Protection**: Configurable allowed origins
-- **CSRF Protection**: Token-based CSRF protection for state-changing operations
-- **Validation**: Request validation using Jakarta Validation annotations
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Database Connection Issues:**
-- Ensure PostgreSQL is running and accessible
-- Check database credentials in `.env` file
-- Verify database `bracket_battle` exists
-- Check Docker container logs: `docker-compose logs postgres`
-
-**Valkey Connection Issues:**
-- Ensure Valkey is running and accessible
-- Check Valkey health: `docker-compose logs valkey`
-- Verify Valkey connection in actuator: http://localhost:8080/actuator/health
-- Note: Valkey is Redis-compatible, so you can also use Redis if preferred
-
-**Firebase Authentication Issues:**
-- Verify Firebase configuration in `.env` file
-- Ensure Google sign-in is enabled in Firebase Console
-- Check Firebase credentials are properly base64 encoded in `backend/.env`
-- Review backend logs for Firebase initialization errors: `docker-compose logs backend`
-
-**CORS Issues:**
-- Update `CORS_ALLOWED_ORIGINS` in `.env` to match your frontend URL
-- Ensure the protocol (http/https) matches exactly
-- Check browser console for specific CORS errors
-
-**Rate Limiting Issues:**
-- If you see HTTP 429 errors, wait 60 seconds before retrying
-- Rate limit is 5 submissions per minute per authenticated user
-- Check actuator for rate limiter health: http://localhost:8080/actuator/health
-
-**Cache Issues:**
-- Clear all caches via admin endpoint: `POST /admin/cache/clear`
-- Check cache statistics: `GET /admin/cache/stats`
-- Verify Valkey is running and connected
-
-## 📞 Support
-
-For support, please open an issue on GitHub or contact the development team.
+[MIT](LICENSE) © Tobias Richardson

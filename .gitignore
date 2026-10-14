@@ -213,3 +213,7 @@ test_yt.html
 # Analysis / notes (local only)
 # -----------------
 PROJECT_FLAWS_ANALYSIS.md
+# -----------------
+# Playwright MCP output (screenshots, snapshots, console logs)
+# -----------------
+.playwright-mcp/

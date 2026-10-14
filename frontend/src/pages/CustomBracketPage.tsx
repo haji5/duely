@@ -391,7 +391,7 @@ const CustomBracketPage: React.FC = () => {
 
                         try {
                           // Call our new backend metadata API endpoint
-                          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}/metadata/spotify/playlist?url=${encodeURIComponent(url)}`);
+                          const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/metadata/spotify/playlist?url=${encodeURIComponent(url)}`);
                           if (response.ok) {
                             const tracks = await response.json();
                             if (tracks && tracks.length > 0) {
@@ -415,7 +415,7 @@ const CustomBracketPage: React.FC = () => {
                                 // sequentially fetch YouTube URLs for each track
                                 for (let i = 0; i < newItems.length; i++) {
                                   try {
-                                    const ytRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}/metadata/youtube/search?query=${encodeURIComponent(newItems[i].title)}`);
+                                    const ytRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/metadata/youtube/search?query=${encodeURIComponent(newItems[i].title)}`);
                                     if (ytRes.ok) {
                                       const ytData = await ytRes.json();
                                       newItems[i].mediaUrl = ytData.mediaUrl;
@@ -564,20 +564,20 @@ const CustomBracketPage: React.FC = () => {
 
               {/* Authentication Warning */}
               {!currentUser && (
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                   <div className="flex items-start space-x-3">
-                    <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z" />
                     </svg>
                     <div>
-                      <h3 className="text-sm font-medium text-yellow-800">Sign in required</h3>
-                      <p className="text-sm text-yellow-700 mt-1">
+                      <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Sign in required</h3>
+                      <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                         You need to be logged in to create a bracket. You can fill out all the details, but you'll need to sign in before creating the bracket.
                       </p>
                       <button
                         type="button"
                         onClick={signInWithGoogle}
-                        className="mt-2 text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
+                        className="mt-2 text-sm font-medium text-yellow-800 hover:text-yellow-900 dark:text-yellow-200 dark:hover:text-yellow-100 underline"
                       >
                         Sign in with Google
                       </button>
@@ -598,7 +598,7 @@ const CustomBracketPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className={`btn flex-1 ${!currentUser ? 'btn-disabled cursor-not-allowed opacity-50' : 'btn-primary'}`}
+                  className={`btn flex-1 ${!currentUser ? 'btn-primary cursor-not-allowed opacity-50' : 'btn-primary'}`}
                   disabled={loading || !currentUser}
                   title={!currentUser ? 'You must be logged in to create a bracket' : ''}
                 >
@@ -615,13 +615,6 @@ const CustomBracketPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* Info Note about Caching Delay - New Addition */}
-              <div className="mt-4 p-3 text-sm text-center text-tertiary border border-tertiary rounded-lg">
-                <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m-3-3H9m3-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Note: Your bracket will appear in "My Brackets" immediately, but may take up to 5 minutes to show on the public browse page due to caching.
-              </div>
             </form>
           </div>
         </motion.div>

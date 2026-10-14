@@ -40,6 +40,7 @@ public class CsrfController {
     @GetMapping("/csrf-token")
     public ResponseEntity<Map<String, String>> getCsrfToken(
             Authentication authentication,
+            jakarta.servlet.http.HttpServletRequest request,
             HttpServletResponse response) {
 
         String userId = (String) authentication.getPrincipal();
@@ -48,7 +49,8 @@ public class CsrfController {
         // Set token in cookie for double-submit pattern
         Cookie cookie = new Cookie(CSRF_TOKEN_COOKIE, token);
         cookie.setHttpOnly(false); // JavaScript needs to read this
-        cookie.setSecure(true); // Only send over HTTPS in production
+        // Secure only when served over HTTPS; a Secure cookie is dropped on plain-HTTP LAN hosting
+        cookie.setSecure(request.isSecure());
         cookie.setPath("/");
         cookie.setMaxAge(COOKIE_MAX_AGE);
         cookie.setAttribute("SameSite", "Strict");
@@ -68,6 +70,7 @@ public class CsrfController {
     @PostMapping("/csrf-token/invalidate")
     public ResponseEntity<Map<String, String>> invalidateCsrfToken(
             Authentication authentication,
+            jakarta.servlet.http.HttpServletRequest request,
             HttpServletResponse response) {
 
         String userId = (String) authentication.getPrincipal();
@@ -76,7 +79,7 @@ public class CsrfController {
         // Clear the cookie
         Cookie cookie = new Cookie(CSRF_TOKEN_COOKIE, "");
         cookie.setHttpOnly(false);
-        cookie.setSecure(true);
+        cookie.setSecure(request.isSecure());
         cookie.setPath("/");
         cookie.setMaxAge(0); // Delete cookie
         cookie.setAttribute("SameSite", "Strict");
