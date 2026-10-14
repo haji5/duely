@@ -38,7 +38,7 @@
 - **Community rankings.** Every finished battle is saved. The results page shows your individual battles, your personal averages and the global leaderboard, plus optional names and comments.
 - **Guests welcome.** Anyone can play and submit results without an account. Signing in with Google lets you create brackets and keeps your history across devices.
 - **Host it for friends.** One script serves the app to your local network or puts it on the internet through a Cloudflare tunnel.
-- Dark mode, responsive layout and Framer Motion animations.
+- Light and dark themes, a responsive layout down to phone width, and keyboard-friendly battles.
 
 ## Engineering highlights
 
