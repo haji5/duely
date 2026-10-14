@@ -8,7 +8,7 @@
 ![Spring Boot 3](https://img.shields.io/badge/Spring_Boot-3.3-6DB33F?logo=springboot&logoColor=white)
 ![Java 21](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-orange.svg)](LICENSE)
 
 ![Duely home page](docs/screenshots/home.png)
 
@@ -241,4 +241,6 @@ Vitest and Testing Library are set up in the frontend (`npm test`), and `spring-
 
 ## License
 
-[MIT](LICENSE) © Tobias Richardson
+© Tobias Richardson. Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+You're free to use, modify and share this code for personal projects, study, research, hobby use and other noncommercial purposes. Commercial use, including selling the code or a product or service built on it, isn't permitted. For a commercial license, [get in touch](https://github.com/haji5).
