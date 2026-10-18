@@ -1,14 +1,15 @@
 package com.bracketbattle.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.*;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * One completed run of a bracket. Immutable once saved.
@@ -21,7 +22,7 @@ import java.util.List;
 @Table(name = "results")
 public class Result {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final TypeReference<List<Long>> RANKING_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<MatchOutcome>> MATCHES_TYPE = new TypeReference<>() {};
 
@@ -122,7 +123,7 @@ public class Result {
         }
         try {
             return JSON.readValue(json, type);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Corrupt JSON column in results", e);
         }
     }
@@ -130,7 +131,7 @@ public class Result {
     private static String write(Object value) {
         try {
             return JSON.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Could not serialise result column", e);
         }
     }

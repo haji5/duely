@@ -1,7 +1,7 @@
 package com.bracketbattle.api;
 
 import com.bracketbattle.support.IntegrationTest;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -30,15 +30,15 @@ class BracketApiIT extends IntegrationTest {
         JsonNode bracket = createBracket(USER_A, "Best images", 3);
 
         assertThat(bracket.get("id").asLong()).isPositive();
-        assertThat(bracket.get("name").asText()).isEqualTo("Best images");
-        assertThat(bracket.get("category").asText()).isEqualTo("Testing");
+        assertThat(bracket.get("name").asString()).isEqualTo("Best images");
+        assertThat(bracket.get("category").asString()).isEqualTo("Testing");
         assertThat(bracket.has("createdBy")).isFalse();
-        assertThat(bracket.get("createdAt").asText()).endsWith("Z");
+        assertThat(bracket.get("createdAt").asString()).endsWith("Z");
 
         JsonNode items = body(perform(get("/brackets/" + bracket.get("id").asLong() + "/items")));
         assertThat(items).hasSize(3);
-        assertThat(items.get(0).get("mediaType").asText()).isEqualTo("image");
-        assertThat(items.get(0).get("title").asText()).isEqualTo("Item 0");
+        assertThat(items.get(0).get("mediaType").asString()).isEqualTo("image");
+        assertThat(items.get(0).get("title").asString()).isEqualTo("Item 0");
     }
 
     @Test
@@ -48,9 +48,9 @@ class BracketApiIT extends IntegrationTest {
         payload.put("description", "line one\nline two");
         JsonNode bracket = body(perform(as(USER_A, postJson("/brackets", payload))));
 
-        assertThat(bracket.get("name").asText()).isEqualTo("Bold & brave");
-        assertThat(bracket.get("category").asText()).isEqualTo("General");
-        assertThat(bracket.get("description").asText()).isEqualTo("line one\nline two");
+        assertThat(bracket.get("name").asString()).isEqualTo("Bold & brave");
+        assertThat(bracket.get("category").asString()).isEqualTo("General");
+        assertThat(bracket.get("description").asString()).isEqualTo("line one\nline two");
     }
 
     @Test
@@ -67,9 +67,9 @@ class BracketApiIT extends IntegrationTest {
 
         assertThat(result.getResponse().getStatus()).isEqualTo(400);
         JsonNode body = body(result);
-        assertThat(body.get("errors").get("items[1].mediaUrl").asText()).startsWith("Entry 2 (\"Not YouTube\"): video entries need a YouTube link");
-        assertThat(body.get("errors").get("items[2].mediaUrl").asText()).startsWith("Entry 3 (\"LAN box\"):");
-        assertThat(body.get("message").asText()).startsWith("Entry 2");
+        assertThat(body.get("errors").get("items[1].mediaUrl").asString()).startsWith("Entry 2 (\"Not YouTube\"): video entries need a YouTube link");
+        assertThat(body.get("errors").get("items[2].mediaUrl").asString()).startsWith("Entry 3 (\"LAN box\"):");
+        assertThat(body.get("message").asString()).startsWith("Entry 2");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM brackets", Long.class)).isEqualTo(before);
     }
 
@@ -82,8 +82,8 @@ class BracketApiIT extends IntegrationTest {
 
         JsonNode errors = body(perform(as(USER_A, postJson("/brackets", payload)))).get("errors");
 
-        assertThat(errors.get("items[0].mediaUrl").asText()).contains("private or reserved");
-        assertThat(errors.get("items[1].mediaUrl").asText()).contains("https://");
+        assertThat(errors.get("items[0].mediaUrl").asString()).contains("private or reserved");
+        assertThat(errors.get("items[1].mediaUrl").asString()).contains("https://");
     }
 
     @Test
@@ -92,8 +92,8 @@ class BracketApiIT extends IntegrationTest {
         JsonNode body = body(perform(as(USER_A, postJson("/brackets", payload))));
 
         assertThat(body.get("status").asInt()).isEqualTo(400);
-        assertThat(body.get("errors").get("name").asText()).contains("100");
-        assertThat(body.get("errors").get("items").asText()).contains("between 2 and 500");
+        assertThat(body.get("errors").get("name").asString()).contains("100");
+        assertThat(body.get("errors").get("items").asString()).contains("between 2 and 500");
     }
 
     @Test
@@ -211,7 +211,7 @@ class BracketApiIT extends IntegrationTest {
     void submittingToUnknownBracketIs404() throws Exception {
         MvcResult result = perform(postJson("/brackets/987654321/results", runPayload(List.of(1L, 2L), null, null)));
         assertThat(result.getResponse().getStatus()).isEqualTo(404);
-        assertThat(body(result).get("message").asText()).isEqualTo("Bracket not found");
+        assertThat(body(result).get("message").asString()).isEqualTo("Bracket not found");
     }
 
     // ---- rankings ------------------------------------------------------------------------------
@@ -266,8 +266,8 @@ class BracketApiIT extends IntegrationTest {
         JsonNode comments = body(perform(get("/brackets/" + id + "/comments")));
 
         assertThat(comments).hasSize(50);
-        assertThat(comments.get(0).get("comment").asText()).isEqualTo("comment 54");
-        assertThat(comments.get(0).get("displayName").asText()).isEqualTo("Tester");
+        assertThat(comments.get(0).get("comment").asString()).isEqualTo("comment 54");
+        assertThat(comments.get(0).get("displayName").asString()).isEqualTo("Tester");
         assertThat(comments.get(0).get("championItemId").asLong()).isEqualTo(ranking.get(0));
         assertThat(comments.get(0).has("userId")).isFalse();
         assertThat(comments.get(0).has("submissionToken")).isFalse();
@@ -321,12 +321,12 @@ class BracketApiIT extends IntegrationTest {
 
         MvcResult typeMismatch = perform(get("/brackets/abc"));
         assertThat(typeMismatch.getResponse().getStatus()).isEqualTo(400);
-        assertThat(body(typeMismatch).get("message").asText()).isEqualTo("Invalid value for 'id'");
+        assertThat(body(typeMismatch).get("message").asString()).isEqualTo("Invalid value for 'id'");
 
         MvcResult malformed = perform(post("/brackets/1/results").contentType(MediaType.APPLICATION_JSON).content("{not json"));
         assertThat(malformed.getResponse().getStatus()).isEqualTo(400);
-        assertThat(body(malformed).get("message").asText()).isEqualTo("Malformed request body");
-        assertThat(body(malformed).get("error").asText()).isEqualTo("Bad Request");
+        assertThat(body(malformed).get("message").asString()).isEqualTo("Malformed request body");
+        assertThat(body(malformed).get("error").asString()).isEqualTo("Bad Request");
 
         assertThat(perform(as(USER_A, delete("/brackets/1"))).getResponse().getStatus()).isEqualTo(405);
         assertThat(perform(as(USER_A, get("/no-such-route"))).getResponse().getStatus()).isEqualTo(404);
@@ -374,7 +374,7 @@ class BracketApiIT extends IntegrationTest {
                 .getResponse().getStatus()).isEqualTo(401);
         MvcResult badUrl = perform(as(USER_A, get("/metadata/spotify/playlist").param("url", "https://spotify.link/abc")));
         assertThat(badUrl.getResponse().getStatus()).isEqualTo(400);
-        assertThat(body(badUrl).get("message").asText()).contains("spotify.link");
+        assertThat(body(badUrl).get("message").asString()).contains("spotify.link");
     }
 
     // ---- CORS and proxies ----------------------------------------------------------------------

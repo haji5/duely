@@ -27,7 +27,7 @@ class RateLimitIT extends IntegrationTest {
         assertThat(limited.getResponse().getStatus()).isEqualTo(429);
         long retryAfter = Long.parseLong(limited.getResponse().getHeader("Retry-After"));
         assertThat(retryAfter).isBetween(1L, 60L);
-        assertThat(body(limited).get("message").asText()).startsWith("Too many requests: the limit is 3 per minute");
+        assertThat(body(limited).get("message").asString()).startsWith("Too many requests: the limit is 3 per minute");
 
         // Other clients have their own bucket
         MvcResult other = perform(get("/brackets").with(r -> { r.setRemoteAddr("203.0.113.9"); return r; }));
@@ -39,7 +39,7 @@ class RateLimitIT extends IntegrationTest {
         long id = createBracket(USER_A, "Limited", 2).get("id").asLong();
         MvcResult secondCreate = perform(as(USER_A, postJson("/brackets", bracketPayload("Again", "image", 2))));
         assertThat(secondCreate.getResponse().getStatus()).isEqualTo(429);
-        assertThat(body(secondCreate).get("message").asText()).contains("the limit is 1 per hour");
+        assertThat(body(secondCreate).get("message").asString()).contains("the limit is 1 per hour");
 
         List<Long> ranking = List.of(1L, 2L); // never reaches validation once limited
         redis.delete(redis.keys("ratelimit:read:*")); // item lookups below count as reads

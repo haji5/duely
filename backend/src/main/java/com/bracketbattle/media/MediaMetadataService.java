@@ -1,7 +1,5 @@
 package com.bracketbattle.media;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
@@ -12,6 +10,9 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -38,7 +39,7 @@ public class MediaMetadataService {
     private static final int MAX_CANDIDATES = 3;
     private static final Pattern VIDEO_ID = Pattern.compile("\"videoId\":\"([a-zA-Z0-9_-]{11})\"");
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final JsonMapper mapper = JsonMapper.builder().build();
 
     /**
      * The first embeddable video for a search, as a watch URL, or null if none of the top results
@@ -120,7 +121,7 @@ public class MediaMetadataService {
         try {
             trackList = script == null ? null
                     : mapper.readTree(script.html()).at("/props/pageProps/state/data/entity/trackList");
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             trackList = null;
         }
         if (trackList == null || !trackList.isArray()) {
@@ -129,12 +130,12 @@ public class MediaMetadataService {
 
         List<Map<String, String>> tracks = new ArrayList<>();
         for (JsonNode track : trackList) {
-            String uri = track.path("uri").asText("");
-            String title = decode(track.path("title").asText(""));
+            String uri = track.path("uri").asString("");
+            String title = decode(track.path("title").asString(""));
             if (!uri.startsWith("spotify:track:") || title.isBlank()) {
                 continue;
             }
-            String artists = decode(track.path("subtitle").asText(""));
+            String artists = decode(track.path("subtitle").asString(""));
             Map<String, String> entry = new HashMap<>();
             entry.put("title", artists.isBlank() ? title : title + " - " + artists);
             entry.put("mediaUrl", "https://open.spotify.com/track/" + uri.substring("spotify:track:".length()));

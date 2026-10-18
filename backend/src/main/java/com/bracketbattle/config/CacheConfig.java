@@ -1,12 +1,7 @@
 package com.bracketbattle.config;
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
-import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.lettuce.core.ClientOptions;
-import org.springframework.boot.autoconfigure.data.redis.LettuceClientConfigurationBuilderCustomizer;
+import org.springframework.boot.data.redis.autoconfigure.LettuceClientConfigurationBuilderCustomizer;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
@@ -18,9 +13,11 @@ import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.cache.RedisCacheWriter;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -48,7 +45,7 @@ public class CacheConfig implements CachingConfigurer {
             "spotifyPlaylist", Duration.ofHours(1));
 
     // Bump when the cached JSON shape changes, so old entries are ignored instead of failing to parse.
-    private static final String KEY_PREFIX = "duely:v2:";
+    private static final String KEY_PREFIX = "duely:v3:";
 
     private final RedisCacheErrorHandler redisCacheErrorHandler;
 
@@ -63,7 +60,9 @@ public class CacheConfig implements CachingConfigurer {
 
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
-        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(cacheObjectMapper());
+        GenericJacksonJsonRedisSerializer serializer = GenericJacksonJsonRedisSerializer.builder()
+                .enableDefaultTyping(cacheTypeValidator())
+                .build();
         RedisCacheConfiguration defaults = RedisCacheConfiguration.defaultCacheConfig()
                 .prefixCacheNameWith(KEY_PREFIX)
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
@@ -95,22 +94,18 @@ public class CacheConfig implements CachingConfigurer {
     }
 
     /**
-     * The cache's own mapper, deliberately not a bean: an ObjectMapper bean would replace the one
-     * Spring Boot configures for HTTP responses. Type information lets cached values round-trip.
+     * The types cached JSON may name. The serializer has its own Jackson mapper (not a bean, so
+     * Boot's HTTP mapper is untouched) that writes type information so values round-trip.
+     * SECURITY: only our own types and standard JDK value/collection types are allowed. Allowing
+     * every subtype of Object would let anyone who can write to Valkey trigger arbitrary-class
+     * deserialization gadgets.
      */
-    private static ObjectMapper cacheObjectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        // SECURITY: only our own types and standard JDK value/collection types may be named in
-        // cached JSON. Allowing every subtype of Object would let anyone who can write to Valkey
-        // trigger arbitrary-class deserialization gadgets.
-        PolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
+    private static PolymorphicTypeValidator cacheTypeValidator() {
+        return BasicPolymorphicTypeValidator.builder()
                 .allowIfSubType("com.bracketbattle.")
                 .allowIfSubType("java.util.")
                 .allowIfSubType("java.time.")
                 .allowIfSubType("java.lang.")
                 .build();
-        mapper.activateDefaultTyping(ptv, ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
-        return mapper;
     }
 }

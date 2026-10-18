@@ -1,12 +1,12 @@
 package com.bracketbattle.support;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.google.firebase.auth.FirebaseAuth;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(IntegrationTest.FakeDns.class)
+@Import(FakeDnsConfig.class)
 class ValkeyDownIT {
 
     @DynamicPropertySource
@@ -38,7 +38,7 @@ class ValkeyDownIT {
         registry.add("spring.data.redis.port", () -> "1"); // nothing listens here
     }
 
-    @MockBean
+    @MockitoBean
     FirebaseAuth firebaseAuth;
 
     @Autowired

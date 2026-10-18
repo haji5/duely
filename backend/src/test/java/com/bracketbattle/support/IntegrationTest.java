@@ -1,20 +1,16 @@
 package com.bracketbattle.support;
 
-import com.bracketbattle.media.HostResolver;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -22,10 +18,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,7 +42,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(IntegrationTest.FakeDns.class)
+@Import(FakeDnsConfig.class)
 public abstract class IntegrationTest {
 
     public static final String USER_A = "token-a";
@@ -58,7 +52,7 @@ public abstract class IntegrationTest {
     public static final String USER_C = "token-c";
 
     @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:15-alpine");
 
     @ServiceConnection(name = "redis")
     static final GenericContainer<?> VALKEY = new GenericContainer<>("valkey/valkey:8-alpine").withExposedPorts(6379);
@@ -68,7 +62,7 @@ public abstract class IntegrationTest {
         VALKEY.start();
     }
 
-    @MockBean
+    @MockitoBean
     protected FirebaseAuth firebaseAuth;
 
     @Autowired
@@ -98,20 +92,6 @@ public abstract class IntegrationTest {
         when(decoded.getUid()).thenReturn(uid);
         when(decoded.getClaims()).thenReturn(claims);
         doReturn(decoded).when(firebaseAuth).verifyIdToken(token);
-    }
-
-    /** Resolves every name to a public address, except hosts that name a private or missing one. */
-    @TestConfiguration
-    static class FakeDns {
-        @Bean
-        @Primary
-        HostResolver fakeHostResolver() {
-            return host -> {
-                if (host.contains("nxdomain")) throw new UnknownHostException(host);
-                String ip = host.contains("private") ? "10.0.0.7" : "93.184.216.34";
-                return new InetAddress[]{InetAddress.getByName(ip)};
-            };
-        }
     }
 
     // ---- helpers ---------------------------------------------------------------------------

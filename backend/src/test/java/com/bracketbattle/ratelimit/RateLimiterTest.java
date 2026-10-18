@@ -50,7 +50,7 @@ class RateLimiterTest {
                 .thenReturn(3L, 4L);
 
         assertThatCode(() -> limiter.tryAcquire("read", "ip")).doesNotThrowAnyException();
-        RateLimitExceededException ex = catchThrowableOfType(() -> limiter.tryAcquire("read", "ip"), RateLimitExceededException.class);
+        RateLimitExceededException ex = catchThrowableOfType(RateLimitExceededException.class, () -> limiter.tryAcquire("read", "ip"));
 
         assertThat(ex.getRetryAfterSeconds()).isEqualTo(38);
         assertThat(ex.getHeaders().getFirst("Retry-After")).isEqualTo("38");
