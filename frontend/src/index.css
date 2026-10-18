@@ -3,10 +3,6 @@
    (primary palette, Barlow / Big Shoulders fonts). */
 @config "../tailwind.config.js";
 
-/* Tailwind 4 defaults `dark:` to prefers-color-scheme; follow the app's theme toggle
-   (ThemeContext adds the `dark` class to <html>) instead. */
-@custom-variant dark (&:where(.dark, .dark *));
-
 @layer base {
   :root {
     /* Light theme: cool chalk paper with ink text */
@@ -106,7 +102,6 @@
 
   /* Theme-aware background utilities */
   .bg-themed-primary { background-color: var(--bg-primary); }
-  .bg-themed-secondary { background-color: var(--bg-secondary); }
   .bg-themed-tertiary { background-color: var(--bg-tertiary); }
 
   .text-themed-primary { color: var(--text-primary); }
@@ -116,9 +111,6 @@
   .border-themed-primary { border-color: var(--border-primary); }
   .border-themed-secondary { border-color: var(--border-secondary); }
 
-  .shadow-themed-sm { box-shadow: var(--shadow-sm); }
-  .shadow-themed-md { box-shadow: var(--shadow-md); }
-  .shadow-themed-lg { box-shadow: var(--shadow-lg); }
   .shadow-themed-xl { box-shadow: var(--shadow-xl); }
 
   /* Input and form elements */
@@ -130,13 +122,6 @@
 
   input::placeholder, textarea::placeholder {
     color: var(--text-tertiary);
-  }
-
-  .line-clamp-2 {
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -267,9 +252,14 @@
     border-color: var(--text-tertiary);
   }
 
+  /* Radio choices wrap a visually hidden <input type="radio"> */
+  .choice:has(input:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
   .choice[aria-pressed="true"],
-  .choice[aria-checked="true"],
-  .choice[aria-selected="true"] {
+  .choice:has(input:checked) {
     color: var(--text-primary);
     border-color: var(--accent-primary);
     background-color: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-secondary));
@@ -295,19 +285,7 @@
     border-top-color: var(--accent-primary);
   }
 
-  /* Legacy colour hooks kept so older markup still themes correctly */
-  .bg-primary-600 { background-color: var(--accent-primary); }
-  .bg-primary-700 { background-color: var(--accent-primary-hover); }
-  .text-primary-600 { color: var(--accent-ink); }
-
-  .text-success { color: var(--success); }
-  .text-warning { color: var(--warning); }
   .text-error { color: var(--error); }
-  .text-info { color: var(--info); }
-  .bg-success { background-color: var(--success); }
-  .bg-warning { background-color: var(--warning); }
-  .bg-error { background-color: var(--error); }
-  .bg-info { background-color: var(--info); }
 
   /* "Pick" affordance on battle cards; fills with the card's side colour */
   .pick-chip {
@@ -317,7 +295,7 @@
   }
 
   .group:hover .pick-chip,
-  .group:focus-visible .pick-chip {
+  .pick-chip:focus-visible {
     background-color: var(--side);
     color: #fff;
   }
@@ -344,24 +322,5 @@
 }
 
 @layer utilities {
-  /* Theme-aware Tailwind utilities */
-  .text-primary { color: var(--text-primary); }
-  .text-secondary { color: var(--text-secondary); }
-  .text-tertiary { color: var(--text-tertiary); }
-
-  .bg-primary { background-color: var(--bg-primary); }
-  .bg-secondary { background-color: var(--bg-secondary); }
-  .bg-tertiary { background-color: var(--bg-tertiary); }
-
-  .border-primary { border-color: var(--border-primary); }
-  .border-secondary { border-color: var(--border-secondary); }
-
   .text-accent { color: var(--accent-ink); }
-  .text-side-a { color: var(--side-a); }
-  .text-side-b { color: var(--side-b); }
-
-  .hover\:text-primary:hover { color: var(--text-primary); }
-  .hover\:text-secondary:hover { color: var(--text-secondary); }
-  .hover\:bg-tertiary:hover { background-color: var(--bg-tertiary); }
-  .hover\:border-secondary:hover { border-color: var(--border-secondary); }
 }

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { local } from '@/utils/storage';
 
 type Theme = 'light' | 'dark';
 
@@ -17,37 +18,16 @@ export const useTheme = () => {
   return context;
 };
 
+/** Dark by default. public/theme-init.js applies the saved theme before first paint. */
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Read the saved preference synchronously so the first render already has it
-  // (reading it in an effect let the save effect below overwrite it with the default first).
-  // Defaults to dark (no system preference check).
-  const [theme, setTheme] = useState<Theme>(() => {
-    try {
-      const savedTheme = localStorage.getItem('theme');
-      return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
-    } catch {
-      return 'dark';
-    }
-  });
+  const [theme, setTheme] = useState<Theme>(() => (local.get('theme') === 'light' ? 'light' : 'dark'));
 
   useEffect(() => {
-    // Apply theme to document root
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
+    local.set('theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
+  const toggleTheme = () => setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
 
-  return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
 };

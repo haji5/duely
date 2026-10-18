@@ -1,156 +1,61 @@
 /**
- * Simple in-memory cache with TTL (time-to-live) support.
- * Helps reduce redundant API calls and database load.
+ * Small in-memory TTL cache for GET responses, so moving between pages doesn't refetch
+ * everything. Writes invalidate the exact keys they change; resetApiAuthState() in
+ * services/api.ts clears it on sign-in changes. Entries expire lazily; the size cap bounds memory.
  */
-
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-  ttl: number;
+interface CacheEntry {
+  data: unknown;
+  expiresAt: number;
 }
 
+const MAX_ENTRIES = 100;
+
 class ApiCache {
-  private cache: Map<string, CacheEntry<any>> = new Map();
-  private readonly defaultTTL = 5 * 60 * 1000; // 5 minutes default
-  private readonly maxEntries = 100; // Maximum cache entries (LRU eviction)
+  private entries = new Map<string, CacheEntry>();
+  /** Bumped by clear(); responses that started before a clear are not stored. */
+  private generation = 0;
 
-  /**
-   * Get data from cache if it exists and hasn't expired
-   */
-  get<T>(key: string): T | null {
-    const entry = this.cache.get(key);
-    
-    if (!entry) {
-      return null;
+  get<T>(key: string): T | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      this.entries.delete(key);
+      return undefined;
     }
-
-    const now = Date.now();
-    const isExpired = now - entry.timestamp > entry.ttl;
-
-    if (isExpired) {
-      this.cache.delete(key);
-      return null;
-    }
-
-    // Move to end (most recently used) by re-inserting
-    this.cache.delete(key);
-    this.cache.set(key, entry);
-
+    // Re-insert to mark as most recently used
+    this.entries.delete(key);
+    this.entries.set(key, entry);
     return entry.data as T;
   }
 
-  /**
-   * Store data in cache with optional TTL
-   * Implements LRU eviction when cache exceeds maxEntries
-   */
-  set<T>(key: string, data: T, ttl?: number): void {
-    // If cache is full, remove oldest entry (first in Map)
-    if (this.cache.size >= this.maxEntries && !this.cache.has(key)) {
-      const firstKey = this.cache.keys().next().value;
-      if (firstKey) {
-        this.cache.delete(firstKey);
-      }
+  set(key: string, data: unknown, ttlMs: number): void {
+    if (this.entries.size >= MAX_ENTRIES && !this.entries.has(key)) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest !== undefined) this.entries.delete(oldest);
     }
-
-    this.cache.set(key, {
-      data,
-      timestamp: Date.now(),
-      ttl: ttl || this.defaultTTL,
-    });
+    this.entries.set(key, { data, expiresAt: Date.now() + ttlMs });
   }
 
-  /**
-   * Check if a key exists and is not expired
-   */
-  has(key: string): boolean {
-    return this.get(key) !== null;
+  invalidate(...keys: string[]): void {
+    keys.forEach(key => this.entries.delete(key));
   }
 
-  /**
-   * Remove a specific key from cache
-   */
-  invalidate(key: string): void {
-    this.cache.delete(key);
-  }
-
-  /**
-   * Remove all keys matching a pattern
-   */
-  invalidatePattern(pattern: RegExp): void {
-    const keysToDelete: string[] = [];
-    
-    for (const key of this.cache.keys()) {
-      if (pattern.test(key)) {
-        keysToDelete.push(key);
-      }
-    }
-
-    keysToDelete.forEach(key => this.cache.delete(key));
-  }
-
-  /**
-   * Clear all cached data
-   */
   clear(): void {
-    this.cache.clear();
+    this.entries.clear();
+    this.generation++;
   }
 
-  /**
-   * Remove expired entries (cleanup)
-   */
-  cleanup(): void {
-    const now = Date.now();
-    const keysToDelete: string[] = [];
-
-    for (const [key, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > entry.ttl) {
-        keysToDelete.push(key);
-      }
+  /** Returns the cached value or loads, caches and returns it. */
+  async getOrLoad<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+    const cached = this.get<T>(key);
+    if (cached !== undefined) return cached;
+    const generation = this.generation;
+    const data = await load();
+    if (generation === this.generation) {
+      this.set(key, data, ttlMs);
     }
-
-    keysToDelete.forEach(key => this.cache.delete(key));
+    return data;
   }
 }
 
-// Singleton instance
 export const apiCache = new ApiCache();
-
-// Cleanup expired entries every 5 minutes
-setInterval(() => {
-  apiCache.cleanup();
-}, 5 * 60 * 1000);
-
-/**
- * Helper function to create cache keys
- */
-export function createCacheKey(endpoint: string, params?: Record<string, any>): string {
-  if (!params) {
-    return endpoint;
-  }
-  const paramString = Object.entries(params)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('&');
-  return `${endpoint}?${paramString}`;
-}
-
-/**
- * Wrapper for API calls with automatic caching
- */
-export async function cachedApiCall<T>(
-  cacheKey: string,
-  apiCall: () => Promise<T>,
-  ttl?: number
-): Promise<T> {
-  // Check cache first
-  const cached = apiCache.get<T>(cacheKey);
-  if (cached !== null) {
-    return cached;
-  }
-
-  // Make API call and cache the result
-  const data = await apiCall();
-  apiCache.set(cacheKey, data, ttl);
-  return data;
-}
-
