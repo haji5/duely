@@ -5,16 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.lettuce.core.ClientOptions;
+import org.springframework.boot.autoconfigure.data.redis.LettuceClientConfigurationBuilderCustomizer;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.BatchStrategies;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.cache.RedisCacheWriter;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
@@ -24,12 +27,28 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Cache configuration using Valkey (Redis-compatible).
- * Spring Data Redis works seamlessly with Valkey.
+ * Server-side cache in Valkey (Redis-compatible). Entries have absolute TTLs; writes evict the
+ * keys they change. If Valkey is unavailable, {@link RedisCacheErrorHandler} turns cache errors
+ * into misses and requests are served from Postgres.
  */
 @Configuration
 @EnableCaching
 public class CacheConfig implements CachingConfigurer {
+
+    /** Every cache and its TTL. Unknown cache names fail fast instead of being created on demand. */
+    public static final Map<String, Duration> CACHES = Map.of(
+            "brackets", Duration.ofMinutes(5),
+            "popularBrackets", Duration.ofMinutes(10), // not evicted per run; the TTL bounds staleness
+            "bracket", Duration.ofMinutes(30),
+            "bracketItems", Duration.ofMinutes(30),
+            "bracketRankings", Duration.ofMinutes(10), // evicted on every run
+            "bracketComments", Duration.ofMinutes(5),  // evicted on every run
+            "userResults", Duration.ofMinutes(10),     // evicted on every run by that user
+            "youtubeSearch", Duration.ofHours(24),
+            "spotifyPlaylist", Duration.ofHours(1));
+
+    // Bump when the cached JSON shape changes, so old entries are ignored instead of failing to parse.
+    private static final String KEY_PREFIX = "duely:v2:";
 
     private final RedisCacheErrorHandler redisCacheErrorHandler;
 
@@ -42,94 +61,56 @@ public class CacheConfig implements CachingConfigurer {
         return redisCacheErrorHandler;
     }
 
-    @Bean("redisObjectMapper")
-    public ObjectMapper redisObjectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        // Register JavaTimeModule for proper LocalDateTime serialization
-        mapper.registerModule(new JavaTimeModule());
+    @Bean
+    public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
+        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(cacheObjectMapper());
+        RedisCacheConfiguration defaults = RedisCacheConfiguration.defaultCacheConfig()
+                .prefixCacheNameWith(KEY_PREFIX)
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(serializer))
+                .disableCachingNullValues();
 
-        // Enable type information for polymorphic types to avoid deserialization issues.
-        // SECURITY: Only allow our own model/DTO types and standard JDK value/collection types.
-        // Allowing every subtype of Object lets anyone who can write to Valkey trigger
-        // arbitrary-class deserialization gadgets (remote code execution).
+        Map<String, RedisCacheConfiguration> configurations = new HashMap<>();
+        CACHES.forEach((name, ttl) -> configurations.put(name, defaults.entryTtl(ttl)));
+
+        // SCAN instead of KEYS when a whole cache is cleared, so Valkey is never blocked.
+        RedisCacheWriter writer = RedisCacheWriter.nonLockingRedisCacheWriter(
+                redisConnectionFactory, BatchStrategies.scan(1000));
+        return RedisCacheManager.builder(writer)
+                .cacheDefaults(defaults)
+                .withInitialCacheConfigurations(configurations)
+                .disableCreateOnMissingCache()
+                .build();
+    }
+
+    /**
+     * Fail fast while Valkey is down: commands are rejected immediately instead of queueing until
+     * the command timeout, so a cache outage adds no latency to requests.
+     */
+    @Bean
+    public LettuceClientConfigurationBuilderCustomizer rejectCommandsWhileDisconnected() {
+        return builder -> builder.clientOptions(ClientOptions.builder()
+                .disconnectedBehavior(ClientOptions.DisconnectedBehavior.REJECT_COMMANDS)
+                .build());
+    }
+
+    /**
+     * The cache's own mapper, deliberately not a bean: an ObjectMapper bean would replace the one
+     * Spring Boot configures for HTTP responses. Type information lets cached values round-trip.
+     */
+    private static ObjectMapper cacheObjectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        // SECURITY: only our own types and standard JDK value/collection types may be named in
+        // cached JSON. Allowing every subtype of Object would let anyone who can write to Valkey
+        // trigger arbitrary-class deserialization gadgets.
         PolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
                 .allowIfSubType("com.bracketbattle.")
                 .allowIfSubType("java.util.")
                 .allowIfSubType("java.time.")
                 .allowIfSubType("java.lang.")
                 .build();
-
         mapper.activateDefaultTyping(ptv, ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
-
         return mapper;
-    }
-
-    @Bean
-    public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
-        // Create serializer with custom ObjectMapper specifically for Valkey/Redis
-        ObjectMapper cacheMapper = redisObjectMapper();
-        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(cacheMapper);
-
-        // Default cache configuration
-        RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(10))
-                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(serializer))
-                .disableCachingNullValues()
-                .enableTimeToIdle(); // Enable TTI to expire unused cache entries
-
-        // Custom configurations for different caches
-        Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
-        
-        // Brackets list cache - 5 minutes (frequently updated)
-        cacheConfigurations.put("brackets", defaultConfig.entryTtl(Duration.ofMinutes(5)));
-        
-        // Popular brackets cache - 10 minutes (less frequently changing)
-        cacheConfigurations.put("popularBrackets", defaultConfig.entryTtl(Duration.ofMinutes(10)));
-        
-        // Individual bracket details - 30 minutes (rarely changes)
-        cacheConfigurations.put("bracket", defaultConfig.entryTtl(Duration.ofMinutes(30)));
-
-        // Bracket items - 30 minutes (rarely changes after creation)
-        cacheConfigurations.put("bracketItems", defaultConfig.entryTtl(Duration.ofMinutes(30)));
-
-        // Bracket results - 5 minutes (frequently updated)
-        cacheConfigurations.put("bracketResults", defaultConfig.entryTtl(Duration.ofMinutes(5)));
-
-        // Bracket rankings - 2 minutes (updated frequently by user submissions)
-        cacheConfigurations.put("bracketRankings", defaultConfig.entryTtl(Duration.ofMinutes(2)));
-
-        // User results - 10 minutes
-        cacheConfigurations.put("userResults", defaultConfig.entryTtl(Duration.ofMinutes(10)));
-
-        // User brackets (brackets created by a user) - 1 minute (prevents spam, still fresh)
-        cacheConfigurations.put("userBrackets", defaultConfig.entryTtl(Duration.ofMinutes(1)));
-
-        return RedisCacheManager.builder(redisConnectionFactory)
-                .cacheDefaults(defaultConfig)
-                .withInitialCacheConfigurations(cacheConfigurations)
-                .transactionAware() // Enable transaction-aware cache operations
-                .build();
-    }
-
-    @Bean
-    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
-        RedisTemplate<String, Object> template = new RedisTemplate<>();
-        template.setConnectionFactory(redisConnectionFactory);
-
-        // Use String serializer for keys
-        StringRedisSerializer stringSerializer = new StringRedisSerializer();
-        template.setKeySerializer(stringSerializer);
-        template.setHashKeySerializer(stringSerializer);
-
-        // Use JSON serializer for values
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(redisObjectMapper());
-        template.setValueSerializer(jsonSerializer);
-        template.setHashValueSerializer(jsonSerializer);
-
-        template.setEnableTransactionSupport(true);
-        template.afterPropertiesSet();
-
-        return template;
     }
 }

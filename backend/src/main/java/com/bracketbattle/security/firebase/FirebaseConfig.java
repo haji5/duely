@@ -42,11 +42,10 @@ public class FirebaseConfig {
                         bytes = Base64.getDecoder().decode(trimmed);
                         logger.debug("Successfully decoded base64 credentials, length: {} bytes", bytes.length);
                     } catch (IllegalArgumentException e) {
-                        String preview = trimmed.substring(0, Math.min(50, trimmed.length()));
-                        logger.error("FIREBASE_CREDENTIALS_JSON is neither valid JSON nor valid base64. First 50 chars: '{}'", preview);
-                        logger.error("Please provide either:");
-                        logger.error("  1. Raw JSON service account key");
-                        logger.error("  2. Base64-encoded JSON service account key");
+                        // Never log any part of the value: it is a secret.
+                        logger.error("FIREBASE_CREDENTIALS_JSON is neither JSON nor base64 ({} characters{}). "
+                                        + "Provide the service account key as base64 or as single-line JSON.",
+                                trimmed.length(), trimmed.contains("BEGIN PRIVATE KEY") ? ", looks like a PEM key" : "");
                         throw new IllegalStateException("FIREBASE_CREDENTIALS_JSON must be valid JSON or base64-encoded JSON. Current value is neither.", e);
                     }
                 }

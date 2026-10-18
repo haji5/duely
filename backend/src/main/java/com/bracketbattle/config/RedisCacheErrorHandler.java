@@ -6,40 +6,47 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
- * Custom cache error handler to prevent application failures when Valkey is unavailable.
- * This allows the application to continue functioning without cache, logging errors instead of throwing.
+ * Treats cache failures (Valkey down, unreadable entry) as cache misses so requests are still
+ * served from the database. Warnings are throttled to one a minute so an outage doesn't flood logs.
  */
 @Component
 public class RedisCacheErrorHandler implements CacheErrorHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisCacheErrorHandler.class);
+    private static final long WARN_INTERVAL_MS = 60_000;
+
+    private final AtomicLong lastWarning = new AtomicLong();
 
     @Override
     public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
-        logger.error("Failed to get cache entry from cache '{}' with key '{}': {}",
-            cache.getName(), key, exception.getMessage());
-        // Swallow the exception - application continues without cache
+        warn("read", cache, exception);
     }
 
     @Override
     public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
-        logger.error("Failed to put cache entry to cache '{}' with key '{}': {}",
-            cache.getName(), key, exception.getMessage());
-        // Swallow the exception - application continues without cache
+        warn("write", cache, exception);
     }
 
     @Override
     public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
-        logger.error("Failed to evict cache entry from cache '{}' with key '{}': {}",
-            cache.getName(), key, exception.getMessage());
-        // Swallow the exception - application continues without cache
+        // An eviction that didn't happen can leave stale data until the entry's TTL; always log it.
+        logger.warn("Failed to evict key '{}' from cache '{}': {}", key, cache.getName(), exception.getMessage());
     }
 
     @Override
     public void handleCacheClearError(RuntimeException exception, Cache cache) {
-        logger.error("Failed to clear cache '{}': {}",
-            cache.getName(), exception.getMessage());
-        // Swallow the exception - application continues without cache
+        logger.warn("Failed to clear cache '{}': {}", cache.getName(), exception.getMessage());
+    }
+
+    private void warn(String operation, Cache cache, RuntimeException exception) {
+        long now = System.currentTimeMillis();
+        long last = lastWarning.get();
+        if (now - last > WARN_INTERVAL_MS && lastWarning.compareAndSet(last, now)) {
+            logger.warn("Cache {} failed for '{}', serving from the database: {}",
+                    operation, cache.getName(), exception.getMessage());
+        }
     }
 }
