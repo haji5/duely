@@ -91,7 +91,7 @@ const UserProfile: React.FC = () => {
             </p>
           </div>
           <Link
-            to={`/browse?creator=${encodeURIComponent(currentUser.uid)}`}
+            to="/browse?mine=1"
             role="menuitem"
             className="flex items-center gap-3 px-4 py-2.5 text-[0.95rem] text-themed-secondary transition-colors hover:bg-themed-tertiary hover:text-themed-primary"
             onClick={() => setShowDropdown(false)}

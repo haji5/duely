@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: bracket_battle
       POSTGRES_USER: ${DB_USERNAME:-postgres}
@@ -12,9 +13,15 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - bracket-battle-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d bracket_battle"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   valkey:
     image: valkey/valkey:8-alpine
+    restart: unless-stopped
     ports:
       # Bound to localhost only: Valkey has no password and holds deserialized cache data
       - "127.0.0.1:6379:6379"
@@ -31,24 +38,40 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     env_file:
-      - ./.env
-      - ./backend/.env
+      - path: ./.env
+        required: false
+      - path: ./backend/.env
+        required: false
     ports:
       # Bound to localhost only: remote clients must go through nginx (which sets X-Forwarded-For)
-      - "127.0.0.1:${SERVER_PORT:-8080}:8080"
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8080}:8080"
     environment:
+      # Pinned here (this block overrides env_file): nginx and the port mapping expect 8080.
+      SERVER_PORT: 8080
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/bracket_battle}
       DB_USERNAME: ${DB_USERNAME:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-password}
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+    # The JVM sizes its heap from this limit (MaxRAMPercentage in the Dockerfile).
+    mem_limit: 1g
     depends_on:
-      - postgres
-      - valkey
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
     networks:
       - bracket-battle-network
+    healthcheck:
+      # Readiness covers the app and Postgres; a Valkey outage doesn't make the backend unready.
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
 
   frontend:
     build:
@@ -60,12 +83,13 @@ services:
         - VITE_FIREBASE_STORAGE_BUCKET=${VITE_FIREBASE_STORAGE_BUCKET}
         - VITE_FIREBASE_MESSAGING_SENDER_ID=${VITE_FIREBASE_MESSAGING_SENDER_ID}
         - VITE_FIREBASE_APP_ID=${VITE_FIREBASE_APP_ID}
-        - VITE_FIREBASE_MEASUREMENT_ID=${VITE_FIREBASE_MEASUREMENT_ID}
         - VITE_API_URL=/api
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - bracket-battle-network
 
@@ -76,3 +100,8 @@ volumes:
 networks:
   bracket-battle-network:
     driver: bridge
+    # A fixed subnet so the Cloudflare tunnel container (docker-compose.local.yml) gets a fixed
+    # address, the only proxy nginx trusts to report the real client IP.
+    ipam:
+      config:
+        - subnet: 172.29.53.0/24

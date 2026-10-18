@@ -1,6 +1,5 @@
-# Maven build artifacts (we rebuild in Docker)
+# Maven build output (the image builds the jar itself)
 target/
-!target/*.jar
 
 # IDE files
 .idea/
@@ -20,37 +19,20 @@ out/
 .gitattributes
 
 # Documentation
-README.md
 *.md
 docs/
 
-# CI/CD
-.github/
-.gitlab-ci.yml
-Jenkinsfile
-
-# Environment files
+# Environment files (secrets are passed at runtime, never baked into the image)
 .env
 .env.*
-!.env.example
 
-# Logs
+# Logs and temporary files
 *.log
 logs/
-
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Testing
-coverage/
-.nyc_output/
-
-# Temporary files
 *.tmp
 *.temp
 *.swp
 *.swo
 *~
-
+.DS_Store
+Thumbs.db

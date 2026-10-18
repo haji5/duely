@@ -1,19 +1,30 @@
 package com.bracketbattle.model;
 
-import jakarta.persistence.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.ArrayList;
+import jakarta.persistence.*;
 
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * One completed run of a bracket. Immutable once saved.
+ *
+ * <p>userId, submissionToken and matches are hidden from JSON: the public API must not expose
+ * who voted, and the token is a per-submission secret. The Valkey cache honours the same
+ * annotations, which is fine because the idempotency and ownership checks read the repository.
+ */
 @Entity
-@Table(name = "results", indexes = {
-    @Index(name = "idx_user_bracket_token", columnList = "user_id, bracket_id, submission_token")
-})
+@Table(name = "results")
 public class Result {
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final TypeReference<List<Long>> RANKING_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<MatchOutcome>> MATCHES_TYPE = new TypeReference<>() {};
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -22,26 +33,23 @@ public class Result {
     @Column(name = "bracket_id", nullable = false)
     private Long bracketId;
 
+    @JsonIgnore
     @Column(name = "user_id")
     private String userId;
 
     @Column(name = "ranking", nullable = false, columnDefinition = "TEXT")
     private String rankingJson;
 
+    // Null for runs saved before real match outcomes were recorded.
+    @Column(name = "matches", columnDefinition = "TEXT")
+    private String matchesJson;
+
     @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
-    @Version
-    @Column(name = "version")
-    private Long version;
-
-    @Column(name = "submission_token", unique = true)
-    private String submissionToken;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "bracket_id", insertable = false, updatable = false)
     @JsonIgnore
-    private Bracket bracket;
+    @Column(name = "submission_token")
+    private String submissionToken;
 
     @Column(name = "display_name", length = 100)
     private String displayName;
@@ -49,116 +57,82 @@ public class Result {
     @Column(name = "comment", columnDefinition = "TEXT")
     private String comment;
 
-    // Use a static ObjectMapper to avoid recreation on deserialization
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    // Constructors
     public Result() {}
 
-    public Result(Long bracketId, String userId, List<Long> ranking) {
+    public Result(Long bracketId, String userId, List<Long> ranking, List<MatchOutcome> matches, String submissionToken) {
         this.bracketId = bracketId;
         this.userId = userId;
-        this.setRanking(ranking);
-        this.createdAt = LocalDateTime.now();
-    }
-
-    public Result(Long bracketId, String userId, List<Long> ranking, String submissionToken) {
-        this.bracketId = bracketId;
-        this.userId = userId;
-        this.setRanking(ranking);
         this.submissionToken = submissionToken;
-        this.createdAt = LocalDateTime.now();
+        setRanking(ranking);
+        setMatches(matches);
     }
 
-    // Getters and Setters
-    public Long getId() {
-        return id;
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
     }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public Long getBracketId() {
-        return bracketId;
-    }
+    public Long getBracketId() { return bracketId; }
+    public void setBracketId(Long bracketId) { this.bracketId = bracketId; }
 
-    public void setBracketId(Long bracketId) {
-        this.bracketId = bracketId;
-    }
-
-    public String getUserId() {
-        return userId;
-    }
-
-    public void setUserId(String userId) {
-        this.userId = userId;
-    }
+    @JsonIgnore
+    public String getUserId() { return userId; }
+    @JsonIgnore
+    public void setUserId(String userId) { this.userId = userId; }
 
     public List<Long> getRanking() {
-        if (rankingJson == null || rankingJson.isEmpty()) {
-            return new ArrayList<>();
-        }
-        try {
-            return OBJECT_MAPPER.readValue(rankingJson, new TypeReference<List<Long>>() {});
-        } catch (JsonProcessingException e) {
-            return new ArrayList<>();
-        }
+        return read(rankingJson, RANKING_TYPE);
     }
 
     public void setRanking(List<Long> ranking) {
+        this.rankingJson = write(ranking == null ? List.of() : ranking);
+    }
+
+    @JsonIgnore
+    public List<MatchOutcome> getMatches() {
+        return matchesJson == null ? null : read(matchesJson, MATCHES_TYPE);
+    }
+
+    @JsonIgnore
+    public void setMatches(List<MatchOutcome> matches) {
+        this.matchesJson = matches == null ? null : write(matches);
+    }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    @JsonIgnore
+    public String getSubmissionToken() { return submissionToken; }
+    @JsonIgnore
+    public void setSubmissionToken(String submissionToken) { this.submissionToken = submissionToken; }
+
+    public String getDisplayName() { return displayName; }
+    public void setDisplayName(String displayName) { this.displayName = displayName; }
+
+    public String getComment() { return comment; }
+    public void setComment(String comment) { this.comment = comment; }
+
+    private static <T> List<T> read(String json, TypeReference<List<T>> type) {
+        if (json == null || json.isEmpty()) {
+            return new ArrayList<>(); // mutable: the cache serialiser can't rebuild List.of()
+        }
         try {
-            this.rankingJson = OBJECT_MAPPER.writeValueAsString(ranking);
-        } catch (JsonProcessingException e) {
-            this.rankingJson = "[]";
+            return JSON.readValue(json, type);
+        } catch (JacksonException e) {
+            throw new IllegalStateException("Corrupt JSON column in results", e);
         }
     }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public Long getVersion() {
-        return version;
-    }
-
-    public void setVersion(Long version) {
-        this.version = version;
-    }
-
-    public String getSubmissionToken() {
-        return submissionToken;
-    }
-
-    public void setSubmissionToken(String submissionToken) {
-        this.submissionToken = submissionToken;
-    }
-
-    public Bracket getBracket() {
-        return bracket;
-    }
-
-    public void setBracket(Bracket bracket) {
-        this.bracket = bracket;
-    }
-
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
-    }
-
-    public String getComment() {
-        return comment;
-    }
-
-    public void setComment(String comment) {
-        this.comment = comment;
+    private static String write(Object value) {
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (JacksonException e) {
+            throw new IllegalStateException("Could not serialise result column", e);
+        }
     }
 }

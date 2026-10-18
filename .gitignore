@@ -73,7 +73,6 @@ pids/
 # Java / Maven
 # -----------------
 *.class
-# Allow JAR files in lib directories if needed
 *.jar
 *.war
 *.ear
@@ -92,8 +91,6 @@ pom.xml.next
 release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
-.mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
 
 # -----------------
 # IDEs / Editors

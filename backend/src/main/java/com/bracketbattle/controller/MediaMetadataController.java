@@ -1,175 +1,58 @@
 package com.bracketbattle.controller;
 
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.bracketbattle.media.MediaMetadataService;
+import com.bracketbattle.media.MediaUrls;
+import com.bracketbattle.ratelimit.RateLimiter;
+import com.bracketbattle.security.CurrentUser;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.net.URLEncoder;
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import java.net.URI;
+import java.util.List;
+import java.util.Map;
 
+/** Lookups for the bracket creator. Signed-in users only, with their own per-user limits. */
 @RestController
 @RequestMapping("/metadata")
 public class MediaMetadataController {
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final MediaMetadataService metadataService;
+    private final RateLimiter rateLimiter;
 
-    @GetMapping("/youtube/search")
-    public ResponseEntity<Map<String, String>> searchYouTube(@RequestParam String query) {
-        if (query == null || query.isBlank() || query.length() > 200) {
-            return ResponseEntity.badRequest().build();
-        }
-        try {
-            String encodedQuery = URLEncoder.encode(query, "UTF-8");
-            Document doc = Jsoup.connect("https://www.youtube.com/results?search_query=" + encodedQuery)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    .get();
-
-            String html = doc.html();
-            Pattern pattern = Pattern.compile("\"videoId\":\"([a-zA-Z0-9_-]{11})\"");
-            Matcher matcher = pattern.matcher(html);
-
-            // Collect up to 5 unique candidate video IDs
-            LinkedHashSet<String> candidateIds = new LinkedHashSet<>();
-            while (matcher.find() && candidateIds.size() < 5) {
-                candidateIds.add(matcher.group(1));
-            }
-
-            if (candidateIds.isEmpty()) {
-                return ResponseEntity.notFound().build();
-            }
-
-            // Check each candidate for embeddability via YouTube's oEmbed endpoint.
-            // oEmbed returns 200 for embeddable videos, 401 for restricted ones.
-            for (String videoId : candidateIds) {
-                if (isEmbeddable(videoId)) {
-                    Map<String, String> result = new HashMap<>();
-                    result.put("mediaUrl", "https://www.youtube.com/watch?v=" + videoId);
-                    return ResponseEntity.ok(result);
-                }
-            }
-
-            // Fallback: if oEmbed check fails for all (e.g. network issue), return the first result
-            String fallbackId = candidateIds.iterator().next();
-            Map<String, String> result = new HashMap<>();
-            result.put("mediaUrl", "https://www.youtube.com/watch?v=" + fallbackId);
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.internalServerError().build();
-        }
+    public MediaMetadataController(MediaMetadataService metadataService, RateLimiter rateLimiter) {
+        this.metadataService = metadataService;
+        this.rateLimiter = rateLimiter;
     }
 
-    /**
-     * Checks whether a YouTube video allows embedding by hitting the oEmbed endpoint.
-     * Returns true if embeddable (HTTP 200), false if restricted (HTTP 401/other).
-     */
-    private boolean isEmbeddable(String videoId) {
-        try {
-            String oembedUrl = "https://www.youtube.com/oembed?url="
-                    + URLEncoder.encode("https://www.youtube.com/watch?v=" + videoId, "UTF-8")
-                    + "&format=json";
-            int status = Jsoup.connect(oembedUrl)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    .ignoreContentType(true)
-                    .ignoreHttpErrors(true)
-                    .execute()
-                    .statusCode();
-            return status == 200;
-        } catch (Exception e) {
-            // If the check itself fails, assume embeddable to avoid blocking results
-            return true;
+    @GetMapping("/youtube/search")
+    public Map<String, String> searchYouTube(@RequestParam String query, Authentication authentication) {
+        if (query.isBlank() || query.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Search query must be 1 to 200 characters");
         }
+        rateLimiter.tryAcquire("metadata-search", CurrentUser.uidOrNull(authentication));
+        String mediaUrl = metadataService.findEmbeddableYouTubeUrl(query);
+        if (mediaUrl == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No embeddable YouTube video found");
+        }
+        return Map.of("mediaUrl", mediaUrl);
     }
 
     @GetMapping("/spotify/playlist")
-    public ResponseEntity<List<Map<String, String>>> getSpotifyPlaylistTracks(@RequestParam String url) {
-        try {
-            // SECURITY: Only accept genuine open.spotify.com playlist URLs and rebuild the
-            // fetch URL from the extracted ID, so user input can never choose the host (SSRF).
-            String playlistId = extractSpotifyPlaylistId(url);
-            if (playlistId == null) {
-                return ResponseEntity.badRequest().build();
-            }
-
-            String embedUrl = "https://open.spotify.com/embed/playlist/" + playlistId;
-
-            Document doc = Jsoup.connect(embedUrl).followRedirects(false).get();
-            Element script = doc.getElementById("__NEXT_DATA__");
-            if (script == null) {
-                return ResponseEntity.notFound().build();
-            }
-
-            Map<String, Object> data = mapper.readValue(script.html(), new TypeReference<Map<String, Object>>() {});
-            Map<String, Object> props = (Map<String, Object>) data.get("props");
-            Map<String, Object> pageProps = (Map<String, Object>) props.get("pageProps");
-            Map<String, Object> state = (Map<String, Object>) pageProps.get("state");
-            Map<String, Object> stateData = (Map<String, Object>) state.get("data");
-            Map<String, Object> entity = (Map<String, Object>) stateData.get("entity");
-            List<Map<String, Object>> trackList = (List<Map<String, Object>>) entity.get("trackList");
-
-            List<Map<String, String>> result = new ArrayList<>();
-            for (Map<String, Object> track : trackList) {
-                String uri = (String) track.get("uri");
-                if (uri != null && uri.startsWith("spotify:track:")) {
-                    String id = uri.substring("spotify:track:".length());
-                    String trackUrl = "https://open.spotify.com/track/" + id;
-                    String title = (String) track.get("title");
-                    String subtitle = (String) track.get("subtitle");
-
-                    // Decode entities in subtitle and replace commas between artists with ampersands
-                    if (subtitle != null && !subtitle.isEmpty()) {
-                        subtitle = org.jsoup.parser.Parser.unescapeEntities(subtitle, false).replace("\u00A0", " ");
-                        subtitle = subtitle.replace(",", " &");
-                    }
-
-                    String fullTitle = title + (subtitle != null && !subtitle.isEmpty() ? " - " + subtitle : "");
-
-                    // Decode HTML entities in title
-                    if (fullTitle != null) {
-                       fullTitle = org.jsoup.parser.Parser.unescapeEntities(fullTitle, false).replace("\u00A0", " ");
-                    }
-
-                    Map<String, String> t = new HashMap<>();
-                    t.put("title", fullTitle);
-                    t.put("mediaUrl", trackUrl);
-                    result.add(t);
-                }
-            }
-
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.internalServerError().build();
+    public List<Map<String, String>> getSpotifyPlaylistTracks(@RequestParam String url, Authentication authentication) {
+        String playlistId = MediaMetadataService.extractSpotifyPlaylistId(url);
+        if (playlistId == null) {
+            URI uri = MediaUrls.parse(url);
+            String message = uri != null && MediaUrls.isSpotifyShortLinkHost(uri.getHost())
+                    ? "Spotify short links (spotify.link) aren't supported; open the link and copy the open.spotify.com address"
+                    : "Not a Spotify playlist link (expected https://open.spotify.com/playlist/…)";
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
         }
+        rateLimiter.tryAcquire("metadata-playlist", CurrentUser.uidOrNull(authentication));
+        return metadataService.getSpotifyPlaylistTracks(playlistId);
     }
-
-    /**
-     * Extracts the playlist ID from an open.spotify.com playlist URL
-     * (e.g. https://open.spotify.com/playlist/{id} or /embed/playlist/{id}, optionally
-     * with an intl-xx locale segment). Returns null for anything else.
-     */
-    static String extractSpotifyPlaylistId(String url) {
-        if (url == null || url.length() > 500) return null;
-        try {
-            java.net.URI uri = new java.net.URI(url.trim());
-            String scheme = uri.getScheme();
-            if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) return null;
-            if (!"open.spotify.com".equalsIgnoreCase(uri.getHost())) return null;
-            if (uri.getPort() != -1 || uri.getUserInfo() != null || uri.getPath() == null) return null;
-            Matcher m = SPOTIFY_PLAYLIST_PATH.matcher(uri.getPath());
-            return m.matches() ? m.group(1) : null;
-        } catch (java.net.URISyntaxException e) {
-            return null;
-        }
-    }
-
-    private static final Pattern SPOTIFY_PLAYLIST_PATH =
-            Pattern.compile("^(?:/intl-[a-zA-Z-]+)?(?:/embed)?/playlist/([a-zA-Z0-9]{1,64})/?$");
 }

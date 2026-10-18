@@ -1,14 +1,11 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import {
-  signInWithPopup,
-  signOut,
-  onAuthStateChanged
-} from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { FirebaseError } from 'firebase/app';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, googleProvider } from '../config/firebase';
 import { resetApiAuthState } from '@/services/api';
-import { csrfService } from '@/services/csrf';
+import { local } from '@/utils/storage';
 
-interface UserProfile {
+export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
@@ -17,8 +14,7 @@ interface UserProfile {
 
 interface AuthContextType {
   currentUser: UserProfile | null;
-  user: UserProfile | null; // Add user property for compatibility
-  loading: boolean;
+  /** Opens the Google sign-in popup. Resolves quietly if the user closes it. */
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -33,127 +29,51 @@ export const useAuth = (): AuthContextType => {
   return context;
 };
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
+const CANCELLED_POPUP_CODES = new Set(['auth/popup-closed-by-user', 'auth/cancelled-popup-request']);
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const uidRef = useRef<string | null>(null);
 
-  // Track previous user to detect user switches
-  const prevUserRef = React.useRef<UserProfile | null>(null);
+  useEffect(() => {
+    // Older versions mirrored the profile here; Firebase persists the session itself.
+    local.remove('user');
+
+    // Firebase's listener is the single source of truth for the signed-in user.
+    return onAuthStateChanged(auth, (user) => {
+      const uid = user?.uid ?? null;
+      if (uid !== uidRef.current) {
+        // Never let one user's cached responses reach the next.
+        resetApiAuthState();
+        uidRef.current = uid;
+      }
+      setCurrentUser(user ? {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+      } : null);
+      setLoading(false);
+    });
+  }, []);
 
   const signInWithGoogle = async (): Promise<void> => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-
-      if (result.user) {
-        const userProfile: UserProfile = {
-          uid: result.user.uid,
-          email: result.user.email,
-          displayName: result.user.displayName,
-          photoURL: result.user.photoURL
-        };
-        setCurrentUser(userProfile);
-        // Store user data in localStorage for persistence
-        localStorage.setItem('user', JSON.stringify(userProfile));
-
-        // Fetch CSRF token after successful login
-        try {
-          await csrfService.getToken();
-          console.log('[Auth] CSRF token obtained after login');
-        } catch (error) {
-          console.error('[Auth] Failed to fetch CSRF token after login:', error);
-        }
-      }
+      await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      console.error('Error signing in with Google:', error);
+      if (error instanceof FirebaseError && CANCELLED_POPUP_CODES.has(error.code)) return;
       throw error;
     }
   };
 
   const logout = async (): Promise<void> => {
-    try {
-      // Invalidate CSRF token on the server before logging out
-      await csrfService.invalidateToken();
-
-      await signOut(auth);
-      setCurrentUser(null);
-      localStorage.removeItem('user');
-      // Clear any cached API auth/CSRF state on logout
-      resetApiAuthState();
-    } catch (error) {
-      console.error('Error signing out:', error);
-      throw error;
-    }
-  };
-
-  useEffect(() => {
-    // Check if user is stored in localStorage on app start
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        setCurrentUser(userData);
-      } catch (error) {
-        console.error('Error parsing stored user data:', error);
-        localStorage.removeItem('user');
-      }
-    }
-
-    // Listen for authentication state changes
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      const prevUser = prevUserRef.current;
-
-      if (user) {
-        const userProfile: UserProfile = {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL
-        };
-
-        // SECURITY: Clear cache if user switches accounts
-        // This prevents User A's cached data from being shown to User B
-        if (prevUser && prevUser.uid !== user.uid) {
-          console.log('[Auth] User switched from', prevUser.uid, 'to', user.uid, '- clearing cache');
-          resetApiAuthState();
-        }
-
-        setCurrentUser(userProfile);
-        localStorage.setItem('user', JSON.stringify(userProfile));
-        prevUserRef.current = userProfile;
-
-        // Fetch CSRF token for authenticated user
-        csrfService.getToken().then(() => {
-          console.log('[Auth] CSRF token obtained for authenticated user');
-        }).catch(error => {
-          console.error('[Auth] Failed to fetch CSRF token:', error);
-        });
-      } else {
-        setCurrentUser(null);
-        localStorage.removeItem('user');
-        // Also reset API state if the user signs out elsewhere
-        resetApiAuthState();
-        prevUserRef.current = null;
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const value: AuthContextType = {
-    currentUser,
-    user: currentUser, // Provide both properties for compatibility
-    loading,
-    signInWithGoogle,
-    logout
+    await signOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ currentUser, signInWithGoogle, logout }}>
+      {/* Children wait for the first auth state so pages never see a "signed out" flash */}
       {!loading && children}
     </AuthContext.Provider>
   );

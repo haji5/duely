@@ -1,43 +1,54 @@
 package com.bracketbattle.controller;
 
-import com.bracketbattle.service.CacheMonitoringService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
+import com.bracketbattle.config.CacheConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Map;
-
+/** Admin-only cache clearing, e.g. after editing data directly in the database. */
 @RestController
 @RequestMapping("/admin/cache")
 @PreAuthorize("hasRole('ADMIN')")
 public class CacheManagementController {
 
-    @Autowired
-    private CacheMonitoringService cacheMonitoringService;
+    private static final Logger log = LoggerFactory.getLogger(CacheManagementController.class);
 
-    @GetMapping("/info")
-    public ResponseEntity<Map<String, Object>> getCacheInfo() {
-        return ResponseEntity.ok(cacheMonitoringService.getCacheInfo());
+    private final CacheManager cacheManager;
+
+    public CacheManagementController(CacheManager cacheManager) {
+        this.cacheManager = cacheManager;
     }
 
     @PostMapping("/clear")
-    public ResponseEntity<String> clearAllCaches() {
-        cacheMonitoringService.clearAllCaches();
-        return ResponseEntity.ok("All caches cleared successfully");
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void clearAllCaches() {
+        CacheConfig.CACHES.keySet().forEach(this::clear);
+        log.info("Cleared all caches");
     }
 
     @PostMapping("/clear/{cacheName}")
-    public ResponseEntity<String> clearCache(@PathVariable String cacheName) {
-        cacheMonitoringService.clearCache(cacheName);
-        return ResponseEntity.ok("Cache '" + cacheName + "' cleared successfully");
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void clearCache(@PathVariable String cacheName) {
+        if (!CacheConfig.CACHES.containsKey(cacheName)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown cache '" + cacheName + "'");
+        }
+        clear(cacheName);
+        log.info("Cleared cache {}", cacheName);
     }
 
-    @PostMapping("/evict/{cacheName}/{key}")
-    public ResponseEntity<String> evictCacheKey(
-            @PathVariable String cacheName,
-            @PathVariable String key) {
-        cacheMonitoringService.evictCacheKey(cacheName, key);
-        return ResponseEntity.ok("Key '" + key + "' evicted from cache '" + cacheName + "'");
+    private void clear(String name) {
+        Cache cache = cacheManager.getCache(name);
+        if (cache != null) {
+            cache.clear();
+        }
     }
 }

@@ -5,48 +5,43 @@
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "dependencies": {
-    "axios": "1.13.5",
-    "firebase": "^12.3.0",
-    "framer-motion": "^12.23.15",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-router-dom": "^7.9.1",
-    "web-vitals": "^5.1.0"
+    "axios": "1.20.0",
+    "firebase": "^12.19.0",
+    "framer-motion": "^12.43.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4"
   },
   "scripts": {
     "dev": "vite",
-    "start": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:ui": "vitest --ui"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.13",
-    "@testing-library/jest-dom": "^6.8.0",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^22.12.0",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^5.0.3",
-    "@vitest/mocker": "^3.2.2",
-    "@vitest/ui": "^3.2.2",
-    "autoprefixer": "^10.4.21",
-    "jsdom": "^27.0.0",
-    "nth-check": "^2.1.1",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.13",
-    "typescript": "^5.7.3",
-    "vite": "^7.1.6",
-    "vite-node": "^3.2.2",
-    "vitest": "^3.2.2"
+    "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/jest-dom": "^6.10.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@vitest/ui": "^3.2.7",
+    "jsdom": "^27.4.0",
+    "postcss": "^8.5.30",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
   },
   "engines": {
     "node": ">=22.0.0"
   },
-  "optionalDependencies": {},
   "overrides": {
+    "@grpc/grpc-js": "^1.14.6"
   }
 }

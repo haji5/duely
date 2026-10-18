@@ -10,7 +10,6 @@ ARG VITE_FIREBASE_PROJECT_ID
 ARG VITE_FIREBASE_STORAGE_BUCKET
 ARG VITE_FIREBASE_MESSAGING_SENDER_ID
 ARG VITE_FIREBASE_APP_ID
-ARG VITE_FIREBASE_MEASUREMENT_ID
 ARG VITE_API_URL
 
 # Set environment variables from build args (do NOT set NODE_ENV before installing dev deps)
@@ -20,7 +19,6 @@ ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
     VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET \
     VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID \
     VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID \
-    VITE_FIREBASE_MEASUREMENT_ID=$VITE_FIREBASE_MEASUREMENT_ID \
     VITE_API_URL=$VITE_API_URL
 
 # Copy lockfiles for deterministic installs
@@ -42,8 +40,9 @@ WORKDIR /
 
 # Copy build artifacts
 COPY --from=build /app/build /usr/share/nginx/html
-# Copy hardened Nginx config
+# Nginx config and the shared security headers it includes
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY security-headers.conf /etc/nginx/security-headers.conf
 
 # Ensure nginx user can read/write necessary dirs and drop privileges
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/run /var/log/nginx

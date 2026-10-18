@@ -1,13 +1,12 @@
 package com.bracketbattle.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
-import java.util.List;
+
+import java.time.Instant;
 
 @Entity
 @Table(name = "brackets")
-@JsonIgnoreProperties({"items", "results", "hibernateLazyInitializer", "handler"})
 public class Bracket {
 
     @Id
@@ -27,105 +26,52 @@ public class Bracket {
     private String category = "General";
 
     @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
+    // Hidden from JSON so public lists don't leak Firebase UIDs. The Valkey cache uses the same
+    // annotations, so cached copies have no owner either: ownership checks must always read the
+    // repository, never the cache.
+    @JsonIgnore
     @Column(name = "created_by")
     private String createdBy;
 
-    @OneToMany(mappedBy = "bracket", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Item> items;
-
-    @OneToMany(mappedBy = "bracket", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Result> results;
-
-    // Constructors
     public Bracket() {}
 
-    public Bracket(String name, String description, String type) {
+    public Bracket(String name, String description, String type, String category, String createdBy) {
         this.name = name;
         this.description = description;
         this.type = type;
-        this.createdAt = LocalDateTime.now();
-    }
-
-    public Bracket(String name, String description, String type, String createdBy) {
-        this.name = name;
-        this.description = description;
-        this.type = type;
-        this.createdBy = createdBy;
-        this.createdAt = LocalDateTime.now();
-    }
-
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public String getCategory() {
-        return category;
-    }
-
-    public void setCategory(String category) {
         this.category = category;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public String getCreatedBy() {
-        return createdBy;
-    }
-
-    public void setCreatedBy(String createdBy) {
         this.createdBy = createdBy;
     }
 
-    public List<Item> getItems() {
-        return items;
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
     }
 
-    public void setItems(List<Item> items) {
-        this.items = items;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public List<Result> getResults() {
-        return results;
-    }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-    public void setResults(List<Result> results) {
-        this.results = results;
-    }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public String getType() { return type; }
+    public void setType(String type) { this.type = type; }
+
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    @JsonIgnore
+    public String getCreatedBy() { return createdBy; }
+    @JsonIgnore
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
 }

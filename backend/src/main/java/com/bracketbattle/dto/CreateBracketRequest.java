@@ -1,40 +1,40 @@
 package com.bracketbattle.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
-/**
- * Request DTO for creating a new bracket.
- * Size constraints are enforced to prevent excessive memory usage and ensure
- * reasonable display in the UI.
- */
-public class CreateBracketRequest {
+import java.util.List;
 
-    @NotBlank(message = "Bracket name is required")
-    @Size(min = 1, max = 100, message = "Bracket name must be between 1 and 100 characters")
-    private String name;
+/** A new bracket and all of its entries, created in one transaction. */
+public record CreateBracketRequest(
+        @NotBlank(message = "Bracket name is required")
+        @Size(max = 100, message = "Bracket name must be at most 100 characters")
+        String name,
 
-    @Size(max = 2000, message = "Description cannot exceed 2000 characters")
-    private String description;
+        @Size(max = 2000, message = "Description must be at most 2000 characters")
+        String description,
 
-    @NotBlank(message = "Bracket type is required")
-    @Pattern(regexp = "^(song|video|image)$", message = "Invalid type. Must be: song, video, or image")
-    private String type;
+        @NotBlank(message = "Bracket type is required")
+        @Pattern(regexp = "^(song|video|image)$", message = "Type must be song, video or image")
+        String type,
 
-    @NotBlank(message = "Category is required")
-    @Size(min = 1, max = 100, message = "Category must be between 1 and 100 characters")
-    private String category = "General";
+        @Size(max = 50, message = "Category must be at most 50 characters")
+        String category,
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+        @NotNull(message = "Entries are required")
+        @Size(min = 2, max = 500, message = "A bracket needs between 2 and 500 entries")
+        List<@NotNull(message = "Entry must not be null") @Valid NewItemRequest> items
+) {
+    public record NewItemRequest(
+            @NotBlank(message = "Title is required")
+            @Size(max = 150, message = "Title must be at most 150 characters")
+            String title,
 
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-
-    public String getCategory() { return category; }
-    public void setCategory(String category) { this.category = category; }
+            @NotBlank(message = "Media URL is required")
+            @Size(min = 10, max = 2000, message = "Media URL must be between 10 and 2000 characters")
+            String mediaUrl
+    ) {}
 }

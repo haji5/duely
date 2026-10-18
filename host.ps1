@@ -4,9 +4,10 @@
 
 .DESCRIPTION
     This script starts/stops Duely in LAN or Internet hosting mode using Docker Compose.
-    It auto-detects your local IP address, configures CORS and nginx accordingly,
-    and optionally opens the Windows Firewall for port 3000.
-    In Internet mode, it creates a secure Cloudflare Quick Tunnel for public access.
+    It detects the LAN IP of the adapter that holds your default route and, in LAN mode,
+    opens the Windows Firewall for port 3000 on private networks.
+    In Internet mode it creates a Cloudflare Quick Tunnel for public access instead
+    (no firewall change is needed, because the tunnel connects outwards).
 
 .EXAMPLE
     .\host.ps1 start                  # Start LAN hosting
@@ -17,8 +18,8 @@
 .NOTES
     Requirements:
     - Docker Desktop must be running
-    - For Google sign-in to work remotely, you MUST add the generated URL (LAN or Tunnel)
-      to Firebase Authorized Domains in your Firebase Console.
+    - For Google sign-in to work remotely, add the tunnel's host name to Firebase
+      Authorized Domains. Guests can always play without signing in.
 #>
 
 param(
@@ -32,15 +33,51 @@ param(
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function Get-LanIP {
-    # Returns the first IPv4 address on a Wi-Fi or Ethernet adapter
-    $ip = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch "Loopback" -and $_.IPAddress -ne "127.0.0.1" -and $_.PrefixOrigin -ne "WellKnown" -and ($_.InterfaceAlias -match "Wi-Fi|Ethernet|WLAN|LAN|eth") } | Sort-Object -Property InterfaceMetric | Select-Object -First 1 -ExpandProperty IPAddress
-
-    if (-not $ip) {
-        # Fallback: grab any non-loopback IPv4 address
-        $ip = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -ne "127.0.0.1" -and $_.PrefixOrigin -ne "WellKnown" } | Select-Object -First 1 -ExpandProperty IPAddress
+    # The IPv4 address of the interface that holds the default route, i.e. the adapter that
+    # actually reaches your router. Virtual adapters (WSL, Hyper-V) don't usually own it.
+    $route = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $iface = Get-NetIPInterface -InterfaceIndex $_.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+            [pscustomobject]@{ Index = $_.ifIndex; Metric = $_.RouteMetric + $iface.InterfaceMetric }
+        } |
+        Sort-Object Metric | Select-Object -First 1
+    if ($route) {
+        $ip = Get-NetIPAddress -InterfaceIndex $route.Index -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.IPAddress -notlike "169.254.*" } |
+            Select-Object -First 1 -ExpandProperty IPAddress
+        if ($ip) { return $ip }
     }
 
-    return $ip
+    # Fallback: any IPv4 address on an adapter that isn't virtual or loopback
+    return Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.IPAddress -ne "127.0.0.1" -and $_.IPAddress -notlike "169.254.*" -and
+            $_.InterfaceAlias -notmatch "^(vEthernet|WSL|Hyper-V|VirtualBox|VMware|Loopback)"
+        } |
+        Select-Object -First 1 -ExpandProperty IPAddress
+}
+
+function Invoke-Compose {
+    # Every call uses both files and the internet profile, so stop/status also see the tunnel.
+    Push-Location $ProjectRoot
+    try {
+        docker compose -f docker-compose.yml -f docker-compose.local.yml --profile internet @args
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Get-TunnelUrl {
+    # The newest quick-tunnel URL in the tunnel's logs. Older lines remain after restarts, and
+    # error lines can mention api.trycloudflare.com, which is not a tunnel.
+    $lines = Invoke-Compose logs --no-color tunnel 2>&1 | ForEach-Object { "$_" }
+    $urls = foreach ($line in $lines) {
+        foreach ($m in [regex]::Matches($line, "https://[a-zA-Z0-9-]+\.trycloudflare\.com")) {
+            if ($m.Value -ne "https://api.trycloudflare.com") { $m.Value }
+        }
+    }
+    return $urls | Select-Object -Last 1
 }
 
 function Test-IsAdmin {
@@ -123,8 +160,10 @@ switch ($Action) {
         }
         Write-Host "  [Docker]  Docker is running" -ForegroundColor Green
 
-        # 3. Open firewall (only strictly needed for LAN, but good to have)
-        Add-FirewallRule
+        # 3. LAN mode needs port 3000 open to the local network; the tunnel doesn't.
+        if (-not $Internet) {
+            Add-FirewallRule
+        }
 
         # 4. Set environment and start containers
         $env:LAN_IP = $lanIP
@@ -134,11 +173,12 @@ switch ($Action) {
         Write-Host "  (This may take a few minutes on the first run)" -ForegroundColor DarkGray
         Write-Host ""
 
+        # --wait returns once the backend is healthy and the frontend is running
         Push-Location $ProjectRoot
         if ($Internet) {
-            docker-compose -f docker-compose.yml -f docker-compose.local.yml --profile internet up --build -d
+            docker compose -f docker-compose.yml -f docker-compose.local.yml --profile internet up --build -d --wait
         } else {
-            docker-compose -f docker-compose.yml -f docker-compose.local.yml up --build -d
+            docker compose -f docker-compose.yml -f docker-compose.local.yml up --build -d --wait
         }
         $exitCode = $LASTEXITCODE
         Pop-Location
@@ -155,25 +195,14 @@ switch ($Action) {
             Write-Host ""
             Write-Host "  [Tunnel]  Waiting for public URL..." -ForegroundColor Yellow
             
-            # Wait for URL to appear in logs (max 15 seconds)
-            $retries = 0
-            while ($retries -lt 15) {
+            # Wait for the URL to appear in the logs (max 30 seconds)
+            for ($i = 0; $i -lt 30 -and -not $tunnelUrl; $i++) {
                 Start-Sleep -Seconds 1
-                Push-Location $ProjectRoot
-                $logOutput = docker-compose -f docker-compose.yml -f docker-compose.local.yml logs tunnel 2>&1 | Select-String "https://.*\.trycloudflare\.com"
-                Pop-Location
-                if ($logOutput) {
-                    $null = $logOutput.Line -match "(https://[a-zA-Z0-9-]+\.trycloudflare\.com)"
-                    $tunnelUrl = $Matches[1]
-                    if ($tunnelUrl) {
-                        break
-                    }
-                }
-                $retries++
+                $tunnelUrl = Get-TunnelUrl
             }
 
             if (-not $tunnelUrl) {
-                Write-Host "  [ERROR] Failed to get Cloudflare Tunnel URL. Check logs: docker-compose logs tunnel" -ForegroundColor Red
+                Write-Host "  [ERROR] Failed to get Cloudflare Tunnel URL. Check logs: docker compose logs tunnel" -ForegroundColor Red
                 exit 1
             }
             Write-Host "  [Tunnel]  Tunnel connected successfully!" -ForegroundColor Green
@@ -202,13 +231,16 @@ switch ($Action) {
         Write-Host "  ================================================" -ForegroundColor Green
         Write-Host ""
         
-        $primaryUrl = if ($Internet) { $tunnelUrl } else { $lanUrl }
-        Write-Host "  [FIREBASE TIP] For Google Sign-in to work for your friends," -ForegroundColor DarkYellow
-        Write-Host "  you MUST add the domain below to Firebase Authorized Domains:" -ForegroundColor DarkYellow
-        $domainOnly = $primaryUrl -replace "^https?://", ""
-        Write-Host "  --> $domainOnly" -ForegroundColor White
-        Write-Host "  (Firebase Console > Authentication > Settings > Authorized domains)" -ForegroundColor Gray
-        Write-Host "  If you don't do this, they can still play as Guests!" -ForegroundColor DarkGray
+        if ($Internet) {
+            Write-Host "  [FIREBASE TIP] For Google sign-in to work for your friends, add this domain" -ForegroundColor DarkYellow
+            Write-Host "  to Firebase Authorized Domains (it changes every time the tunnel starts):" -ForegroundColor DarkYellow
+            Write-Host "  --> $(([Uri]$tunnelUrl).Host)" -ForegroundColor White
+            Write-Host "  (Firebase Console > Authentication > Settings > Authorized domains)" -ForegroundColor Gray
+        } else {
+            Write-Host "  [FIREBASE TIP] Google sign-in usually won't work on a raw LAN IP (Firebase" -ForegroundColor DarkYellow
+            Write-Host "  authorized domains are host names). Friends on the LAN can play as guests," -ForegroundColor DarkYellow
+            Write-Host "  or use .\host.ps1 start -Internet for an https URL that supports sign-in." -ForegroundColor DarkYellow
+        }
         Write-Host ""
         Write-Host "  To stop:  .\host.ps1 stop" -ForegroundColor Gray
         Write-Host ""
@@ -221,15 +253,13 @@ switch ($Action) {
         Write-Host ""
         Write-Host "  Stopping Duely hosting..." -ForegroundColor Yellow
 
-        Push-Location $ProjectRoot
-        docker-compose -f docker-compose.yml -f docker-compose.local.yml --profile internet down
-        Pop-Location
+        Invoke-Compose down
 
         Remove-FirewallRule
 
         Write-Host ""
         Write-Host "  Duely stopped." -ForegroundColor Green
-        Write-Host "  To start normal dev mode: docker-compose up" -ForegroundColor Gray
+        Write-Host "  To start normal dev mode: docker compose up" -ForegroundColor Gray
         Write-Host ""
     }
 
@@ -248,35 +278,19 @@ switch ($Action) {
             Write-Host "  [Network] Could not detect LAN IP" -ForegroundColor Red
         }
 
-        # Check tunnel
-        Push-Location $ProjectRoot
-        $tunnelLog = docker-compose -f docker-compose.yml -f docker-compose.local.yml logs tunnel 2>&1 | Select-String "https://.*\.trycloudflare\.com"
-        Pop-Location
-        $tunnelUrl = ""
-        if ($tunnelLog) {
-            $null = $tunnelLog.Line -match "(https://[a-zA-Z0-9-]+\.trycloudflare\.com)"
-            $tunnelUrl = $Matches[1]
-            if ($tunnelUrl) {
-                Write-Host "  [Tunnel]  Active public URL: $tunnelUrl" -ForegroundColor Green
-            }
-        }
-
-        # Check if containers are running
-        Push-Location $ProjectRoot
-        $containers = docker-compose -f docker-compose.yml -f docker-compose.local.yml ps 2>$null
-        Pop-Location
-
-        if ($containers) {
+        # Running containers (ps always prints a header, so test the id list instead)
+        $running = Invoke-Compose ps --status running -q 2>$null
+        if ($running) {
             Write-Host ""
             Write-Host "  Running containers:" -ForegroundColor White
-            $containers | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+            Invoke-Compose ps 2>$null | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
             Write-Host ""
-            
+
+            $tunnelUrl = Get-TunnelUrl
             if ($tunnelUrl) {
                 Write-Host "  URL for friends (Internet): $tunnelUrl" -ForegroundColor Green
             } elseif ($lanIP) {
-                $lanUrl = "http://" + $lanIP + ":3000"
-                Write-Host "  URL for friends (LAN): $lanUrl" -ForegroundColor Green
+                Write-Host "  URL for friends (LAN): http://$($lanIP):3000" -ForegroundColor Green
             }
         }
         else {
