@@ -1,364 +1,105 @@
 package com.bracketbattle.controller;
 
-import com.bracketbattle.dto.AddItemRequest;
-import com.bracketbattle.dto.BulkAddItemsRequest;
+import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.dto.SaveResultRequest;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Item;
 import com.bracketbattle.model.Result;
+import com.bracketbattle.ratelimit.RateLimiter;
+import com.bracketbattle.security.CurrentUser;
 import com.bracketbattle.service.BracketService;
-import io.github.resilience4j.ratelimiter.RateLimiter;
-import io.github.resilience4j.ratelimiter.RateLimiterConfig;
-import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
-import io.github.resilience4j.ratelimiter.RequestNotPermitted;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 
 @RestController
-// CORS centralized in SecurityConfig
 public class BracketController {
 
-    @Autowired
-    private BracketService bracketService;
+    private final BracketService bracketService;
+    private final RateLimiter rateLimiter;
 
-    @Autowired
-    private com.bracketbattle.config.RateLimiterConfig rateLimiterConfig;
-
-    @Autowired
-    private RateLimiterRegistry rateLimiterRegistry;
-
-    // Rate limiter configurations
-    private final RateLimiterConfig bracketCreationConfig;
-    private final RateLimiterConfig itemCreationConfig;
-
-    public BracketController(
-            @Value("${ratelimiter.bracket-creation.limit-for-period:10}") int bracketLimit,
-            @Value("${ratelimiter.bracket-creation.limit-refresh-period:3600}") int bracketRefreshSeconds,
-            @Value("${ratelimiter.item-creation.limit-for-period:200}") int itemLimit,
-            @Value("${ratelimiter.item-creation.limit-refresh-period:3600}") int itemRefreshSeconds) {
-
-        // Configure bracket creation rate limiter
-        this.bracketCreationConfig = RateLimiterConfig.custom()
-                .limitForPeriod(bracketLimit)
-                .limitRefreshPeriod(Duration.ofSeconds(bracketRefreshSeconds))
-                .timeoutDuration(Duration.ZERO)
-                .build();
-
-        // Configure item creation rate limiter
-        this.itemCreationConfig = RateLimiterConfig.custom()
-                .limitForPeriod(itemLimit)
-                .limitRefreshPeriod(Duration.ofSeconds(itemRefreshSeconds))
-                .timeoutDuration(Duration.ZERO)
-                .build();
-    }
-
-    /**
-     * Get or create a per-user rate limiter for bracket creation.
-     */
-    private RateLimiter getBracketCreationLimiter(String userId) {
-        return rateLimiterRegistry.rateLimiter("bracket-creation-" + userId, bracketCreationConfig);
-    }
-
-    /**
-     * Get or create a per-user rate limiter for bulk item additions. Same limits as bracket
-     * creation, but a separate bucket so populating a new bracket doesn't consume a creation slot.
-     */
-    private RateLimiter getBulkItemCreationLimiter(String userId) {
-        return rateLimiterRegistry.rateLimiter("bulk-item-creation-" + userId, bracketCreationConfig);
-    }
-
-    /**
-     * Get or create a per-user rate limiter for item creation.
-     */
-    private RateLimiter getItemCreationLimiter(String userId) {
-        return rateLimiterRegistry.rateLimiter("item-creation-" + userId, itemCreationConfig);
+    public BracketController(BracketService bracketService, RateLimiter rateLimiter) {
+        this.bracketService = bracketService;
+        this.rateLimiter = rateLimiter;
     }
 
     @GetMapping("/brackets")
-    public ResponseEntity<List<Bracket>> getAllBrackets() {
-        List<Bracket> brackets = bracketService.getAllBrackets();
-        return ResponseEntity.ok(brackets);
-    }
-
-    @GetMapping("/brackets/{id}")
-    public ResponseEntity<Bracket> getBracket(@PathVariable Long id) {
-        return bracketService.getBracketById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/brackets/{id}/items")
-    public ResponseEntity<List<Item>> getBracketItems(@PathVariable Long id) {
-        List<Item> items = bracketService.getBracketItems(id);
-        return ResponseEntity.ok(items);
-    }
-
-    @PostMapping("/brackets/{id}/results")
-    public ResponseEntity<?> saveBracketResult(
-            @PathVariable Long id,
-            @Valid @RequestBody SaveResultRequest payload,
-            Authentication authentication,
-            jakarta.servlet.http.HttpServletRequest request) {
-
-        final String userId;
-        if (authentication != null && authentication.isAuthenticated() && !"anonymousUser".equals(authentication.getPrincipal())) {
-            userId = (String) authentication.getPrincipal();
-        } else {
-            userId = null;
-        }
-
-        // Get per-user rate limiter (fallback to IP for anonymous users)
-        String rateLimitKey = userId != null ? userId : "ip:" + request.getRemoteAddr();
-        RateLimiter rateLimiter = rateLimiterConfig.getRateLimiterForUser(rateLimitKey, rateLimiterRegistry);
-
-        try {
-            // Attempt to acquire permission from rate limiter
-            return RateLimiter.decorateSupplier(rateLimiter, () -> {
-                Result result = bracketService.saveBracketResult(id, userId, payload.getRanking(), payload.getSubmissionToken(), payload.getDisplayName(), payload.getComment());
-                return ResponseEntity.ok(result);
-            }).get();
-        } catch (RequestNotPermitted e) {
-            // Rate limit exceeded - return 429 Too Many Requests
-            return rateLimitExceededFallback();
-        }
-    }
-
-    /**
-     * Fallback method for rate limit exceeded scenarios.
-     * Returns HTTP 429 Too Many Requests with helpful message.
-     */
-    private ResponseEntity<?> rateLimitExceededFallback() {
-        return ResponseEntity
-                .status(HttpStatus.TOO_MANY_REQUESTS)
-                .body(Map.of(
-                        "error", "Too Many Requests",
-                        "message", "You have exceeded the rate limit. Maximum 5 submissions per minute allowed.",
-                        "retryAfter", "60 seconds"
-                ));
-    }
-
-    @GetMapping("/brackets/{id}/results")
-    public ResponseEntity<List<Result>> getBracketResults(@PathVariable Long id) {
-        List<Result> results = bracketService.getBracketResults(id);
-        return ResponseEntity.ok(results);
-    }
-
-    @GetMapping("/brackets/{id}/rankings")
-    public ResponseEntity<List<ItemRankingDto>> getBracketRankings(@PathVariable Long id) {
-        List<ItemRankingDto> rankings = bracketService.getBracketRankings(id);
-        return ResponseEntity.ok(rankings);
+    public List<Bracket> getAllBrackets() {
+        return bracketService.getAllBrackets();
     }
 
     @GetMapping("/brackets/popular")
-    public ResponseEntity<List<Bracket>> getPopularBrackets() {
-        List<Bracket> brackets = bracketService.getPopularBrackets();
-        return ResponseEntity.ok(brackets);
+    public List<Bracket> getPopularBrackets() {
+        return bracketService.getPopularBrackets();
     }
 
-    @GetMapping("/brackets/by-creator/{creatorId}")
-    public ResponseEntity<List<Bracket>> getBracketsByCreator(
-            @PathVariable String creatorId,
-            Authentication authentication) {
-        // Only allow users to view their own created brackets to prevent user enumeration
-        if (authentication != null && authentication.isAuthenticated()) {
-            Object principal = authentication.getPrincipal();
-            if (!(principal instanceof String requestingUserId) || "anonymousUser".equals(requestingUserId)) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
-            if (!requestingUserId.equals(creatorId)) {
-                // Return 403 Forbidden if trying to access another user's brackets
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
+    @GetMapping("/brackets/{id}")
+    public Bracket getBracket(@PathVariable Long id) {
+        return requireBracket(id);
+    }
+
+    @GetMapping("/brackets/{id}/items")
+    public List<Item> getBracketItems(@PathVariable Long id) {
+        requireBracket(id);
+        return bracketService.getBracketItems(id);
+    }
+
+    @GetMapping("/brackets/{id}/rankings")
+    public List<ItemRankingDto> getBracketRankings(@PathVariable Long id) {
+        requireBracket(id);
+        return bracketService.getBracketRankings(id);
+    }
+
+    @GetMapping("/brackets/{id}/comments")
+    public List<CommentDto> getBracketComments(@PathVariable Long id) {
+        requireBracket(id);
+        return bracketService.getBracketComments(id);
+    }
+
+    /** Open to guests; signed-in runs are attributed to the user and show up in their history. */
+    @PostMapping("/brackets/{id}/results")
+    public Result saveBracketResult(@PathVariable Long id, @Valid @RequestBody SaveResultRequest payload,
+                                    Authentication authentication, HttpServletRequest request) {
+        String userId = CurrentUser.uidOrNull(authentication);
+        if (userId != null) {
+            rateLimiter.tryAcquire("result-user", userId);
         } else {
-            // Unauthenticated users cannot access creator-specific brackets
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            rateLimiter.tryAcquire("result-ip", request.getRemoteAddr());
         }
-
-        List<Bracket> brackets = bracketService.getBracketsByCreator(creatorId);
-        return ResponseEntity.ok(brackets);
+        return bracketService.saveBracketResult(id, userId, payload);
     }
 
-    @GetMapping("/users/{userId}/results")
-    public ResponseEntity<List<Result>> getUserResults(@PathVariable String userId, Authentication authentication) {
-        // Only allow users to view their own results to prevent enumeration
-        if (authentication != null && authentication.isAuthenticated()) {
-            Object principal = authentication.getPrincipal();
-            if (!(principal instanceof String requestingUserId) || "anonymousUser".equals(requestingUserId)) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
-            if (!requestingUserId.equals(userId)) {
-                // Return 403 Forbidden if trying to access another user's results
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-        } else {
-            // Unauthenticated users cannot access user-specific results
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        List<Result> results = bracketService.getUserResults(userId);
-
-        // SECURITY: Prevent caching of user-specific data
-        return ResponseEntity.ok()
-                .cacheControl(org.springframework.http.CacheControl.noStore().mustRevalidate())
-                .header("X-Content-Type-Options", "nosniff")
-                .body(results);
-    }
-
-    @GetMapping("/brackets/{id}/users/{userId}/results")
-    public ResponseEntity<List<Result>> getUserBracketResults(
-            @PathVariable Long id,
-            @PathVariable String userId,
-            Authentication authentication) {
-        // Only allow users to view their own results to prevent enumeration
-        if (authentication != null && authentication.isAuthenticated()) {
-            Object principal = authentication.getPrincipal();
-            if (!(principal instanceof String requestingUserId) || "anonymousUser".equals(requestingUserId)) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
-            if (!requestingUserId.equals(userId)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-        } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        List<Result> results = bracketService.getUserBracketResults(id, userId);
-
-        // SECURITY: Prevent caching of user-specific data
-        return ResponseEntity.ok()
-                .cacheControl(org.springframework.http.CacheControl.noStore().mustRevalidate())
-                .header("X-Content-Type-Options", "nosniff")
-                .body(results);
-    }
-
-    @PreAuthorize("hasRole('USER')")
     @PostMapping("/brackets")
-    public ResponseEntity<?> createBracket(@Valid @RequestBody CreateBracketRequest payload, Authentication authentication) {
-        String createdBy = (String) authentication.getPrincipal();
-
-        // Get per-user rate limiter for bracket creation
-        RateLimiter rateLimiter = getBracketCreationLimiter(createdBy);
-
-        try {
-            // Attempt to acquire permission from rate limiter
-            if (!rateLimiter.acquirePermission()) {
-                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                        .body(Map.of(
-                            "error", "Too Many Requests",
-                            "message", "Bracket creation limit exceeded. Maximum 10 brackets per hour allowed.",
-                            "retryAfter", "Please try again later"
-                        ));
-            }
-
-            Bracket bracket = bracketService.createBracket(payload.getName(), payload.getDescription(), payload.getType(), payload.getCategory(), createdBy);
-            return ResponseEntity.ok(bracket);
-        } catch (RequestNotPermitted e) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body(Map.of(
-                        "error", "Too Many Requests",
-                        "message", "Bracket creation limit exceeded. Maximum 10 brackets per hour allowed.",
-                        "retryAfter", "Please try again later"
-                    ));
-        }
+    public Bracket createBracket(@Valid @RequestBody CreateBracketRequest payload, Authentication authentication) {
+        String userId = CurrentUser.uidOrNull(authentication);
+        rateLimiter.tryAcquire("bracket-create", userId);
+        return bracketService.createBracket(payload, userId);
     }
 
-    @PreAuthorize("hasRole('USER')")
-    @PostMapping("/brackets/{id}/items")
-    public ResponseEntity<?> addItemToBracket(
-            @PathVariable Long id,
-            @Valid @RequestBody AddItemRequest payload,
-            Authentication authentication) {
-
-        String userId = (String) authentication.getPrincipal();
-
-        // Get per-user rate limiter for item creation
-        RateLimiter rateLimiter = getItemCreationLimiter(userId);
-
-        try {
-            // Attempt to acquire permission from rate limiter
-            if (!rateLimiter.acquirePermission()) {
-                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                        .body(Map.of(
-                            "error", "Too Many Requests",
-                            "message", "Item addition limit exceeded. Maximum 200 items per hour allowed. Use bulk endpoint for adding many items at once.",
-                            "retryAfter", "Please try again later"
-                        ));
-            }
-
-            Item item = bracketService.addItemToBracket(id, userId, payload.getTitle(), payload.getMediaUrl(), payload.getMediaType());
-            return ResponseEntity.ok(item);
-        } catch (RequestNotPermitted e) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body(Map.of(
-                        "error", "Too Many Requests",
-                        "message", "Item addition limit exceeded. Maximum 200 items per hour allowed. Use bulk endpoint for adding many items at once.",
-                        "retryAfter", "Please try again later"
-                    ));
-        }
+    @GetMapping("/me/brackets")
+    public List<Bracket> getMyBrackets(Authentication authentication) {
+        return bracketService.getBracketsByCreator(CurrentUser.uidOrNull(authentication));
     }
 
-    /**
-     * Bulk add multiple items to a bracket at once.
-     * This is much more efficient than calling the single-item endpoint multiple times.
-     * Uses its own per-user limiter with the bracket creation limits (10 per hour).
-     */
-    @PreAuthorize("hasRole('USER')")
-    @PostMapping("/brackets/{id}/items/bulk")
-    public ResponseEntity<?> bulkAddItemsToBracket(
-            @PathVariable Long id,
-            @Valid @RequestBody BulkAddItemsRequest payload,
-            Authentication authentication) {
+    @GetMapping("/me/results")
+    public List<Result> getMyResults(@RequestParam(required = false) Long bracketId, Authentication authentication) {
+        return bracketService.getUserResults(CurrentUser.uidOrNull(authentication), bracketId);
+    }
 
-        String userId = (String) authentication.getPrincipal();
-
-        // Get per-user rate limiter for bulk operations
-        RateLimiter rateLimiter = getBulkItemCreationLimiter(userId);
-
-        try {
-            // Attempt to acquire permission from rate limiter
-            if (!rateLimiter.acquirePermission()) {
-                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                        .body(Map.of(
-                            "error", "Too Many Requests",
-                            "message", "Bulk operation limit exceeded. Maximum 10 bulk operations per hour allowed.",
-                            "retryAfter", "Please try again later"
-                        ));
-            }
-
-            // Convert DTOs to service layer data objects
-            List<BracketService.ItemData> itemsData = payload.getItems().stream()
-                    .map(item -> new BracketService.ItemData(
-                        item.getTitle(),
-                        item.getMediaUrl(),
-                        item.getMediaType()
-                    ))
-                    .collect(java.util.stream.Collectors.toList());
-
-            List<Item> items = bracketService.bulkAddItemsToBracket(id, userId, itemsData);
-            return ResponseEntity.ok(Map.of(
-                "items", items,
-                "count", items.size(),
-                "message", "Successfully added " + items.size() + " items"
-            ));
-        } catch (RequestNotPermitted e) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body(Map.of(
-                        "error", "Too Many Requests",
-                        "message", "Bulk operation limit exceeded. Maximum 10 bulk operations per hour allowed.",
-                        "retryAfter", "Please try again later"
-                    ));
-        }
+    private Bracket requireBracket(Long id) {
+        return bracketService.getBracketById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found"));
     }
 }

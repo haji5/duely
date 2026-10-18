@@ -126,4 +126,67 @@
         </sql>
     </changeSet>
 
+    <!-- Foreign keys aren't indexed automatically in Postgres; every per-bracket lookup scanned. -->
+    <changeSet id="6" author="bracket-battle">
+        <createIndex indexName="idx_items_bracket" tableName="items">
+            <column name="bracket_id"/>
+        </createIndex>
+        <createIndex indexName="idx_results_bracket_created" tableName="results">
+            <column name="bracket_id"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Incremental leaderboard aggregates, updated in the same transaction as each result. -->
+    <changeSet id="7" author="bracket-battle">
+        <createTable tableName="item_stats">
+            <column name="item_id" type="BIGINT">
+                <constraints primaryKey="true" nullable="false"
+                             foreignKeyName="fk_item_stats_item" referencedTableName="items" referencedColumnNames="id"/>
+            </column>
+            <column name="bracket_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_item_stats_bracket" referencedTableName="brackets" referencedColumnNames="id"/>
+            </column>
+            <column name="times_ranked" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="score_sum" type="DOUBLE PRECISION" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="wins" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="matches" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex indexName="idx_item_stats_bracket" tableName="item_stats">
+            <column name="bracket_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Backfill item_stats from existing results. Legacy runs have no recorded matches, so their
+         wins/matches use the old position-based approximation (see the SQL file). -->
+    <changeSet id="8" author="bracket-battle">
+        <sqlFile path="sql/backfill-item-stats.sql" relativeToChangelogFile="true"/>
+    </changeSet>
+
+    <!-- The real (non-bye) matches of each run, as JSON [{winnerId, loserId}]. Null for legacy runs. -->
+    <changeSet id="9" author="bracket-battle">
+        <addColumn tableName="results">
+            <column name="matches" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!-- Zone-aware timestamps. Existing values were written by containers running in UTC. -->
+    <changeSet id="10" author="bracket-battle">
+        <sql>
+            ALTER TABLE brackets ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE USING created_at AT TIME ZONE 'UTC';
+            ALTER TABLE results ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE USING created_at AT TIME ZONE 'UTC';
+        </sql>
+    </changeSet>
+
 </databaseChangeLog>

@@ -8,10 +8,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,15 +17,22 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
-@Component
+/**
+ * Turns a valid Firebase ID token into an authenticated principal (the uid). An invalid or
+ * expired token leaves the request anonymous, so public endpoints keep working; protected ones
+ * then answer 401. Custom claims {"role":"ADMIN"} or {"admin":true} grant ROLE_ADMIN.
+ */
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(FirebaseAuthenticationFilter.class);
+    private static final long WARN_INTERVAL_MS = 60_000;
 
     private final FirebaseAuth firebaseAuth;
+    private final AtomicLong lastWarning = new AtomicLong();
 
     public FirebaseAuthenticationFilter(FirebaseAuth firebaseAuth) {
         this.firebaseAuth = firebaseAuth;
@@ -36,35 +41,35 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
             try {
-                FirebaseToken decodedToken = firebaseAuth.verifyIdToken(token);
-                String uid = decodedToken.getUid();
-                Collection<GrantedAuthority> authorities = new ArrayList<>();
-                Map<String, Object> claims = decodedToken.getClaims();
-                // Map custom claims to roles; e.g., {"role":"ADMIN"} or {"admin":true}
-                Object roleClaim = claims.get("role");
-                if (roleClaim instanceof String roleStr) {
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + roleStr.toUpperCase()));
-                }
-                Object adminClaim = claims.get("admin");
-                if (adminClaim instanceof Boolean b && b) {
-                    authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-                }
-                // Default user role
-                authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
-
-                Authentication authentication = new UsernamePasswordAuthenticationToken(uid, null, authorities);
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                FirebaseToken decoded = firebaseAuth.verifyIdToken(authHeader.substring(7));
+                SecurityContextHolder.getContext().setAuthentication(
+                        new UsernamePasswordAuthenticationToken(decoded.getUid(), null, authorities(decoded.getClaims())));
             } catch (Exception e) {
-                log.debug("Invalid Firebase token: {}", e.getMessage());
-                // Clear context on failure and continue as anonymous
+                // Visible (throttled) so a misconfigured Firebase project doesn't silently turn
+                // every signed-in run into a guest run.
+                long now = System.currentTimeMillis();
+                long last = lastWarning.get();
+                if (now - last > WARN_INTERVAL_MS && lastWarning.compareAndSet(last, now)) {
+                    log.warn("Rejected a Firebase ID token, continuing as anonymous: {}", e.getMessage());
+                }
                 SecurityContextHolder.clearContext();
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private static List<GrantedAuthority> authorities(Map<String, Object> claims) {
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+        if (claims.get("role") instanceof String role && !role.isBlank()) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
+        }
+        if (claims.get("admin") instanceof Boolean admin && admin) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        }
+        return authorities;
     }
 }

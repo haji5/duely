@@ -1,57 +1,73 @@
 package com.bracketbattle.service;
 
+import com.bracketbattle.advice.InvalidRequestException;
+import com.bracketbattle.dto.CommentDto;
+import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.ItemRankingDto;
+import com.bracketbattle.dto.SaveResultRequest;
+import com.bracketbattle.media.MediaUrlValidator;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Item;
+import com.bracketbattle.model.MatchOutcome;
 import com.bracketbattle.model.Result;
 import com.bracketbattle.repository.BracketRepository;
 import com.bracketbattle.repository.ItemRepository;
+import com.bracketbattle.repository.ItemStatsRepository;
 import com.bracketbattle.repository.ResultRepository;
 import com.bracketbattle.util.Sanitizer;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Limit;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 @Service
 public class BracketService {
 
-    private static final Logger logger = LoggerFactory.getLogger(BracketService.class);
-    private static final int MAX_ITEMS_PER_BRACKET = 500;
-    private static final int MAX_RANKING_SIZE = 500;
+    public static final int MAX_ITEMS = 500;
+    public static final int MAX_COMMENTS = 50;
 
-    @Autowired
-    private BracketRepository bracketRepository;
+    private final BracketRepository bracketRepository;
+    private final ItemRepository itemRepository;
+    private final ResultRepository resultRepository;
+    private final ItemStatsRepository itemStatsRepository;
+    private final MediaUrlValidator mediaUrlValidator;
+    private final TransactionTemplate transactionTemplate;
 
-    @Autowired
-    private ItemRepository itemRepository;
+    public BracketService(BracketRepository bracketRepository, ItemRepository itemRepository,
+                          ResultRepository resultRepository, ItemStatsRepository itemStatsRepository,
+                          MediaUrlValidator mediaUrlValidator, TransactionTemplate transactionTemplate) {
+        this.bracketRepository = bracketRepository;
+        this.itemRepository = itemRepository;
+        this.resultRepository = resultRepository;
+        this.itemStatsRepository = itemStatsRepository;
+        this.mediaUrlValidator = mediaUrlValidator;
+        this.transactionTemplate = transactionTemplate;
+    }
 
-    @Autowired
-    private ResultRepository resultRepository;
+    // ---- Reads -------------------------------------------------------------------------------
 
-    @Autowired
-    private RedissonClient redissonClient;
-
-    @Cacheable(value = "brackets", unless = "#result == null || #result.isEmpty()")
+    @Cacheable("brackets")
     public List<Bracket> getAllBrackets() {
-        return bracketRepository.findAll();
+        return bracketRepository.findPlayable();
+    }
+
+    @Cacheable("popularBrackets")
+    public List<Bracket> getPopularBrackets() {
+        return bracketRepository.findPopular();
     }
 
     @Cacheable(value = "bracket", key = "#id", unless = "#result == null")
@@ -59,681 +75,194 @@ public class BracketService {
         return bracketRepository.findById(id);
     }
 
-    @Cacheable(value = "popularBrackets", unless = "#result == null || #result.isEmpty()")
-    public List<Bracket> getPopularBrackets() {
-        return bracketRepository.findPopularBrackets();
-    }
-
-    // Get brackets by creator - NOT CACHED to ensure immediate visibility of new brackets
-    public List<Bracket> getBracketsByCreator(String createdBy) {
-        return bracketRepository.findByCreatedByOrderByCreatedAtDesc(createdBy);
-    }
-
-    @Cacheable(value = "bracketItems", key = "#bracketId", unless = "#result == null || #result.isEmpty()")
+    @Cacheable(value = "bracketItems", key = "#bracketId")
     public List<Item> getBracketItems(Long bracketId) {
-        return itemRepository.findByBracketId(bracketId);
+        return itemRepository.findByBracketIdOrderByIdAsc(bracketId);
     }
 
-    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Cacheable(value = "bracketRankings", key = "#bracketId")
+    public List<ItemRankingDto> getBracketRankings(Long bracketId) {
+        return itemStatsRepository.findRankings(bracketId);
+    }
+
+    @Cacheable(value = "bracketComments", key = "#bracketId")
+    public List<CommentDto> getBracketComments(Long bracketId) {
+        return new ArrayList<>(resultRepository.findLatestComments(bracketId, Limit.of(MAX_COMMENTS)).stream()
+                .map(CommentDto::from)
+                .toList());
+    }
+
+    /** Brackets created by a user, newest first, including unplayable ones. Not cached. */
+    public List<Bracket> getBracketsByCreator(String userId) {
+        return bracketRepository.findByCreatedByOrderByCreatedAtDescIdDesc(userId);
+    }
+
+    @Cacheable(value = "userResults", key = "#userId + ':' + (#bracketId ?: 'all')")
+    public List<Result> getUserResults(String userId, Long bracketId) {
+        return bracketId == null
+                ? resultRepository.findByUserIdOrderByCreatedAtAscIdAsc(userId)
+                : resultRepository.findByBracketIdAndUserIdOrderByCreatedAtAscIdAsc(bracketId, userId);
+    }
+
+    // ---- Bracket creation --------------------------------------------------------------------
+
+    /**
+     * Creates a bracket and all of its entries in one transaction, so a failure never leaves an
+     * empty, unplayable bracket behind. URLs are validated (including DNS) before the transaction
+     * opens, so no database connection is held during lookups.
+     */
     @Caching(evict = {
-        @CacheEvict(value = "bracketResults", key = "#bracketId"), // Only evict this bracket's results
-        @CacheEvict(value = "bracketRankings", key = "#bracketId"), // Also evict pre-calculated rankings
-        @CacheEvict(value = "userResults", key = "'user:' + #userId"),
-        @CacheEvict(value = "userResults", key = "'bracket:' + #bracketId + ':user:' + #userId"),
-        @CacheEvict(value = "popularBrackets", allEntries = true),
-        @CacheEvict(value = "bracket", key = "#bracketId")
+            @CacheEvict(value = "brackets", allEntries = true),
+            @CacheEvict(value = "popularBrackets", allEntries = true)
     })
-    public Result saveBracketResult(Long bracketId, String userId, List<Long> ranking, String submissionToken, String displayName, String comment) {
-        // Check for idempotency - if this submission token already exists, return the existing result
-        Optional<Result> existingResult = resultRepository.findBySubmissionToken(submissionToken);
-        if (existingResult.isPresent()) {
-            // This is a duplicate submission (e.g., from double-clicking), return the existing result
-            return requireSameSubmitter(existingResult.get(), bracketId, userId);
+    public Bracket createBracket(CreateBracketRequest request, String createdBy) {
+        String name = Sanitizer.stripToPlain(request.name(), 100);
+        String description = Sanitizer.stripToPlain(request.description(), 2000);
+        String category = Sanitizer.stripToPlain(request.category(), 50);
+        String type = request.type();
+
+        Map<String, String> errors = new LinkedHashMap<>();
+        if (name == null || name.isBlank()) {
+            errors.put("name", "Bracket name is required");
+        }
+        if (category == null || category.isBlank()) {
+            category = "General";
+        }
+        if (description != null && description.isBlank()) {
+            description = null;
         }
 
-        // Basic validation: ensure bracket exists
-        Bracket bracket = bracketRepository.findById(bracketId)
-                .orElseThrow(() -> new IllegalArgumentException("Bracket not found with ID: " + bracketId));
-
-        // Validate ranking is not empty
-        if (ranking == null || ranking.isEmpty()) {
-            throw new IllegalArgumentException("Ranking must not be empty");
-        }
-
-        // Validate ranking size
-        if (ranking.size() > MAX_RANKING_SIZE) {
-            throw new IllegalArgumentException("Ranking exceeds maximum size of " + MAX_RANKING_SIZE);
-        }
-
-        // Get all valid items for this bracket
-        List<Item> items = itemRepository.findByBracketId(bracketId);
-        Set<Long> validItemIds = new HashSet<>();
-        for (Item i : items) {
-            validItemIds.add(i.getId());
-        }
-
-        // CRITICAL VALIDATION 1: Check for duplicate item IDs in ranking
-        Set<Long> uniqueRankingIds = new HashSet<>();
-        for (Long itemId : ranking) {
-            if (!uniqueRankingIds.add(itemId)) {
-                throw new IllegalArgumentException(
-                    "Ranking contains duplicate item ID: " + itemId + ". Each item must appear only once in the ranking."
-                );
+        List<Item> items = new ArrayList<>();
+        MediaUrlValidator.Session urls = mediaUrlValidator.session();
+        for (int i = 0; i < request.items().size(); i++) {
+            CreateBracketRequest.NewItemRequest entry = request.items().get(i);
+            String title = Sanitizer.stripToPlain(entry.title(), 150);
+            String label = "Entry " + (i + 1) + (title == null || title.isBlank() ? "" : " (\"" + title + "\")");
+            if (title == null || title.isBlank()) {
+                errors.put("items[" + i + "].title", label + ": title is required");
+                continue;
             }
-        }
-
-        // CRITICAL VALIDATION 2: Ensure all items in ranking belong to this bracket
-        for (Long itemId : ranking) {
-            if (!validItemIds.contains(itemId)) {
-                throw new IllegalArgumentException(
-                    "Ranking contains invalid item ID: " + itemId + ". This item does not belong to bracket ID: " + bracketId
-                );
+            String problem = urls.check(entry.mediaUrl(), type);
+            if (problem != null) {
+                errors.put("items[" + i + "].mediaUrl", label + ": " + problem);
+                continue;
             }
+            items.add(new Item(null, title, entry.mediaUrl().trim(), type));
+        }
+        if (!errors.isEmpty()) {
+            throw new InvalidRequestException(errors.values().iterator().next(), errors);
         }
 
-        // Create result with submission token
-        Result result = new Result(bracketId, userId, ranking, submissionToken);
+        Bracket bracket = new Bracket(name, description, type, category, createdBy);
+        return transactionTemplate.execute(status -> {
+            Bracket saved = bracketRepository.save(bracket);
+            items.forEach(item -> item.setBracketId(saved.getId()));
+            itemRepository.saveAll(items);
+            return saved;
+        });
+    }
 
-        // Sanitize and set optional display name and comment
-        if (displayName != null && !displayName.isBlank()) {
-            result.setDisplayName(Sanitizer.stripToPlain(displayName, 100));
+    // ---- Result submission -------------------------------------------------------------------
+
+    /**
+     * Saves a finished run and adds it to the leaderboard aggregates. Idempotent on the submission
+     * token: a retry by the same submitter returns the original result, while a token reused by
+     * someone else (or for another bracket) is a 409.
+     */
+    @Caching(evict = {
+            @CacheEvict(value = "bracketRankings", key = "#bracketId"),
+            @CacheEvict(value = "bracketComments", key = "#bracketId"),
+            @CacheEvict(value = "userResults", key = "#userId + ':all'", condition = "#userId != null"),
+            @CacheEvict(value = "userResults", key = "#userId + ':' + #bracketId", condition = "#userId != null")
+    })
+    public Result saveBracketResult(Long bracketId, String userId, SaveResultRequest request) {
+        if (!bracketRepository.existsById(bracketId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found");
         }
-        if (comment != null && !comment.isBlank()) {
-            result.setComment(Sanitizer.stripToPlain(comment, 500));
+        List<Long> ranking = request.ranking();
+        List<MatchOutcome> matches = request.matches();
+        validateRun(ranking, matches, new HashSet<>(itemRepository.findIdsByBracketId(bracketId)));
+
+        Optional<Result> existing = resultRepository.findBySubmissionToken(request.submissionToken());
+        if (existing.isPresent()) {
+            return requireSameSubmitter(existing.get(), bracketId, userId);
         }
+
+        Result result = new Result(bracketId, userId, ranking, matches, request.submissionToken());
+        result.setDisplayName(blankToNull(Sanitizer.stripToPlain(request.displayName(), 100)));
+        result.setComment(blankToNull(Sanitizer.stripToPlain(request.comment(), 500)));
 
         try {
-            return resultRepository.save(result);
+            return transactionTemplate.execute(status -> {
+                Result saved = resultRepository.save(result);
+                itemStatsRepository.applyRun(bracketId, ranking, matches);
+                return saved;
+            });
         } catch (DataIntegrityViolationException e) {
-            // If there's a unique constraint violation on submission_token,
-            // it means another thread saved it first - fetch and return that result
-            return resultRepository.findBySubmissionToken(submissionToken)
-                    .map(existing -> requireSameSubmitter(existing, bracketId, userId))
-                    .orElseThrow(() -> new IllegalStateException("Concurrent submission failed"));
+            // A concurrent request with the same token won the insert. The failed transaction is
+            // rolled back by now, so this lookup runs in a fresh one and can see the winner's row.
+            return resultRepository.findBySubmissionToken(request.submissionToken())
+                    .map(winner -> requireSameSubmitter(winner, bracketId, userId))
+                    .orElseThrow(() -> e);
         }
     }
 
     /**
-     * Only treat a known submission token as an idempotent retry when it belongs to the same
-     * bracket and submitter; otherwise a guessed/reused token would return someone else's result.
+     * A run must rank 2..500 distinct items of the bracket, and its matches must be the real games
+     * of a single-elimination tournament: n-1 matches between ranked items, no self-matches or
+     * repeated pairs, every item except the champion losing exactly once and the champion never.
      */
-    private Result requireSameSubmitter(Result existing, Long bracketId, String userId) {
-        if (!java.util.Objects.equals(existing.getBracketId(), bracketId)
-                || !java.util.Objects.equals(existing.getUserId(), userId)) {
-            throw new IllegalArgumentException("Submission token has already been used");
+    static void validateRun(List<Long> ranking, List<MatchOutcome> matches, Set<Long> bracketItemIds) {
+        if (ranking.size() < 2 || ranking.size() > MAX_ITEMS) {
+            throw new InvalidRequestException("Ranking must contain between 2 and " + MAX_ITEMS + " items");
+        }
+        Set<Long> ranked = new HashSet<>();
+        for (Long id : ranking) {
+            if (!ranked.add(id)) {
+                throw new InvalidRequestException("Ranking contains item " + id + " more than once");
+            }
+            if (!bracketItemIds.contains(id)) {
+                throw new InvalidRequestException("Item " + id + " does not belong to this bracket");
+            }
+        }
+        if (matches.size() != ranking.size() - 1) {
+            throw new InvalidRequestException("A run of " + ranking.size() + " items must have exactly "
+                    + (ranking.size() - 1) + " matches");
+        }
+        Long champion = ranking.get(0);
+        Set<Long> losers = new HashSet<>();
+        Set<String> pairs = new HashSet<>();
+        for (MatchOutcome m : matches) {
+            Long winner = m.winnerId();
+            Long loser = m.loserId();
+            if (!ranked.contains(winner) || !ranked.contains(loser)) {
+                throw new InvalidRequestException("Matches may only involve ranked items");
+            }
+            if (winner.equals(loser)) {
+                throw new InvalidRequestException("An item cannot play itself");
+            }
+            if (loser.equals(champion)) {
+                throw new InvalidRequestException("The champion cannot lose a match");
+            }
+            if (!losers.add(loser)) {
+                throw new InvalidRequestException("Item " + loser + " loses more than once");
+            }
+            String pair = Math.min(winner, loser) + ":" + Math.max(winner, loser);
+            if (!pairs.add(pair)) {
+                throw new InvalidRequestException("Items " + winner + " and " + loser + " play each other twice");
+            }
+        }
+        // n-1 distinct losers, none of them the champion, means every other item lost exactly once.
+    }
+
+    private static Result requireSameSubmitter(Result existing, Long bracketId, String userId) {
+        if (!Objects.equals(existing.getBracketId(), bracketId) || !Objects.equals(existing.getUserId(), userId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Submission token has already been used");
         }
         return existing;
     }
 
-    @Cacheable(value = "bracketResults", key = "#bracketId", unless = "#result == null || #result.isEmpty()")
-    public List<Result> getBracketResults(Long bracketId) {
-        return resultRepository.findByBracketIdOrderByCreatedAtDesc(bracketId);
-    }
-
-    @Cacheable(value = "bracketRankings", key = "#bracketId", unless = "#result == null || #result.isEmpty()")
-    public List<ItemRankingDto> getBracketRankings(Long bracketId) {
-        // Distributed lock key for this bracket's ranking calculation
-        String lockKey = "lock:bracketRankings:" + bracketId;
-        RLock lock = redissonClient.getLock(lockKey);
-
-        try {
-            // Try to acquire lock with 10 second wait time and 30 second lease time
-            // If we can't get the lock within 10 seconds, proceed without it
-            boolean locked = lock.tryLock(10, 30, TimeUnit.SECONDS);
-
-            if (locked) {
-                logger.debug("Acquired distributed lock for bracket {} rankings calculation", bracketId);
-                try {
-                    return calculateBracketRankings(bracketId);
-                } finally {
-                    lock.unlock();
-                    logger.debug("Released distributed lock for bracket {} rankings", bracketId);
-                }
-            } else {
-                // Couldn't acquire lock in time, log warning and proceed
-                logger.warn("Failed to acquire lock for bracket {} rankings within timeout, proceeding without lock", bracketId);
-                return calculateBracketRankings(bracketId);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.error("Interrupted while waiting for lock for bracket {} rankings", bracketId, e);
-            // Proceed without lock if interrupted
-            return calculateBracketRankings(bracketId);
-        } catch (Exception e) {
-            logger.error("Error with distributed lock for bracket {} rankings, proceeding without lock", bracketId, e);
-            // If there's any issue with the lock, proceed without it
-            return calculateBracketRankings(bracketId);
-        }
-    }
-
-    /**
-     * Private method that performs the actual ranking calculation.
-     * This is called by getBracketRankings() within the distributed lock.
-     */
-    private List<ItemRankingDto> calculateBracketRankings(Long bracketId) {
-        // Fetch all results for this bracket
-        List<Result> results = resultRepository.findByBracketIdOrderByCreatedAtDesc(bracketId);
-
-        if (results.isEmpty()) {
-            return List.of();
-        }
-
-        // Get all items for this bracket
-        List<Item> items = itemRepository.findByBracketId(bracketId);
-
-        // Calculate rankings server-side
-        Map<Long, ItemStats> itemScores = new HashMap<>();
-
-        for (Result result : results) {
-            List<Long> ranking = result.getRanking();
-            for (int i = 0; i < ranking.size(); i++) {
-                Long itemId = ranking.get(i);
-
-                ItemStats stats = itemScores.computeIfAbsent(itemId, id -> {
-                    Item item = items.stream().filter(it -> it.getId().equals(id)).findFirst().orElse(null);
-                    return new ItemStats(item);
-                });
-
-                // Add score based on position (higher position = higher score)
-                stats.addScore(ranking.size() - i);
-
-                // Calculate wins against other items
-                for (int j = 0; j < ranking.size(); j++) {
-                    Long otherItemId = ranking.get(j);
-                    if (!itemId.equals(otherItemId)) {
-                        stats.addMatch();
-                        if (i < j) { // This item ranked higher
-                            stats.addWin();
-                        }
-                    }
-                }
-            }
-        }
-
-        // Convert to DTOs and sort by average score
-        return itemScores.values().stream()
-                .filter(stats -> stats.getItem() != null)
-                .sorted((a, b) -> Double.compare(b.getAverageScore(), a.getAverageScore()))
-                .map(stats -> new ItemRankingDto(
-                    stats.getItem(),
-                    stats.getWins(),
-                    stats.getTotalMatches(),
-                    stats.getWinPercentage(),
-                    stats.getAverageScore(),
-                    stats.getTimesRanked()
-                ))
-                .collect(Collectors.toList());
-    }
-
-    @Cacheable(value = "userResults", key = "'user:' + #userId", unless = "#result == null || #result.isEmpty()")
-    public List<Result> getUserResults(String userId) {
-        return resultRepository.findByUserId(userId);
-    }
-
-    @Cacheable(value = "userResults", key = "'bracket:' + #bracketId + ':user:' + #userId", unless = "#result == null || #result.isEmpty()")
-    public List<Result> getUserBracketResults(Long bracketId, String userId) {
-        return resultRepository.findByBracketIdAndUserId(bracketId, userId);
-    }
-
-    @Caching(evict = {
-        @CacheEvict(value = "brackets", allEntries = true),
-        @CacheEvict(value = "popularBrackets", allEntries = true)
-    })
-    @Transactional
-    public Bracket createBracket(String name, String description, String type, String createdBy) {
-        String cleanName = Sanitizer.stripToPlain(name, 100);
-        String cleanDescription = Sanitizer.sanitizeDescription(description, 2000);
-        if (cleanName == null || cleanName.isBlank()) {
-            throw new IllegalArgumentException("Name is required");
-        }
-        if (!type.matches("^(song|video|image)$")) {
-            throw new IllegalArgumentException("Invalid type. Must be: song, video, or image");
-        }
-        Bracket bracket = new Bracket(cleanName, cleanDescription, type, createdBy);
-        return bracketRepository.save(bracket);
-    }
-
-    @Caching(evict = {
-        @CacheEvict(value = "brackets", allEntries = true),
-        @CacheEvict(value = "popularBrackets", allEntries = true),
-        @CacheEvict(value = "userBrackets", key = "'creator:' + #createdBy")
-    })
-    @Transactional
-    public Bracket createBracket(String name, String description, String type, String category, String createdBy) {
-        String cleanName = Sanitizer.stripToPlain(name, 100);
-        String cleanDescription = Sanitizer.sanitizeDescription(description, 2000);
-        String cleanCategory = category != null ? Sanitizer.stripToPlain(category, 100) : "General";
-        if (cleanName == null || cleanName.isBlank()) {
-            throw new IllegalArgumentException("Name is required");
-        }
-        if (!type.matches("^(song|video|image)$")) {
-            throw new IllegalArgumentException("Invalid type. Must be: song, video, or image");
-        }
-        if (cleanCategory == null || cleanCategory.isBlank()) {
-            cleanCategory = "General";
-        }
-        Bracket bracket = new Bracket(cleanName, cleanDescription, type, createdBy);
-        bracket.setCategory(cleanCategory);
-        return bracketRepository.save(bracket);
-    }
-
-    @Caching(evict = {
-            @CacheEvict(value = "bracketItems", key = "#bracketId"),
-            @CacheEvict(value = "bracket", key = "#bracketId"),
-            @CacheEvict(value = "brackets", allEntries = true),
-            @CacheEvict(value = "popularBrackets", allEntries = true)
-        })
-        @Transactional
-        public Item addItemToBracket(Long bracketId, String userId, String title, String mediaUrl, String mediaType) {
-            // Ensure bracket exists and verify ownership
-            Bracket bracket = bracketRepository.findById(bracketId)
-                    .orElseThrow(() -> new IllegalArgumentException("Bracket not found"));
-
-            // Verify that the user owns this bracket
-            if (bracket.getCreatedBy() == null || !bracket.getCreatedBy().equals(userId)) {
-                throw new IllegalArgumentException("You do not have permission to add items to this bracket");
-            }
-
-            // Check if bracket has reached maximum items
-            List<Item> existingItems = itemRepository.findByBracketId(bracketId);
-            if (existingItems.size() >= MAX_ITEMS_PER_BRACKET) {
-                throw new IllegalArgumentException("Bracket has reached maximum of " + MAX_ITEMS_PER_BRACKET + " items");
-            }
-
-            String cleanTitle = Sanitizer.stripToPlain(title, 150);
-            String cleanUrl = mediaUrl != null ? mediaUrl.trim() : null;
-
-            if (cleanTitle == null || cleanTitle.isBlank()) {
-                throw new IllegalArgumentException("Title is required");
-            }
-            if (cleanUrl == null || cleanUrl.length() > 2000 || !Sanitizer.isSafeHttpUrl(cleanUrl)) {
-                throw new IllegalArgumentException("Invalid media URL");
-            }
-
-            // Additional SSRF protection - block private IP ranges
-            if (isPotentiallyDangerousUrl(cleanUrl)) {
-                throw new IllegalArgumentException("URL points to restricted resource");
-            }
-
-            if (!mediaType.matches("^(song|video|image)$")) {
-                throw new IllegalArgumentException("Invalid media type. Must be: song, video, or image");
-            }
-
-            Item item = new Item(bracketId, cleanTitle, cleanUrl, mediaType);
-            return itemRepository.save(item);
-        }
-
-        /**
-         * Bulk add multiple items to a bracket in a single transaction.
-         * This is much more efficient than calling addItemToBracket() multiple times.
-         *
-         * @param bracketId The bracket to add items to
-         * @param userId The user adding the items (must be bracket owner)
-         * @param itemsData List of items to add (title, mediaUrl, mediaType)
-         * @return List of created items
-         * @throws IllegalArgumentException if validation fails
-         */
-        @Caching(evict = {
-                @CacheEvict(value = "bracketItems", key = "#bracketId"),
-                @CacheEvict(value = "bracket", key = "#bracketId"),
-                @CacheEvict(value = "brackets", allEntries = true),
-                @CacheEvict(value = "popularBrackets", allEntries = true)
-            })
-        @Transactional
-        public List<Item> bulkAddItemsToBracket(Long bracketId, String userId, List<ItemData> itemsData) {
-            // Ensure bracket exists and verify ownership
-            Bracket bracket = bracketRepository.findById(bracketId)
-                    .orElseThrow(() -> new IllegalArgumentException("Bracket not found"));
-
-            // Verify that the user owns this bracket
-            if (bracket.getCreatedBy() == null || !bracket.getCreatedBy().equals(userId)) {
-                throw new IllegalArgumentException("You do not have permission to add items to this bracket");
-            }
-
-            // Check if adding these items would exceed maximum
-            List<Item> existingItems = itemRepository.findByBracketId(bracketId);
-            int totalItemsAfterAdd = existingItems.size() + itemsData.size();
-            if (totalItemsAfterAdd > MAX_ITEMS_PER_BRACKET) {
-                throw new IllegalArgumentException(
-                    "Cannot add " + itemsData.size() + " items. Bracket currently has " +
-                    existingItems.size() + " items. Maximum is " + MAX_ITEMS_PER_BRACKET + "."
-                );
-            }
-
-            // Validate and create all items
-            List<Item> newItems = new java.util.ArrayList<>();
-            for (int i = 0; i < itemsData.size(); i++) {
-                ItemData data = itemsData.get(i);
-
-                String cleanTitle = Sanitizer.stripToPlain(data.title, 150);
-                String cleanUrl = data.mediaUrl != null ? data.mediaUrl.trim() : null;
-
-                if (cleanTitle == null || cleanTitle.isBlank()) {
-                    throw new IllegalArgumentException("Title is required for item at index " + i);
-                }
-                if (cleanUrl == null || cleanUrl.length() > 2000 || !Sanitizer.isSafeHttpUrl(cleanUrl)) {
-                    throw new IllegalArgumentException("Invalid media URL for item at index " + i + ": " + data.title);
-                }
-
-                // Additional SSRF protection - block private IP ranges
-                if (isPotentiallyDangerousUrl(cleanUrl)) {
-                    throw new IllegalArgumentException("URL points to restricted resource for item at index " + i + ": " + data.title);
-                }
-
-                if (!data.mediaType.matches("^(song|video|image)$")) {
-                    throw new IllegalArgumentException("Invalid media type for item at index " + i + ": " + data.title + ". Must be: song, video, or image");
-                }
-
-                Item item = new Item(bracketId, cleanTitle, cleanUrl, data.mediaType);
-                newItems.add(item);
-            }
-
-            // Save all items in a single batch operation
-            return itemRepository.saveAll(newItems);
-        }
-
-        /**
-         * Simple data class to hold item information for bulk creation
-         */
-        public static class ItemData {
-            public final String title;
-            public final String mediaUrl;
-            public final String mediaType;
-
-            public ItemData(String title, String mediaUrl, String mediaType) {
-                this.title = title;
-                this.mediaUrl = mediaUrl;
-                this.mediaType = mediaType;
-            }
-        }
-
-        /**
-         * Check if URL might be targeting internal/private networks (SSRF protection)
-         */
-        /**
-         * Enhanced SSRF protection that validates URLs against multiple security threats:
-         * - Private IP ranges (IPv4 and IPv6)
-         * - Localhost variants
-         * - Cloud metadata endpoints (AWS, Azure, GCP)
-         * - Link-local addresses
-         * - DNS resolution timeout to prevent DNS-based DoS
-         *
-         * @param url The URL to validate
-         * @return true if the URL is potentially dangerous, false if it appears safe
-         */
-        private boolean isPotentiallyDangerousUrl(String url) {
-            try {
-                java.net.URI uri = new java.net.URI(url);
-                String host = uri.getHost();
-
-                if (host == null) {
-                    logger.warn("SSRF Protection: Blocked URL with null host: {}", url);
-                    return true;
-                }
-
-                // Block localhost and common local hostnames
-                if (host.equalsIgnoreCase("localhost") ||
-                    host.equalsIgnoreCase("local") ||
-                    host.equals("127.0.0.1") ||
-                    host.equals("::1") ||
-                    host.equals("0:0:0:0:0:0:0:1") ||
-                    host.equalsIgnoreCase("0.0.0.0") ||
-                    host.equals("::") ||
-                    host.equals("0:0:0:0:0:0:0:0")) {
-                    logger.warn("SSRF Protection: Blocked localhost/loopback: {}", host);
-                    return true;
-                }
-
-                // Block cloud metadata endpoints (AWS, Azure, GCP, Oracle Cloud)
-                if (isCloudMetadataEndpoint(host)) {
-                    logger.warn("SSRF Protection: Blocked cloud metadata endpoint: {}", host);
-                    return true;
-                }
-
-                // Try to resolve the hostname to IP address with timeout
-                java.net.InetAddress addr = resolveHostWithTimeout(host, 2000); // 2 second timeout
-
-                // Block private IP ranges using Java's built-in methods
-                if (addr.isLoopbackAddress() ||
-                    addr.isLinkLocalAddress() ||
-                    addr.isSiteLocalAddress() ||
-                    addr.isAnyLocalAddress()) {
-                    logger.warn("SSRF Protection: Blocked private/local IP: {}", addr.getHostAddress());
-                    return true;
-                }
-
-                // Additional checks for IPv4 and IPv6 private ranges
-                if (isPrivateOrInternalAddress(addr)) {
-                    logger.warn("SSRF Protection: Blocked private/internal address: {}", addr.getHostAddress());
-                    return true;
-                }
-
-                return false;
-            } catch (java.net.UnknownHostException e) {
-                // Could be a typo or DNS timeout - block it
-                logger.warn("SSRF Protection: Failed to resolve host (possible DNS issue): {}", url);
-                return true;
-            } catch (java.util.concurrent.TimeoutException e) {
-                // DNS resolution timeout - potential DNS-based DoS
-                logger.warn("SSRF Protection: DNS resolution timeout for: {}", url);
-                return true;
-            } catch (Exception e) {
-                // If we can't validate it properly, block it
-                logger.warn("SSRF Protection: Failed to validate URL: {}", url, e);
-                return true;
-            }
-        }
-
-        /**
-         * Check if the host is a cloud metadata endpoint.
-         * These endpoints expose sensitive instance metadata and credentials.
-         */
-        private boolean isCloudMetadataEndpoint(String host) {
-            return host.equals("169.254.169.254") ||        // AWS, Azure, GCP, Oracle Cloud
-                   host.equals("metadata.google.internal") || // GCP alternative
-                   host.equals("169.254.170.2") ||           // AWS ECS task metadata
-                   host.startsWith("fd00:ec2::") ||          // AWS IPv6 metadata
-                   host.equals("100.100.100.200");           // Alibaba Cloud metadata
-        }
-
-        /**
-         * Resolve hostname to IP address with a timeout to prevent DNS-based DoS attacks.
-         */
-        private java.net.InetAddress resolveHostWithTimeout(String host, long timeoutMs)
-                throws java.net.UnknownHostException, java.util.concurrent.TimeoutException {
-            java.util.concurrent.FutureTask<java.net.InetAddress> task =
-                new java.util.concurrent.FutureTask<>(() -> java.net.InetAddress.getByName(host));
-
-            Thread thread = new Thread(task);
-            thread.setDaemon(true);
-            thread.start();
-
-            try {
-                return task.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
-            } catch (java.util.concurrent.TimeoutException e) {
-                thread.interrupt();
-                throw e;
-            } catch (java.util.concurrent.ExecutionException e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof java.net.UnknownHostException) {
-                    throw (java.net.UnknownHostException) cause;
-                }
-                throw new RuntimeException("DNS resolution failed", cause);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("DNS resolution interrupted", e);
-            }
-        }
-
-        /**
-         * Comprehensive check for private and internal IP addresses (IPv4 and IPv6).
-         * Covers ranges not caught by Java's built-in methods.
-         */
-        private boolean isPrivateOrInternalAddress(java.net.InetAddress addr) {
-            byte[] bytes = addr.getAddress();
-
-            if (bytes.length == 4) {
-                // IPv4 checks
-                return isPrivateIPv4(bytes);
-            } else if (bytes.length == 16) {
-                // IPv6 checks
-                return isPrivateIPv6(bytes);
-            }
-
-            return false;
-        }
-
-        /**
-         * Check for private IPv4 address ranges:
-         * - 10.0.0.0/8 (10.0.0.0 - 10.255.255.255)
-         * - 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
-         * - 192.168.0.0/16 (192.168.0.0 - 192.168.255.255)
-         * - 169.254.0.0/16 (link-local, includes cloud metadata)
-         * - 127.0.0.0/8 (loopback)
-         * - 0.0.0.0/8 (current network)
-         */
-        private boolean isPrivateIPv4(byte[] bytes) {
-            int first = bytes[0] & 0xFF;
-            int second = bytes[1] & 0xFF;
-
-            // 10.0.0.0/8
-            if (first == 10) {
-                return true;
-            }
-
-            // 172.16.0.0/12 (172.16-31.x.x)
-            if (first == 172 && second >= 16 && second <= 31) {
-                return true;
-            }
-
-            // 192.168.0.0/16
-            if (first == 192 && second == 168) {
-                return true;
-            }
-
-            // 169.254.0.0/16 (link-local, includes cloud metadata endpoints)
-            if (first == 169 && second == 254) {
-                return true;
-            }
-
-            // 127.0.0.0/8 (loopback)
-            if (first == 127) {
-                return true;
-            }
-
-            // 0.0.0.0/8 (current network)
-            if (first == 0) {
-                return true;
-            }
-
-            return false;
-        }
-
-        /**
-         * Check for private IPv6 address ranges:
-         * - fc00::/7 (Unique Local Addresses - private)
-         * - fe80::/10 (Link-local addresses)
-         * - ::1/128 (loopback)
-         * - ::/128 (unspecified)
-         * - ff00::/8 (multicast)
-         */
-        private boolean isPrivateIPv6(byte[] bytes) {
-            int firstByte = bytes[0] & 0xFF;
-
-            // fc00::/7 - Unique Local Addresses (private)
-            // Checks for fc00:: through fdff::
-            if ((firstByte & 0xFE) == 0xFC) {
-                return true;
-            }
-
-            // fe80::/10 - Link-local addresses
-            // First byte is 0xFE, second byte's top 2 bits are 10
-            if (firstByte == 0xFE && (bytes[1] & 0xC0) == 0x80) {
-                return true;
-            }
-
-            // ::1 (loopback)
-            boolean isLoopback = true;
-            for (int i = 0; i < 15; i++) {
-                if (bytes[i] != 0) {
-                    isLoopback = false;
-                    break;
-                }
-            }
-            if (isLoopback && bytes[15] == 1) {
-                return true;
-            }
-
-            // :: (unspecified)
-            boolean isUnspecified = true;
-            for (byte b : bytes) {
-                if (b != 0) {
-                    isUnspecified = false;
-                    break;
-                }
-            }
-            if (isUnspecified) {
-                return true;
-            }
-
-            // ff00::/8 - Multicast
-            if (firstByte == 0xFF) {
-                return true;
-            }
-
-            return false;
-        }
-    // Inner class to help with ranking calculations
-    private static class ItemStats {
-        private final Item item;
-        private int totalScore;
-        private int timesRanked;
-        private int wins;
-        private int totalMatches;
-
-        public ItemStats(Item item) {
-            this.item = item;
-            this.totalScore = 0;
-            this.timesRanked = 0;
-            this.wins = 0;
-            this.totalMatches = 0;
-        }
-
-        public void addScore(int score) {
-            this.totalScore += score;
-            this.timesRanked++;
-        }
-
-        public void addWin() {
-            this.wins++;
-        }
-
-        public void addMatch() {
-            this.totalMatches++;
-        }
-
-        public Item getItem() {
-            return item;
-        }
-
-        public double getAverageScore() {
-            return timesRanked > 0 ? (double) totalScore / timesRanked : 0;
-        }
-
-        public int getWins() {
-            return wins;
-        }
-
-        public int getTotalMatches() {
-            return totalMatches;
-        }
-
-        public int getWinPercentage() {
-            return totalMatches > 0 ? (int) Math.round((double) wins / totalMatches * 100) : 0;
-        }
-
-        public int getTimesRanked() {
-            return timesRanked;
-        }
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 }

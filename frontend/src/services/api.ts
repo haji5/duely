@@ -1,351 +1,132 @@
 import axios from 'axios';
-import { Bracket, Item, Result, ItemRanking } from '@/types';
+import type {
+  Bracket, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Result,
+} from '@/types';
 import { auth } from '@/config/firebase';
-import { apiCache, cachedApiCall, createCacheKey } from '@/utils/apiCache';
-import { csrfService } from './csrf';
+import { apiCache } from '@/utils/apiCache';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Provide a way to clear any cached state when logging out
-export function resetApiAuthState() {
-  // Clear all cached API data on logout
-  apiCache.clear();
-  // Clear CSRF token
-  csrfService.clearToken();
-  // If we ever add default Authorization headers, clear them here as well
-  if (api.defaults.headers && 'Authorization' in api.defaults.headers.common) {
-    delete (api.defaults.headers.common as any)['Authorization'];
-  }
-}
-
-/**
- * Smart token refresh strategy:
- * - Firebase ID tokens expire after 1 hour
- * - Only force refresh if token is close to expiration (within 5 minutes)
- * - Let Firebase SDK handle automatic refresh for most requests
- * - Reduces Firebase API calls and improves latency
- */
-async function getIdTokenWithSmartRefresh(user: any): Promise<string> {
-  try {
-    // First, try to get the token without forcing refresh
-    // Firebase SDK caches tokens and handles refresh automatically
-    const tokenResult = await user.getIdTokenResult(false);
-
-    // Check if token is close to expiration (within 5 minutes)
-    const expirationTime = new Date(tokenResult.expirationTime).getTime();
-    const now = Date.now();
-    const timeUntilExpiry = expirationTime - now;
-    const FIVE_MINUTES_MS = 5 * 60 * 1000;
-
-    // Force refresh only if token expires soon
-    if (timeUntilExpiry < FIVE_MINUTES_MS) {
-      console.log('[API Token] Token expires soon, forcing refresh');
-      return await user.getIdToken(true);
-    }
-
-    // Token is still valid, use cached version
-    return tokenResult.token;
-  } catch (error) {
-    // Fallback: if getIdTokenResult fails, try standard getIdToken
-    console.warn('[API Token] Failed to check token expiration, using fallback', error);
-    return await user.getIdToken(false);
-  }
-}
-
-/**
- * Wait for Firebase auth to be ready (currentUser to be available).
- * This prevents race conditions where AuthContext has user from localStorage
- * but Firebase auth hasn't initialized yet.
- */
-async function waitForAuthReady(timeoutMs: number = 3000): Promise<void> {
-  if (auth.currentUser) return;
-  
-  return new Promise((resolve) => {
-    const unsubscribe = auth.onAuthStateChanged(() => {
-      unsubscribe();
-      resolve();
-    });
-    // Timeout fallback
-    setTimeout(() => {
-      unsubscribe();
-      resolve();
-    }, timeoutMs);
-  });
-}
-
+// Firebase's getIdToken() returns the cached token and refreshes it shortly before it expires.
 api.interceptors.request.use(async (config) => {
-  // Attach Firebase ID token if available
-  const user = auth.currentUser;
-  console.log('[API Interceptor] Current user:', user ? user.uid : 'No user');
-
-  if (user) {
-    try {
-      // Use smart token refresh strategy instead of always forcing refresh
-      const idToken = await getIdTokenWithSmartRefresh(user);
-      console.log('[API Interceptor] Got ID token, length:', idToken?.length);
-      config.headers = config.headers || {};
-      (config.headers as any)['Authorization'] = `Bearer ${idToken}`;
-
-      // Add CSRF token for state-changing requests
-      if (config.method && ['post', 'put', 'delete', 'patch'].includes(config.method.toLowerCase())) {
-        const csrfToken = await csrfService.getToken();
-        if (csrfToken) {
-          (config.headers as any)['X-CSRF-Token'] = csrfToken;
-          console.log('[API Interceptor] Added CSRF token to request');
-        } else {
-          console.warn('[API Interceptor] No CSRF token available for state-changing request');
-        }
-      }
-    } catch (error) {
-      console.error('[API Interceptor] Failed to get Firebase ID token:', error);
-      // If we can't get the token, proceed without it
-      // This will result in 401 for protected routes, which is expected
-    }
-  } else {
-    console.warn('[API Interceptor] No Firebase user available for request to:', config.url);
+  const token = await auth.currentUser?.getIdToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-
   return config;
 });
 
-// CSRF tokens live in backend memory, so a backend restart invalidates the token we cached
-// for up to an hour. On a CSRF rejection, drop the cached token and retry the request once.
-api.interceptors.response.use(undefined, async (error) => {
-  const config = error?.config;
-  if (
-    config &&
-    !config._csrfRetried &&
-    error.response?.status === 403 &&
-    error.response?.data?.error === 'CSRF Validation Failed'
-  ) {
-    config._csrfRetried = true;
-    csrfService.clearToken();
-    return api.request(config);
+/** Drops cached responses; called whenever the signed-in user changes. */
+export function resetApiAuthState(): void {
+  apiCache.clear();
+}
+
+/** The server's error message for a failed request, or a generic one. */
+export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (axios.isAxiosError(error)) {
+    const message = (error.response?.data as { message?: unknown } | undefined)?.message;
+    if (typeof message === 'string' && message.trim()) return message;
+    if (!error.response) return 'Can’t reach the server. Check your connection and try again.';
   }
-  return Promise.reject(error);
-});
+  return fallback;
+}
 
-export const bracketApi = {
-  // Get all brackets (cached for 5 minutes)
-  getAllBrackets: async (): Promise<Bracket[]> => {
-    const cacheKey = createCacheKey('/brackets');
-    return cachedApiCall(cacheKey, async () => {
-      const response = await api.get('/brackets');
-      return response.data;
-    }, 5 * 60 * 1000); // 5 minutes
-  },
+/** Per-field messages from a 400 response ({"items[0].mediaUrl": "..."}), if any. */
+export function fieldErrors(error: unknown): Record<string, string> {
+  if (axios.isAxiosError(error)) {
+    const errors = (error.response?.data as { errors?: unknown } | undefined)?.errors;
+    if (errors && typeof errors === 'object') return errors as Record<string, string>;
+  }
+  return {};
+}
 
-  // Get bracket by ID (cached for 15 minutes)
-  getBracket: async (id: number): Promise<Bracket> => {
-    const cacheKey = createCacheKey(`/brackets/${id}`);
-    return cachedApiCall(cacheKey, async () => {
-      const response = await api.get(`/brackets/${id}`);
-      return response.data;
-    }, 15 * 60 * 1000); // 15 minutes
-  },
+export function errorStatus(error: unknown): number | undefined {
+  return axios.isAxiosError(error) ? error.response?.status : undefined;
+}
 
-  // Get bracket items (cached for 15 minutes)
-  getBracketItems: async (id: number): Promise<Item[]> => {
-    const cacheKey = createCacheKey(`/brackets/${id}/items`);
-    return cachedApiCall(cacheKey, async () => {
-      const response = await api.get(`/brackets/${id}/items`);
-      return response.data;
-    }, 15 * 60 * 1000); // 15 minutes
-  },
+const MINUTE = 60_000;
 
-  // Save bracket result (userId derived on backend)
-  saveBracketResult: async (id: number, ranking: number[], submissionToken?: string, displayName?: string, comment?: string): Promise<Result> => {
-    // Generate a unique submission token if not provided (to prevent duplicate submissions)
-    const token = submissionToken || `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-
-    const response = await api.post(`/brackets/${id}/results`, {
-      ranking,
-      submissionToken: token,
-      displayName: displayName || undefined,
-      comment: comment || undefined,
-    });
-    
-    // Invalidate ONLY the specific bracket's caches (not all brackets!)
-    apiCache.invalidate(createCacheKey(`/brackets/${id}/results`));
-    apiCache.invalidate(createCacheKey(`/brackets/${id}/rankings`));
-
-    // Invalidate user-specific caches if user is logged in
-    const user = auth.currentUser;
-    if (user) {
-      // Use the new cache key format (my-results instead of user ID in key)
-      apiCache.invalidate(createCacheKey(`/brackets/${id}/my-results`));
-      apiCache.invalidate(createCacheKey('/my-results'));
-    }
-
-    // Only invalidate popular brackets if this might affect the list
-    // (popular brackets are determined by result count, so this is relevant)
-    apiCache.invalidate(createCacheKey('/brackets/popular'));
-    
-    return response.data;
-  },
-
-  // Get bracket results (cached for 2 minutes - frequently updated)
-  getBracketResults: async (id: number): Promise<Result[]> => {
-    const cacheKey = createCacheKey(`/brackets/${id}/results`);
-    return cachedApiCall(cacheKey, async () => {
-      const response = await api.get(`/brackets/${id}/results`);
-      return response.data;
-    }, 2 * 60 * 1000); // 2 minutes
-  },
-
-  // Get user-specific results for a bracket (cached for 5 minutes)
-  // SECURITY: Only allow fetching results for the currently authenticated user
-  getUserBracketResults: async (bracketId: number, userId: string): Promise<Result[]> => {
-    // Wait for Firebase auth to initialize (prevents race with localStorage-based AuthContext)
-    await waitForAuthReady();
-    const currentUser = auth.currentUser;
-
-    // Validate that the requested userId matches the current user
-    if (!currentUser || currentUser.uid !== userId) {
-      throw new Error('Unauthorized: Cannot fetch results for another user');
-    }
-
-    // Use authenticated user's UID in cache key, not the parameter
-    // This prevents cache poisoning if userId parameter is manipulated
-    const cacheKey = createCacheKey(`/brackets/${bracketId}/my-results`);
-    return cachedApiCall(cacheKey, async () => {
-      const response = await api.get(`/brackets/${bracketId}/users/${userId}/results`);
-      return response.data;
-    }, 5 * 60 * 1000); // 5 minutes
-  },
-
-  // Get all results for a specific user (cached for 5 minutes)
-  // SECURITY: Only allow fetching results for the currently authenticated user
-  getUserResults: async (userId: string): Promise<Result[]> => {
-    // Wait for Firebase auth to initialize (prevents race with localStorage-based AuthContext)
-    await waitForAuthReady();
-    const currentUser = auth.currentUser;
-
-    // Validate that the requested userId matches the current user
-    if (!currentUser || currentUser.uid !== userId) {
-      throw new Error('Unauthorized: Cannot fetch results for another user');
-    }
-
-    // Use authenticated user's UID in cache key, not the parameter
-    const cacheKey = createCacheKey('/my-results');
-    return cachedApiCall(cacheKey, async () => {
-      const response = await api.get(`/users/${userId}/results`);
-      return response.data;
-    }, 5 * 60 * 1000); // 5 minutes
-  },
-
-  // Get popular brackets (cached for 10 minutes)
-  getPopularBrackets: async (): Promise<Bracket[]> => {
-    const cacheKey = createCacheKey('/brackets/popular');
-    return cachedApiCall(cacheKey, async () => {
-      const response = await api.get('/brackets/popular');
-      return response.data;
-    }, 10 * 60 * 1000); // 10 minutes
-  },
-
-  // Get pre-calculated rankings from server (cached for 1 minute)
-  getBracketRankings: async (id: number): Promise<ItemRanking[]> => {
-    const cacheKey = createCacheKey(`/brackets/${id}/rankings`);
-    return cachedApiCall(cacheKey, async () => {
-      const response = await api.get(`/brackets/${id}/rankings`);
-      return response.data;
-    }, 1 * 60 * 1000); // 1 minute
-  },
-
-  // Create new bracket
-  createBracket: async (name: string, description: string, type: string, category?: string): Promise<Bracket> => {
-    const response = await api.post('/brackets', {
-      name,
-      description,
-      type,
-      category: category || 'General',
-    });
-    
-    // Invalidate relevant caches - user will see their new bracket immediately
-    apiCache.invalidate(createCacheKey('/brackets'));
-    apiCache.invalidate(createCacheKey('/brackets/popular'));
-
-    // Invalidate user's own brackets cache
-    const user = auth.currentUser;
-    if (user) {
-      apiCache.invalidate(createCacheKey(`/brackets/by-creator/${user.uid}`));
-    }
-
-    return response.data;
-  },
-
-  // Get brackets by creator ID (NOT cached - for immediate "My Brackets" visibility)
-  getBracketsByCreator: async (creatorId: string): Promise<Bracket[]> => {
-    const response = await api.get(`/brackets/by-creator/${creatorId}`);
-    return response.data;
-  },
-
-  // Add item to bracket
-  addItemToBracket: async (
-    bracketId: number,
-    title: string,
-    mediaUrl: string,
-    mediaType: string
-  ): Promise<Item> => {
-    const response = await api.post(`/brackets/${bracketId}/items`, {
-      title,
-      mediaUrl,
-      mediaType,
-    });
-    
-    // Invalidate bracket items cache
-    apiCache.invalidate(createCacheKey(`/brackets/${bracketId}/items`));
-    apiCache.invalidate(createCacheKey(`/brackets/${bracketId}`));
-    
-    return response.data;
-  },
-
-  // Bulk add items to bracket (MUCH more efficient than individual calls)
-  bulkAddItemsToBracket: async (
-    bracketId: number,
-    items: Array<{
-      title: string;
-      mediaUrl: string;
-      mediaType: string;
-    }>
-  ): Promise<{ items: Item[]; count: number; message: string }> => {
-    const response = await api.post(`/brackets/${bracketId}/items/bulk`, {
-      items,
-    });
-
-    // Invalidate bracket items cache
-    apiCache.invalidate(createCacheKey(`/brackets/${bracketId}/items`));
-    apiCache.invalidate(createCacheKey(`/brackets/${bracketId}`));
-
-    return response.data;
-  },
-
-  // Create bracket with items (optional helper if supported)
-  createBracketWithItems: async (payload: {
-    name: string;
-    type: string;
-    items: Array<{
-      title: string;
-      mediaUrl: string;
-      mediaType: string;
-    }>;
-  }): Promise<Bracket> => {
-    const response = await api.post('/brackets', payload);
-    
-    // Invalidate brackets list cache
-    apiCache.invalidate(createCacheKey('/brackets'));
-    apiCache.invalidate(createCacheKey('/brackets/popular'));
-    
-    return response.data;
-  },
+const keys = {
+  brackets: '/brackets',
+  popular: '/brackets/popular',
+  bracket: (id: number) => `/brackets/${id}`,
+  items: (id: number) => `/brackets/${id}/items`,
+  rankings: (id: number) => `/brackets/${id}/rankings`,
+  comments: (id: number) => `/brackets/${id}/comments`,
+  // Per-user keys include the uid so a response that lands after a sign-out can't be shown
+  // to the next user.
+  myResults: (uid: string, bracketId?: number) => `/me/results:${uid}:${bracketId ?? 'all'}`,
 };
 
-export default api;
+async function get<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+  const response = await api.get<T>(path, { params });
+  return response.data;
+}
+
+export const bracketApi = {
+  getAllBrackets: (): Promise<Bracket[]> =>
+    apiCache.getOrLoad(keys.brackets, 2 * MINUTE, () => get<Bracket[]>('/brackets')),
+
+  getPopularBrackets: (): Promise<Bracket[]> =>
+    apiCache.getOrLoad(keys.popular, 5 * MINUTE, () => get<Bracket[]>('/brackets/popular')),
+
+  getBracket: (id: number): Promise<Bracket> =>
+    apiCache.getOrLoad(keys.bracket(id), 15 * MINUTE, () => get<Bracket>(`/brackets/${id}`)),
+
+  getBracketItems: (id: number): Promise<Item[]> =>
+    apiCache.getOrLoad(keys.items(id), 15 * MINUTE, () => get<Item[]>(`/brackets/${id}/items`)),
+
+  // Rankings and comments change with every run, so they are always fetched fresh.
+  getBracketRankings: (id: number): Promise<ItemRanking[]> => get<ItemRanking[]>(`/brackets/${id}/rankings`),
+
+  getBracketComments: (id: number): Promise<Comment[]> => get<Comment[]>(`/brackets/${id}/comments`),
+
+  saveBracketResult: async (
+    bracketId: number,
+    run: { ranking: number[]; matches: MatchOutcome[]; submissionToken: string; displayName?: string; comment?: string },
+  ): Promise<Result> => {
+    const response = await api.post<Result>(`/brackets/${bracketId}/results`, run);
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      apiCache.invalidate(keys.myResults(uid), keys.myResults(uid, bracketId));
+    }
+    return response.data;
+  },
+
+  /** Creates the bracket and all of its entries in one request. */
+  createBracket: async (payload: CreateBracketPayload): Promise<Bracket> => {
+    const response = await api.post<Bracket>('/brackets', payload);
+    apiCache.invalidate(keys.brackets, keys.popular);
+    return response.data;
+  },
+
+  /** The signed-in user's brackets, newest first. Not cached, so new brackets show at once. */
+  getMyBrackets: (): Promise<Bracket[]> => get<Bracket[]>('/me/brackets'),
+
+  /** The signed-in user's runs (optionally for one bracket), oldest first. */
+  getMyResults: (bracketId?: number): Promise<Result[]> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return Promise.resolve([]);
+    return apiCache.getOrLoad(keys.myResults(uid, bracketId), 5 * MINUTE,
+      () => get<Result[]>('/me/results', bracketId === undefined ? undefined : { bracketId }));
+  },
+
+  /** The first embeddable YouTube video for a search, or null if none was found. */
+  searchYouTube: async (query: string): Promise<string | null> => {
+    try {
+      const data = await get<{ mediaUrl: string }>('/metadata/youtube/search', { query });
+      return data.mediaUrl;
+    } catch (error) {
+      if (errorStatus(error) === 404) return null;
+      throw error;
+    }
+  },
+
+  getSpotifyPlaylist: (url: string): Promise<PlaylistTrack[]> =>
+    get<PlaylistTrack[]>('/metadata/spotify/playlist', { url }),
+};

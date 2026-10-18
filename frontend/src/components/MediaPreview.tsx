@@ -1,262 +1,248 @@
 import * as React from 'react';
-import { motion } from 'framer-motion';
-import { Item } from '@/types';
-import { isSafeHttpUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSpotifyUrl, getSpotifyEmbedUrl } from '../utils/mediaUtils';
+import type { Item } from '@/types';
+import {
+  getSpotifyEmbedUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl,
+} from '../utils/mediaUtils';
 
 interface MediaPreviewProps {
-    item: Item;
-    className?: string;
-    size?: 'thumbnail' | 'full';
-    autoplay?: boolean; // Control video autoplay (defaults to true for bracket battles)
+  item: Item;
+  className?: string;
+  /** 'thumbnail' is a static preview for lists; 'full' is the interactive battle preview. */
+  size?: 'thumbnail' | 'full';
 }
 
-const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size = 'full', autoplay = true }) => {
-    const [isHovered, setIsHovered] = React.useState(false);
-    const [isPlaying, setIsPlaying] = React.useState(false); // for audio rotation
-    const [isVideoStarted, setIsVideoStarted] = React.useState(false);
-    const audioRef = React.useRef<HTMLAudioElement>(null);
-    const iframeRef = React.useRef<HTMLIFrameElement>(null);
-    const spotifyIframeRef = React.useRef<HTMLIFrameElement>(null);
-    const [isSpotifyReady, setIsSpotifyReady] = React.useState(false);
+// Only one preview plays sound at a time: unmuting one tells the others to mute.
+const AUDIO_EVENT = 'duely:preview-audio';
 
-    // --- Global video audio arbitration (only one unmuted at a time) ---
-    React.useEffect(() => {
-        const handleGlobalVideoMute = (evt: Event) => {
-            const event = evt as CustomEvent<{ videoId: Item['id'] }>;
-            if (event.detail && event.detail.videoId !== item.id && isVideoStarted) {
-                muteVideo();
-            }
-        };
-        window.addEventListener('requestVideoAudio', handleGlobalVideoMute as EventListener);
-        return () => window.removeEventListener('requestVideoAudio', handleGlobalVideoMute as EventListener);
-    }, [item.id, isVideoStarted]);
+function announceAudio(owner: symbol) {
+  window.dispatchEvent(new CustomEvent(AUDIO_EVENT, { detail: owner }));
+}
 
-
-    // --- Video mute/unmute via postMessage API ---
-    const postPlayerCommand = (func: string) => {
-        if (iframeRef.current && iframeRef.current.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(
-                JSON.stringify({ event: 'command', func, args: [] }),
-                '*'
-            );
-        }
+function useExclusiveAudio(onOtherStarted: () => void): symbol {
+  const owner = React.useRef(Symbol('preview')).current;
+  const callback = React.useRef(onOtherStarted);
+  callback.current = onOtherStarted;
+  React.useEffect(() => {
+    const listener = (e: Event) => {
+      if ((e as CustomEvent<symbol>).detail !== owner) callback.current();
     };
-    const muteVideo = () => postPlayerCommand('mute');
-    const unmuteVideo = () => {
-        postPlayerCommand('unMute');
-        const event = new CustomEvent('requestVideoAudio', { detail: { videoId: item.id } });
-        window.dispatchEvent(event);
-    };
+    window.addEventListener(AUDIO_EVENT, listener);
+    return () => window.removeEventListener(AUDIO_EVENT, listener);
+  }, [owner]);
+  return owner;
+}
 
-    // --- Spotify API ---
-    const postSpotifyCommand = (command: string) => {
-        if (spotifyIframeRef.current && spotifyIframeRef.current.contentWindow && isSpotifyReady) {
-            spotifyIframeRef.current.contentWindow.postMessage({ command }, '*');
-        }
-    };
-    const pauseSpotify = () => postSpotifyCommand('pause');
-    const playSpotify = () => postSpotifyCommand('play');
+/** Stops clicks on preview controls from also picking the battle card they sit in. */
+const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-    React.useEffect(() => {
-        const handleSpotifyMessage = (e: MessageEvent) => {
-            if (spotifyIframeRef.current && e.source === spotifyIframeRef.current.contentWindow) {
-                if (e.data && e.data.type === 'ready') {
-                    spotifyIframeRef.current.contentWindow?.postMessage({ command: 'load_complete_ack' }, '*');
-                    setIsSpotifyReady(true);
-                }
-            }
-        };
-        window.addEventListener('message', handleSpotifyMessage);
-        return () => window.removeEventListener('message', handleSpotifyMessage);
-    }, []);
+const MusicIcon: React.FC<{ className?: string }> = ({ className = 'h-8 w-8' }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+  </svg>
+);
 
-    // --- Hover handlers ---
-    const handleMouseEnter = () => {
-        setIsHovered(true);
-        if (item.mediaType === 'song') {
-            if (isSpotifyUrl(item.mediaUrl)) {
-                playSpotify();
-            } else if (audioRef.current && isSafeHttpUrl(item.mediaUrl)) {
-                audioRef.current.currentTime = 0;
-                audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-            }
-        } else if (item.mediaType === 'video' && isVideoStarted) {
-            setTimeout(() => unmuteVideo(), 150);
-        }
-    };
+const Unavailable: React.FC<{ label: string; tall: boolean }> = ({ label, tall }) => (
+  <div className={`flex w-full ${tall ? 'h-72' : 'h-full min-h-14'} items-center justify-center rounded-lg bg-themed-tertiary text-sm text-themed-tertiary`}>
+    {label}
+  </div>
+);
 
-    const handleMouseLeave = () => {
-        setIsHovered(false);
-        if (item.mediaType === 'song') {
-            if (isSpotifyUrl(item.mediaUrl)) {
-                pauseSpotify();
-            } else if (audioRef.current) {
-                audioRef.current.pause();
-                setIsPlaying(false);
-            }
-        } else if (item.mediaType === 'video' && isVideoStarted) {
-            muteVideo();
-        }
-    };
-
-    // --- First click to initialize video ---
-    const handleVideoPlay = (event: React.MouseEvent) => {
-        event.stopPropagation();
-        if (!isVideoStarted) {
-            setIsVideoStarted(true);
-            setTimeout(() => {
-                if (isHovered) unmuteVideo();
-            }, 800);
-        }
-    };
-
-    const renderMediaContent = () => {
-        const sizeClasses = size === 'thumbnail' ? 'w-32 h-32' : 'w-48 h-48';
-        switch (item.mediaType) {
-            case 'song': {
-                if (isSpotifyUrl(item.mediaUrl)) {
-                    const baseEmbedUrl = getSpotifyEmbedUrl(item.mediaUrl);
-                    const embedUrl = baseEmbedUrl.includes('?') ? `${baseEmbedUrl}&utm_source=iframe-api` : `${baseEmbedUrl}?utm_source=iframe-api`;
-                    return (
-                        <div className="relative w-full max-w-lg select-none">
-                            <iframe
-                                ref={spotifyIframeRef}
-                                src={embedUrl}
-                                className={`w-full ${size === 'thumbnail' ? 'h-32' : 'h-80'} border-0 rounded-lg`}
-                                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                                title={item.title}
-                            />
-                        </div>
-                    );
-                }
-
-                const safeAudio = isSafeHttpUrl(item.mediaUrl);
-                return (
-                    <div className="relative">
-                        <motion.div
-                            className={`rounded-full flex items-center justify-center bg-primary-600 ${sizeClasses}`}
-                            animate={{ scale: isHovered ? 1.1 : 1, rotate: isPlaying ? 360 : 0 }}
-                            transition={{ scale: { duration: 0.3 }, rotate: { duration: 3, repeat: isPlaying ? Infinity : 0, ease: 'linear' } }}
-                        >
-                            <svg className={`${size === 'thumbnail' ? 'w-12 h-12' : 'w-24 h-24'}`} style={{ color: 'var(--accent-primary-text)' }} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                                <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM15.657 6.343a1 1 0 011.414 0A9.972 9.972 0 0119 12a9.972 9.972 0 01-1.929 5.657 1 1 0 11-1.414-1.414A7.971 7.971 0 0017 12a7.971 7.971 0 00-1.343-4.243 1 1 0 010-1.414z" clipRule="evenodd" />
-                                <path fillRule="evenodd" d="M13.828 8.172a1 1 0 011.414 0A5.983 5.983 0 0117 12a5.983 5.983 0 01-1.758 3.828 1 1 0 11-1.414-1.414A3.987 3.987 0 0015 12a3.987 3.987 0 00-1.172-2.828 1 1 0 010-1.414z" clipRule="evenodd" />
-                            </svg>
-                        </motion.div>
-                        {safeAudio ? (
-                            <audio ref={audioRef} src={item.mediaUrl} preload="metadata" onEnded={() => setIsPlaying(false)} />
-                        ) : (
-                            <div className="sr-only">Invalid audio URL</div>
-                        )}
-                        {isHovered && size === 'full' && (
-                            <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-black bg-opacity-75 text-white px-3 py-2 rounded text-sm">
-                                {isPlaying ? 'Playing...' : safeAudio ? 'Hover to play' : 'Audio unavailable'}
-                            </motion.div>
-                        )}
-                    </div>
-                );
-            }
-            case 'video': {
-                const embedUrl = getYouTubeEmbedUrl(item.mediaUrl, autoplay);
-                const thumbnailUrl = getYouTubeThumbnail(item.mediaUrl);
-                const isThumbnail = size === 'thumbnail';
-                const playButtonSize = isThumbnail ? 'w-6 h-6' : 'w-12 h-12';
-                const playButtonPadding = isThumbnail ? 'p-2' : 'p-4';
-                const videoHeight = isThumbnail ? 'h-16' : 'h-72';
-                const canEmbed = embedUrl !== 'about:blank';
-
-                return (
-                    <div className="relative w-full max-w-lg select-none">
-                        <motion.div animate={{ scale: isHovered ? 1.05 : 1 }} transition={{ duration: 0.3 }}>
-                            {isVideoStarted && canEmbed ? (
-                                <iframe
-                                    ref={iframeRef}
-                                    src={embedUrl}
-                                    className={`w-full ${videoHeight} border-0 rounded-lg`}
-                                    loading="lazy"
-                                    style={{ border: 0 }}
-                                    allow="autoplay; encrypted-media; picture-in-picture; web-share"
-                                    allowFullScreen
-                                    title={item.title}
-                                />
-                            ) : (
-                                <div className={`relative w-full ${videoHeight} bg-themed-tertiary flex items-center justify-center ${canEmbed ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'} overflow-hidden rounded-lg`} onClick={canEmbed ? handleVideoPlay : undefined}>
-                                    {thumbnailUrl ? (
-                                        <img
-                                            src={thumbnailUrl}
-                                            alt={item.title}
-                                            className="w-full h-full object-cover"
-                                            onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                            loading="lazy"
-                                        />
-                                    ) : (
-                                        <div className="flex flex-col items-center text-themed-tertiary">
-                                            <svg className={`${isThumbnail ? 'w-8 h-8 mb-1' : 'w-16 h-16 mb-3'}`} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                                            </svg>
-                                            {!isThumbnail && <span className="text-lg">{canEmbed ? 'Video Preview' : 'Video unavailable'}</span>}
-                                        </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center hover:bg-black/40 transition-colors duration-300">
-                                        {canEmbed && (
-                                            <motion.div className={`bg-white/90 rounded-full ${playButtonPadding} hover:bg-white transition-colors duration-200`} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
-                                                <svg className={`${playButtonSize} text-gray-800`} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                                                </svg>
-                                            </motion.div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </motion.div>
-                        {isVideoStarted && canEmbed && (
-                            <div className="pointer-events-none absolute inset-0 flex items-start justify-end p-3">
-                                <div className={`bg-black/50 text-white rounded px-3 py-2 ${isThumbnail ? 'text-xs' : 'text-sm'} backdrop-blur-sm`}>
-                                    {isHovered ? 'Audio On' : 'Audio Off'}
-                                </div>
-                            </div>
-                        )}
-                        </div>
-                );
-            }
-            case 'image': {
-                const safeImage = isSafeHttpUrl(item.mediaUrl);
-                return (
-                    <div className="relative">
-                        <motion.div animate={{ scale: isHovered ? 1.1 : 1, rotateY: isHovered ? 5 : 0 }} transition={{ duration: 0.3 }} className="relative rounded-lg overflow-hidden">
-                            {safeImage ? (
-                                <img src={item.mediaUrl} alt={item.title} className={`w-full ${size === 'thumbnail' ? 'h-16' : 'h-72'} object-cover`} loading="lazy" />
-                            ) : (
-                                <div className={`w-full ${size === 'thumbnail' ? 'h-16' : 'h-72'} bg-themed-tertiary flex items-center justify-center text-themed-tertiary`}>Image unavailable</div>
-                            )}
-                            {isHovered && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />}
-                        </motion.div>
-                        {isHovered && size === 'full' && (
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute bottom-3 left-3 right-3 text-white">
-                                <div className="bg-black/50 rounded px-3 py-2">
-                                    <p className="text-base font-medium truncate">{item.title}</p>
-                                </div>
-                            </motion.div>
-                        )}
-                    </div>
-                );
-            }
-            default:
-                return (
-                    <div className="w-48 h-48 bg-themed-tertiary rounded-lg flex items-center justify-center">
-                        <svg className="w-24 h-24 text-themed-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V1a1 1 0 011-1h2a1 1 0 011 1v18a1 1 0 01-1 1h-2a1 1 0 01-1-1V3M7 4H5a1 1 0 00-1 1v18a1 1 0 001 1h2a1 1 0 001-1V5a1 1 0 00-1-1z" />
-                        </svg>
-                    </div>
-                );
-        }
-    };
-
+const SpotifyPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thumbnail }) => {
+  const embedUrl = getSpotifyEmbedUrl(item.mediaUrl);
+  if (thumbnail || !embedUrl) {
     return (
-        <div className={`flex items-center justify-center ${className}`} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-            {renderMediaContent()}
-        </div>
+      <div className="flex h-full w-full items-center justify-center text-themed-tertiary" title={embedUrl ? undefined : 'Unsupported Spotify link'}>
+        <MusicIcon />
+      </div>
     );
+  }
+  // The embed has its own play button, which works with keyboard and touch.
+  return (
+    <iframe
+      src={embedUrl}
+      className="h-80 w-full rounded-lg border-0"
+      loading="lazy"
+      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+      title={item.title}
+    />
+  );
+};
+
+const AudioPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thumbnail }) => {
+  const audioRef = React.useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = React.useState(false);
+  const owner = useExclusiveAudio(() => audioRef.current?.pause());
+
+  if (thumbnail) {
+    return <div className="flex h-full w-full items-center justify-center text-themed-tertiary"><MusicIcon /></div>;
+  }
+  if (!isSafeHttpsUrl(item.mediaUrl)) return <Unavailable label="Audio unavailable" tall />;
+
+  const play = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    announceAudio(owner);
+    void audio.play().catch(() => {});
+  };
+  const toggle = (e: React.MouseEvent) => {
+    stop(e);
+    if (playing) audioRef.current?.pause();
+    else play();
+  };
+
+  return (
+    <div
+      className="flex flex-col items-center gap-4"
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') play(); }}
+      onPointerLeave={(e) => { if (e.pointerType === 'mouse') audioRef.current?.pause(); }}
+    >
+      <div
+        className={`flex h-48 w-48 items-center justify-center rounded-full ${playing ? 'animate-[spin_3s_linear_infinite]' : ''}`}
+        style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)' }}
+      >
+        <MusicIcon className="h-24 w-24" />
+      </div>
+      <button type="button" onClick={toggle} onKeyDown={stop} className="btn btn-secondary" aria-pressed={playing}>
+        {playing ? 'Pause preview' : 'Play preview'}
+      </button>
+      <audio
+        ref={audioRef}
+        src={item.mediaUrl}
+        preload="none"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
+    </div>
+  );
+};
+
+const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thumbnail }) => {
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+  const [started, setStarted] = React.useState(false);
+  // The requested sound state; the badge shows it and it is re-sent once the player is ready,
+  // so the badge and the player can't disagree.
+  const [soundOn, setSoundOn] = React.useState(false);
+  const soundRef = React.useRef(soundOn);
+  soundRef.current = soundOn;
+  const owner = useExclusiveAudio(() => setSoundOn(false));
+  const [thumbFailed, setThumbFailed] = React.useState(false);
+
+  const sendSoundState = React.useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: 'command', func: soundRef.current ? 'unMute' : 'mute', args: [] }),
+      'https://www.youtube.com',
+    );
+  }, []);
+
+  React.useEffect(() => {
+    if (!started) return;
+    if (soundOn) announceAudio(owner);
+    sendSoundState();
+  }, [soundOn, started, owner, sendSoundState]);
+
+  // Player commands sent before the embed finishes initialising are dropped; resend shortly after load.
+  const readyTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+  React.useEffect(() => () => clearTimeout(readyTimer.current), []);
+  const onLoad = () => {
+    sendSoundState();
+    clearTimeout(readyTimer.current);
+    readyTimer.current = setTimeout(sendSoundState, 800);
+  };
+
+  const embedUrl = getYouTubeEmbedUrl(item.mediaUrl, true);
+  const thumbnailUrl = getYouTubeThumbnail(item.mediaUrl);
+  if (!embedUrl || !thumbnailUrl) return <Unavailable label="Video unavailable" tall={!thumbnail} />;
+
+  if (thumbnail) {
+    return thumbFailed
+      ? <Unavailable label="" tall={false} />
+      : <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />;
+  }
+
+  if (!started) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { stop(e); setStarted(true); }}
+        onKeyDown={stop}
+        className="group/play relative flex h-72 w-full items-center justify-center overflow-hidden rounded-lg bg-themed-tertiary"
+        aria-label={`Play a preview of ${item.title}`}
+      >
+        {!thumbFailed && (
+          <img src={thumbnailUrl} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />
+        )}
+        <span className="absolute inset-0 bg-black/30 transition-colors group-hover/play:bg-black/40" />
+        <span className="relative rounded-full bg-white/90 p-4 text-gray-800">
+          <svg className="h-12 w-12" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+          </svg>
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="relative w-full"
+      // Mouse users get sound while hovering; touch and keyboard users use the button.
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setSoundOn(true); }}
+      onPointerLeave={(e) => { if (e.pointerType === 'mouse') setSoundOn(false); }}
+    >
+      <iframe
+        ref={iframeRef}
+        src={embedUrl}
+        onLoad={onLoad}
+        className="h-72 w-full rounded-lg border-0"
+        allow="autoplay; encrypted-media; picture-in-picture; fullscreen; web-share"
+        allowFullScreen
+        title={item.title}
+      />
+      <button
+        type="button"
+        onClick={(e) => { stop(e); setSoundOn(on => !on); }}
+        onKeyDown={stop}
+        className="absolute right-3 top-3 rounded bg-black/60 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-sm"
+        aria-pressed={soundOn}
+      >
+        {soundOn ? 'Sound on' : 'Sound off'}
+      </button>
+    </div>
+  );
+};
+
+const ImagePreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thumbnail }) => {
+  const [failedUrl, setFailedUrl] = React.useState<string | null>(null);
+  if (!isSafeHttpsUrl(item.mediaUrl) || failedUrl === item.mediaUrl) {
+    return <Unavailable label={thumbnail ? '' : 'Image unavailable'} tall={!thumbnail} />;
+  }
+  return (
+    <img
+      src={item.mediaUrl}
+      alt={item.title}
+      className={`w-full ${thumbnail ? 'h-full' : 'h-72'} rounded-lg object-cover`}
+      loading="lazy"
+      onError={() => setFailedUrl(item.mediaUrl)}
+    />
+  );
+};
+
+const MediaPreview: React.FC<MediaPreviewProps> = ({ item, className = '', size = 'full' }) => {
+  const thumbnail = size === 'thumbnail';
+  let content: React.ReactNode;
+  switch (item.mediaType) {
+    case 'song':
+      content = isSpotifyUrl(item.mediaUrl)
+        ? <SpotifyPreview item={item} thumbnail={thumbnail} />
+        : <AudioPreview item={item} thumbnail={thumbnail} />;
+      break;
+    case 'video':
+      content = <VideoPreview item={item} thumbnail={thumbnail} />;
+      break;
+    default:
+      content = <ImagePreview item={item} thumbnail={thumbnail} />;
+  }
+  return <div className={`flex items-center justify-center ${className}`}>{content}</div>;
 };
 
 export default MediaPreview;

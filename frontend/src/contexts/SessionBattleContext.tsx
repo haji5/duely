@@ -1,22 +1,24 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useAuth } from './AuthContext';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import type { MatchOutcome, SessionBattle } from '@/types';
+import { randomId } from '@/utils/ids';
+import { session } from '@/utils/storage';
 
-interface SessionBattle {
-  sessionId: string;
-  bracketId: number;
-  bracketName: string;
-  ranking: number[];
-  createdAt: Date;
-  displayName?: string;
-  comment?: string;
-}
-
+/**
+ * A guest's own runs. Kept in sessionStorage, so they survive reloads but end with the tab;
+ * signed-in users get their history from the server instead.
+ */
 interface SessionBattleContextType {
   sessionBattles: SessionBattle[];
-  addSessionBattle: (bracketId: number, bracketName: string, ranking: number[], displayName?: string, comment?: string) => void;
+  addSessionBattle: (battle: {
+    bracketId: number; bracketName: string; ranking: number[]; matches: MatchOutcome[];
+    displayName?: string; comment?: string;
+  }) => void;
+  /** This bracket's runs, oldest first. */
   getSessionBattlesForBracket: (bracketId: number) => SessionBattle[];
   clearSessionBattles: () => void;
 }
+
+const STORAGE_KEY = 'duely:session-battles';
 
 const SessionBattleContext = createContext<SessionBattleContextType | undefined>(undefined);
 
@@ -28,54 +30,39 @@ export const useSessionBattles = () => {
   return context;
 };
 
+function load(): SessionBattle[] {
+  try {
+    const parsed: unknown = JSON.parse(session.get(STORAGE_KEY) ?? '[]');
+    return Array.isArray(parsed) ? (parsed as SessionBattle[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export const SessionBattleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [sessionBattles, setSessionBattles] = useState<SessionBattle[]>([]);
-  const { user } = useAuth();
+  const [sessionBattles, setSessionBattles] = useState<SessionBattle[]>(load);
 
-  // Clear session battles when user logs out
-  useEffect(() => {
-    if (!user) {
-      // User logged out or is not logged in, keep session battles
-      return;
-    }
-    // User is logged in, we can keep both session and backend data
-    // Session battles will be used as fallback for non-logged-in state
-  }, [user]);
+  const update = useCallback((next: (prev: SessionBattle[]) => SessionBattle[]) => {
+    setSessionBattles(prev => {
+      const value = next(prev);
+      session.set(STORAGE_KEY, JSON.stringify(value));
+      return value;
+    });
+  }, []);
 
-  const addSessionBattle = (bracketId: number, bracketName: string, ranking: number[], displayName?: string, comment?: string) => {
-    const newBattle: SessionBattle = {
-      sessionId: `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
-      bracketId,
-      bracketName,
-      ranking,
-      createdAt: new Date(),
-      displayName,
-      comment
-    };
+  const addSessionBattle = useCallback<SessionBattleContextType['addSessionBattle']>((battle) => {
+    update(prev => [...prev, { ...battle, sessionId: randomId(), createdAt: new Date().toISOString() }]);
+  }, [update]);
 
-    setSessionBattles(prev => [newBattle, ...prev]);
-  };
+  const getSessionBattlesForBracket = useCallback(
+    (bracketId: number) => sessionBattles.filter(b => b.bracketId === bracketId),
+    [sessionBattles]);
 
-  const getSessionBattlesForBracket = (bracketId: number): SessionBattle[] => {
-    return sessionBattles
-      .filter(battle => battle.bracketId === bracketId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  };
+  const clearSessionBattles = useCallback(() => update(() => []), [update]);
 
-  const clearSessionBattles = () => {
-    setSessionBattles([]);
-  };
+  const value = useMemo(
+    () => ({ sessionBattles, addSessionBattle, getSessionBattlesForBracket, clearSessionBattles }),
+    [sessionBattles, addSessionBattle, getSessionBattlesForBracket, clearSessionBattles]);
 
-  const value = {
-    sessionBattles,
-    addSessionBattle,
-    getSessionBattlesForBracket,
-    clearSessionBattles
-  };
-
-  return (
-    <SessionBattleContext.Provider value={value}>
-      {children}
-    </SessionBattleContext.Provider>
-  );
+  return <SessionBattleContext.Provider value={value}>{children}</SessionBattleContext.Provider>;
 };

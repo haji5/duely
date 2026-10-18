@@ -1,7 +1,6 @@
 package com.bracketbattle.model;
 
 import jakarta.persistence.*;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
 @Table(name = "items")
@@ -23,12 +22,6 @@ public class Item {
     @Column(name = "media_type", nullable = false)
     private String mediaType;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "bracket_id", insertable = false, updatable = false)
-    @JsonIgnore
-    private Bracket bracket;
-
-    // Constructors
     public Item() {}
 
     public Item(Long bracketId, String title, String mediaUrl, String mediaType) {
@@ -38,52 +31,18 @@ public class Item {
         this.mediaType = mediaType;
     }
 
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    public Long getBracketId() { return bracketId; }
+    public void setBracketId(Long bracketId) { this.bracketId = bracketId; }
 
-    public Long getBracketId() {
-        return bracketId;
-    }
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
 
-    public void setBracketId(Long bracketId) {
-        this.bracketId = bracketId;
-    }
+    public String getMediaUrl() { return mediaUrl; }
+    public void setMediaUrl(String mediaUrl) { this.mediaUrl = mediaUrl; }
 
-    public String getTitle() {
-        return title;
-    }
-
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
-    public String getMediaUrl() {
-        return mediaUrl;
-    }
-
-    public void setMediaUrl(String mediaUrl) {
-        this.mediaUrl = mediaUrl;
-    }
-
-    public String getMediaType() {
-        return mediaType;
-    }
-
-    public void setMediaType(String mediaType) {
-        this.mediaType = mediaType;
-    }
-
-    public Bracket getBracket() {
-        return bracket;
-    }
-
-    public void setBracket(Bracket bracket) {
-        this.bracket = bracket;
-    }
+    public String getMediaType() { return mediaType; }
+    public void setMediaType(String mediaType) { this.mediaType = mediaType; }
 }

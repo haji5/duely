@@ -1,101 +1,68 @@
 import React from 'react';
 import BracketCard, { PageLoader } from '../components/BracketCard';
 import BracketDiagram from '../components/BracketDiagram';
-import { bracketApi } from '../services/api';
+import { bracketApi, errorMessage } from '../services/api';
+import { ErrorState } from '../components/PageStates';
 import { Bracket } from '@/types';
 import { Link, useNavigate } from "react-router-dom";
+
+type Sections = { category: string; brackets: Bracket[] }[];
+
+/** Groups brackets by category; within a category and across categories, more played first. */
+function categorize(brackets: Bracket[], popular: Bracket[]): Sections {
+  // /brackets/popular lists every playable bracket, most runs first, so its order is the rank.
+  const rank = new Map(popular.map((b, i) => [b.id, i]));
+  const rankOf = (b: Bracket) => rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+  const byCategory = new Map<string, Bracket[]>();
+  brackets.forEach(b => {
+    const category = b.category || 'General';
+    byCategory.set(category, [...(byCategory.get(category) ?? []), b]);
+  });
+  return Array.from(byCategory, ([category, list]) => ({
+    category,
+    brackets: [...list].sort((a, b) => rankOf(a) - rankOf(b)
+      || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+  }))
+    // Categories whose best bracket is most played come first, then bigger categories
+    .sort((a, b) => rankOf(a.brackets[0]) - rankOf(b.brackets[0]) || b.brackets.length - a.brackets.length);
+}
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const [brackets, setBrackets] = React.useState<Bracket[]>([]);
   const [popularBrackets, setPopularBrackets] = React.useState<Bracket[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [status, setStatus] = React.useState<'loading' | 'error' | 'ready'>('loading');
+  const [error, setError] = React.useState('');
+  const [reloadKey, setReloadKey] = React.useState(0);
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [categorizedBrackets, setCategorizedBrackets] = React.useState<{
-    category: string;
-    brackets: Bracket[];
-  }[]>([]);
-
 
   const handleSearchClick = () => {
     if (searchQuery.trim()) {
-      navigate(`/browse?search=${encodeURIComponent(searchQuery.trim())}`);
+      navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 
   React.useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch brackets and popular brackets in parallel (both are cached on backend)
-        // - getAllBrackets: Redis cached for 5 minutes
-        // - getPopularBrackets: Redis cached for 10 minutes
-        const [allBrackets, popular] = await Promise.all([
-          bracketApi.getAllBrackets(),
-          bracketApi.getPopularBrackets()
-        ]);
-        setBrackets(allBrackets);
-        setPopularBrackets(popular);
-
-        // OPTIMIZATION: Don't fetch results for every bracket on page load!
-        // This was causing N+1 API calls and defeating the purpose of caching.
-        // Instead, group brackets by category and sort by creation date or use
-        // the popularBrackets endpoint which already has engagement data.
-
-        // Group brackets by category (simple, no additional API calls needed)
-        const categoryMap = new Map<string, Bracket[]>();
-        allBrackets.forEach((bracket) => {
-          const category = bracket.category || 'General';
-          if (!categoryMap.has(category)) {
-            categoryMap.set(category, []);
-          }
-          categoryMap.get(category)!.push(bracket);
-        });
-
-        // Sort categories by the number of brackets in each category
-        // and by how many appear in the popular list (indicates engagement)
-        const popularIds = new Set(popular.map(b => b.id));
-
-        const categorySections = Array.from(categoryMap.entries())
-          .map(([category, brackets]) => {
-            // Count how many brackets in this category are popular
-            const popularCount = brackets.filter(b => popularIds.has(b.id)).length;
-            return {
-              category,
-              brackets,
-              popularCount,
-              // Sort brackets within category: popular first, then by date
-              sortedBrackets: [...brackets].sort((a, b) => {
-                const aPopular = popularIds.has(a.id) ? 1 : 0;
-                const bPopular = popularIds.has(b.id) ? 1 : 0;
-                if (aPopular !== bPopular) return bPopular - aPopular;
-                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-              })
-            };
-          })
-          // Sort categories by popularity (those with most popular brackets first)
-          .sort((a, b) => {
-            if (a.popularCount !== b.popularCount) {
-              return b.popularCount - a.popularCount;
-            }
-            return b.brackets.length - a.brackets.length;
-          })
-          .map(({ category, sortedBrackets }) => ({
-            category,
-            brackets: sortedBrackets
-          }));
-
-        setCategorizedBrackets(categorySections);
-      } catch (error) {
-        console.error('Error fetching brackets:', error);
-      } finally {
-        setLoading(false);
+    let cancelled = false;
+    setStatus('loading');
+    // allSettled: a failed popular list shouldn't hide every bracket
+    Promise.allSettled([bracketApi.getAllBrackets(), bracketApi.getPopularBrackets()]).then(([all, popular]) => {
+      if (cancelled) return;
+      if (all.status === 'rejected') {
+        setError(errorMessage(all.reason));
+        setStatus('error');
+        return;
       }
-    };
+      setBrackets(all.value);
+      setPopularBrackets(popular.status === 'fulfilled' ? popular.value : []);
+      setStatus('ready');
+    });
+    return () => { cancelled = true; };
+  }, [reloadKey]);
 
-    void fetchData();
-  }, []); // Only run once on mount
+  const categorizedBrackets = React.useMemo(() => categorize(brackets, popularBrackets), [brackets, popularBrackets]);
 
-  if (loading) {
+  if (status === 'loading') {
     return <PageLoader label="Loading brackets" />;
   }
 
@@ -166,7 +133,13 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {brackets.length === 0 && (
+      {status === 'error' && (
+        <section className="page pt-16">
+          <ErrorState title="Brackets couldn’t be loaded" message={error} onRetry={() => setReloadKey(k => k + 1)} />
+        </section>
+      )}
+
+      {status === 'ready' && brackets.length === 0 && (
         <section className="page pt-16 text-center">
           <h2 className="font-display text-3xl font-extrabold">No brackets yet</h2>
           <p className="mx-auto mt-2 max-w-md text-themed-secondary">
