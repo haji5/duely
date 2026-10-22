@@ -50,7 +50,7 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
   return (
     <Link
       to={`/bracket/${bracket.id}`}
-      className="group card relative flex h-full flex-col p-5 transition-colors duration-150 hover:border-[color:var(--accent-primary)]"
+      className="group card pressable relative flex h-full flex-col p-5 hover:border-[color:var(--accent-primary)] [--press-scale:0.98]"
     >
       <div className="mb-3 flex items-center justify-between gap-3 text-sm text-themed-secondary">
         <span className="inline-flex items-center gap-1.5 font-medium">

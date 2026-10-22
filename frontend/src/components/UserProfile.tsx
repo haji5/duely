@@ -69,7 +69,7 @@ const UserProfile: React.FC = () => {
           </span>
         )}
         <svg
-          className={`h-4 w-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] ${showDropdown ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -82,7 +82,7 @@ const UserProfile: React.FC = () => {
       {showDropdown && (
         <div
           role="menu"
-          className="card absolute right-0 z-50 mt-2 w-64 py-1.5 shadow-themed-xl"
+          className="card menu-pop absolute right-0 z-50 mt-2 w-64 py-1.5 shadow-themed-xl"
         >
           <div className="border-b border-themed-primary px-4 pb-3 pt-2">
             <p className="font-semibold text-themed-primary">{firstName || 'Signed in'}</p>

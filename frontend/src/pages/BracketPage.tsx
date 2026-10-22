@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { bracketApi, errorMessage, errorStatus } from '../services/api';
 import type { Bracket, Item } from '@/types';
 import MediaPreview from '../components/MediaPreview';
@@ -24,7 +24,16 @@ interface Animation {
   loserId: number;
 }
 
-const PICK_ANIMATION_MS = 2000;
+// A full bracket is dozens of picks, so the reveal stays short enough not to feel like waiting.
+const PICK_ANIMATION_MS = 1200;
+
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
+
+// Reduced motion: fades still play, movement jumps straight to its end state.
+const useMoveTransition = (transition: object) => {
+  const reduceMotion = useReducedMotion();
+  return reduceMotion ? { ...transition, transform: { duration: 0 } } : transition;
+};
 
 const BracketPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -209,7 +218,7 @@ const BracketPage: React.FC = () => {
 
     return (
       <div className="page max-w-2xl pb-24 pt-10 sm:pt-16">
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+        <ChampionReveal>
           <div
             className="relative overflow-hidden rounded-lg px-6 py-8 sm:px-8"
             style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)' }}
@@ -289,7 +298,7 @@ const BracketPage: React.FC = () => {
               </div>
             )}
           </form>
-        </motion.div>
+        </ChampionReveal>
       </div>
     );
   }
@@ -332,9 +341,10 @@ const BracketPage: React.FC = () => {
         aria-valuemax={status.total}
         aria-valuenow={status.played}
       >
+        {/* scaleX instead of width: no layout work while the next match's media is loading */}
         <div
-          className="h-full rounded-full transition-[width] duration-500"
-          style={{ width: `${(status.played / Math.max(1, status.total)) * 100}%`, backgroundColor: 'var(--accent-primary)' }}
+          className="h-full origin-left transition-transform duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
+          style={{ transform: `scaleX(${status.played / Math.max(1, status.total)})`, backgroundColor: 'var(--accent-primary)' }}
         />
       </div>
 
@@ -359,6 +369,16 @@ const BracketPage: React.FC = () => {
     </div>
   );
 };
+
+const ChampionReveal: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <motion.div
+    initial={{ opacity: 0, transform: 'translateY(12px)' }}
+    animate={{ opacity: 1, transform: 'translateY(0px)' }}
+    transition={useMoveTransition({ duration: 0.35, ease: EASE_OUT })}
+  >
+    {children}
+  </motion.div>
+);
 
 const BattleArena: React.FC<{
   a: Item;
@@ -392,18 +412,27 @@ const BattleItem: React.FC<{
   const isLoser = animation?.loserId === item.id;
   const canPick = animation === null;
   const sideColor = side === 'left' ? 'var(--side-a)' : 'var(--side-b)';
+  const reduceMotion = useReducedMotion();
+  const cardTransition = useMoveTransition({ duration: 0.3, ease: EASE_OUT });
+  const winnerBadgeTransition = useMoveTransition({ delay: 0.1, type: 'spring', duration: 0.35, bounce: 0.3 });
+  const loserBadgeTransition = useMoveTransition({ delay: 0.1, duration: 0.2, ease: EASE_OUT });
 
   return (
+    // Full transform strings rather than x/scale so the animation stays on the compositor while
+    // the new match's iframes and images load.
     <motion.div
-      initial={{ x: side === 'left' ? -40 : 40, opacity: 0 }}
-      animate={{ x: 0, opacity: isLoser ? 0.55 : 1, scale: isWinner ? 1.02 : isLoser ? 0.97 : 1 }}
-      transition={{ duration: 0.4, scale: { duration: 0.3 }, opacity: { duration: 0.3 } }}
+      initial={{ opacity: 0, transform: `translateX(${side === 'left' ? -24 : 24}px) scale(1)` }}
+      animate={{
+        opacity: isLoser ? 0.55 : 1,
+        transform: `translateX(0px) scale(${isWinner ? 1.02 : isLoser ? 0.97 : 1})`,
+      }}
+      transition={cardTransition}
       className="relative"
     >
       {/* Clicking the card picks it (mouse convenience); the Pick button is the accessible control. */}
       <div
         onClick={() => canPick && onSelect()}
-        className={`group card relative flex min-h-[24rem] flex-col overflow-hidden border-2 transition-colors duration-200 sm:min-h-[30rem] ${canPick ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`group card pressable relative flex min-h-[24rem] flex-col overflow-hidden border-2 sm:min-h-[30rem] ${canPick ? 'cursor-pointer [--press-scale:0.99]' : 'cursor-default [--press-scale:1]'}`}
         style={{
           borderColor: isWinner ? 'var(--accent-primary)' : undefined,
           borderTopColor: isWinner ? 'var(--accent-primary)' : sideColor,
@@ -448,28 +477,11 @@ const BattleItem: React.FC<{
 
         {isWinner && (
           <>
-            <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-              {[...Array(12)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute h-2.5 w-2.5 rounded-sm"
-                  style={{ backgroundColor: i % 3 === 0 ? sideColor : 'var(--accent-primary)' }}
-                  initial={{ x: '50%', y: '50%', scale: 0, opacity: 1 }}
-                  animate={{
-                    x: `${50 + (Math.random() - 0.5) * 200}%`,
-                    y: `${50 + (Math.random() - 0.5) * 200}%`,
-                    scale: [0, 1, 0],
-                    opacity: [1, 1, 0],
-                    rotate: Math.random() * 360,
-                  }}
-                  transition={{ duration: 1.5, delay: i * 0.08, ease: 'easeOut' }}
-                />
-              ))}
-            </div>
+            {!reduceMotion && <Confetti sideColor={sideColor} />}
             <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.15, duration: 0.4, type: 'spring' }}
+              initial={{ opacity: 0, transform: 'scale(0.85)' }}
+              animate={{ opacity: 1, transform: 'scale(1)' }}
+              transition={winnerBadgeTransition}
               className="absolute left-4 top-4 z-10 rounded-md px-3 py-1.5 font-display text-lg font-extrabold"
               style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)' }}
             >
@@ -480,9 +492,9 @@ const BattleItem: React.FC<{
 
         {isLoser && (
           <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.15, duration: 0.3 }}
+            initial={{ opacity: 0, transform: 'scale(0.9)' }}
+            animate={{ opacity: 1, transform: 'scale(1)' }}
+            transition={loserBadgeTransition}
             className="absolute right-4 top-4 z-10 rounded-md bg-themed-tertiary px-3 py-1.5 font-display text-lg font-extrabold text-themed-secondary"
           >
             Out
@@ -490,6 +502,33 @@ const BattleItem: React.FC<{
         )}
       </div>
     </motion.div>
+  );
+};
+
+// Bursts from the card's centre. Offsets are picked once per mount so re-renders don't retarget them.
+const Confetti: React.FC<{ sideColor: string }> = ({ sideColor }) => {
+  const pieces = React.useMemo(() => Array.from({ length: 12 }, (_, i) => {
+    const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.5;
+    const distance = 120 + Math.random() * 120;
+    return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance, rotate: Math.random() * 360 };
+  }), []);
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      {pieces.map((piece, i) => (
+        <motion.div
+          key={i}
+          className="absolute left-1/2 top-1/2 -ml-[5px] -mt-[5px] h-2.5 w-2.5 rounded-sm"
+          style={{ backgroundColor: i % 3 === 0 ? sideColor : 'var(--accent-primary)' }}
+          initial={{ opacity: 1, transform: 'translate(0px, 0px) rotate(0deg) scale(0.5)' }}
+          animate={{
+            opacity: [1, 1, 0],
+            transform: `translate(${piece.x}px, ${piece.y}px) rotate(${piece.rotate}deg) scale(1)`,
+          }}
+          transition={{ duration: 0.9, delay: i * 0.02, ease: EASE_OUT }}
+        />
+      ))}
+    </div>
   );
 };
 

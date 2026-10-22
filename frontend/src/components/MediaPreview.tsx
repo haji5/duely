@@ -97,7 +97,8 @@ const AudioPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
       onPointerLeave={(e) => { if (e.pointerType === 'mouse') audioRef.current?.pause(); }}
     >
       <div
-        className={`flex h-48 w-48 items-center justify-center rounded-full ${playing ? 'animate-[spin_3s_linear_infinite]' : ''}`}
+        className="record-spin flex h-48 w-48 items-center justify-center rounded-full"
+        data-playing={playing}
         style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)' }}
       >
         <MusicIcon className="h-24 w-24" />
@@ -173,7 +174,7 @@ const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
           <img src={thumbnailUrl} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />
         )}
         <span className="absolute inset-0 bg-black/30 transition-colors group-hover/play:bg-black/40" />
-        <span className="relative rounded-full bg-white/90 p-4 text-gray-800">
+        <span className="relative rounded-full bg-white/90 p-4 text-gray-800 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-active/play:scale-95">
           <svg className="h-12 w-12" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
           </svg>
