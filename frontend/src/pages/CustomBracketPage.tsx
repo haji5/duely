@@ -443,7 +443,7 @@ const CustomBracketPage: React.FC = () => {
             type="button"
             onClick={() => setEntries(prev => (prev.length < LIMITS.maxEntries ? [...prev, newEntry()] : prev))}
             disabled={entries.length >= LIMITS.maxEntries}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-themed-secondary py-3 font-semibold text-themed-secondary transition-colors duration-150 hover:bg-themed-tertiary hover:text-themed-primary disabled:opacity-50"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-themed-secondary py-3 font-semibold text-themed-secondary pressable [--press-scale:0.99] hover:bg-themed-tertiary hover:text-themed-primary disabled:opacity-50"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />

@@ -34,6 +34,11 @@
     --warning: #c98a00;
     --error: #d63c41;
     --info: #2f63e0;
+
+    /* Motion: strong ease-out for things entering or responding to a press,
+       ease-in-out for things moving across the screen. */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   }
 
   [data-theme="dark"] {
@@ -124,12 +129,19 @@
     color: var(--text-tertiary);
   }
 
+  /* Reduced motion keeps colour and opacity fades (they aid comprehension) and drops movement.
+     Framer Motion animations check useReducedMotion() themselves. */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
+    }
+
+    .btn:active:not(:disabled),
+    .choice:active,
+    .pressable:active {
+      transform: none !important;
     }
   }
 }
@@ -151,11 +163,23 @@
 
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md font-semibold text-[0.95rem] whitespace-nowrap select-none;
-    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 100ms ease;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 160ms var(--ease-out);
   }
 
   .btn:active:not(:disabled) {
-    transform: translateY(1px);
+    transform: scale(0.97);
+  }
+
+  /* Press feedback for clickable things that aren't .btn (cards, chips, dashed add buttons) */
+  .pressable {
+    transition-property: color, background-color, border-color, opacity, transform;
+    transition-duration: 150ms;
+    transition-timing-function: var(--ease-out);
+  }
+
+  /* Wide elements set a gentler --press-scale so they don't visibly lurch */
+  .pressable:active:not(:disabled) {
+    transform: scale(var(--press-scale, 0.97));
   }
 
   .btn:disabled {
@@ -168,9 +192,11 @@
     border: 1px solid var(--accent-primary);
   }
 
-  .btn-primary:hover:not(:disabled) {
-    background-color: var(--accent-primary-hover);
-    border-color: var(--accent-primary-hover);
+  @media (hover: hover) {
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--accent-primary-hover);
+      border-color: var(--accent-primary-hover);
+    }
   }
 
   .btn-secondary {
@@ -179,9 +205,11 @@
     border: 1px solid var(--border-secondary);
   }
 
-  .btn-secondary:hover:not(:disabled) {
-    background-color: var(--bg-tertiary);
-    border-color: var(--text-tertiary);
+  @media (hover: hover) {
+    .btn-secondary:hover:not(:disabled) {
+      background-color: var(--bg-tertiary);
+      border-color: var(--text-tertiary);
+    }
   }
 
   .btn-ghost {
@@ -190,9 +218,11 @@
     border: 1px solid transparent;
   }
 
-  .btn-ghost:hover:not(:disabled) {
-    color: var(--text-primary);
-    background-color: var(--bg-tertiary);
+  @media (hover: hover) {
+    .btn-ghost:hover:not(:disabled) {
+      color: var(--text-primary);
+      background-color: var(--bg-tertiary);
+    }
   }
 
   .btn-lg {
@@ -214,8 +244,10 @@
     transition: border-color 150ms ease, box-shadow 150ms ease;
   }
 
-  .field:hover:not(:disabled) {
-    border-color: var(--text-tertiary);
+  @media (hover: hover) {
+    .field:hover:not(:disabled) {
+      border-color: var(--text-tertiary);
+    }
   }
 
   .field:focus {
@@ -244,12 +276,18 @@
     border-color: var(--border-secondary);
     color: var(--text-secondary);
     background-color: var(--bg-secondary);
-    transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+    transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, transform 160ms var(--ease-out);
   }
 
-  .choice:hover {
-    color: var(--text-primary);
-    border-color: var(--text-tertiary);
+  @media (hover: hover) {
+    .choice:hover {
+      color: var(--text-primary);
+      border-color: var(--text-tertiary);
+    }
+  }
+
+  .choice:active {
+    transform: scale(0.98);
   }
 
   /* Radio choices wrap a visually hidden <input type="radio"> */
@@ -277,8 +315,10 @@
   .notice-warning { border-left-color: var(--accent-primary); }
   .notice-error { border-left-color: var(--error); }
 
+  /* A quicker spin reads as a quicker load */
   .spinner {
-    @apply inline-block rounded-full animate-spin;
+    @apply inline-block rounded-full;
+    animation: spin 0.7s linear infinite;
     width: 1.25rem;
     height: 1.25rem;
     border: 2px solid var(--border-secondary);
@@ -291,13 +331,45 @@
   .pick-chip {
     border-color: var(--side);
     color: var(--side);
-    transition: background-color 150ms ease, color 150ms ease;
+    transition: background-color 150ms ease, color 150ms ease, transform 160ms var(--ease-out);
   }
 
-  .group:hover .pick-chip,
+  /* Gated so a tap on a touch screen doesn't leave the chip stuck "on" */
+  @media (hover: hover) {
+    .group:hover .pick-chip {
+      background-color: var(--side);
+      color: #fff;
+    }
+  }
+
   .pick-chip:focus-visible {
     background-color: var(--side);
     color: #fff;
+  }
+
+  .pick-chip:active {
+    transform: scale(0.97);
+  }
+
+  /* Menus grow out of their trigger (top-right) instead of popping in */
+  .menu-pop {
+    transform-origin: top right;
+    transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
+
+    @starting-style {
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+    }
+  }
+
+  /* Spinning record on song previews; pausing freezes it in place rather than snapping back */
+  .record-spin {
+    animation: spin 3s linear infinite;
+    animation-play-state: paused;
+  }
+
+  .record-spin[data-playing="true"] {
+    animation-play-state: running;
   }
 
   /* Hero bracket: the winner's path draws itself once on load */
@@ -314,6 +386,11 @@
 
   @keyframes bracket-draw {
     to { stroke-dashoffset: 0; }
+  }
+
+  /* Tailwind only emits its own spin keyframes when animate-spin is used */
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   @keyframes bracket-reveal {
