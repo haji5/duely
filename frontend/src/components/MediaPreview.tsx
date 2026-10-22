@@ -121,35 +121,55 @@ const AudioPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
 const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thumbnail }) => {
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const [started, setStarted] = React.useState(false);
-  // The requested sound state; the badge shows it and it is re-sent once the player is ready,
+  // The requested sound state; the badge shows it and it is sent once the player is ready,
   // so the badge and the player can't disagree.
   const [soundOn, setSoundOn] = React.useState(false);
-  const soundRef = React.useRef(soundOn);
-  soundRef.current = soundOn;
   const owner = useExclusiveAudio(() => setSoundOn(false));
   const [thumbFailed, setThumbFailed] = React.useState(false);
 
-  const sendSoundState = React.useCallback(() => {
+  // The player ignores commands until it is ready. It only reports readiness to pages that
+  // announce themselves with a 'listening' message, which is repeated until the player answers.
+  const [ready, setReady] = React.useState(false);
+  const post = React.useCallback((message: object) => {
     iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: 'command', func: soundRef.current ? 'unMute' : 'mute', args: [] }),
+      JSON.stringify({ ...message, id: 1, channel: 'widget' }),
       'https://www.youtube.com',
     );
   }, []);
 
   React.useEffect(() => {
     if (!started) return;
-    if (soundOn) announceAudio(owner);
-    sendSoundState();
-  }, [soundOn, started, owner, sendSoundState]);
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow || typeof e.data !== 'string') return;
+      try {
+        const event = (JSON.parse(e.data) as { event?: string }).event;
+        if (event === 'onReady' || event === 'initialDelivery') setReady(true);
+      } catch {
+        // not a player message
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [started]);
 
-  // Player commands sent before the embed finishes initialising are dropped; resend shortly after load.
-  const readyTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
-  React.useEffect(() => () => clearTimeout(readyTimer.current), []);
+  const handshake = React.useRef<ReturnType<typeof setInterval>>(undefined);
+  React.useEffect(() => () => clearInterval(handshake.current), []);
+  React.useEffect(() => { if (ready) clearInterval(handshake.current); }, [ready]);
   const onLoad = () => {
-    sendSoundState();
-    clearTimeout(readyTimer.current);
-    readyTimer.current = setTimeout(sendSoundState, 800);
+    clearInterval(handshake.current);
+    let attempts = 0;
+    post({ event: 'listening' });
+    handshake.current = setInterval(() => {
+      if (++attempts > 40) clearInterval(handshake.current);
+      else post({ event: 'listening' });
+    }, 250);
   };
+
+  React.useEffect(() => {
+    if (!started) return;
+    if (soundOn) announceAudio(owner);
+    if (ready) post({ event: 'command', func: soundOn ? 'unMute' : 'mute', args: [] });
+  }, [soundOn, started, ready, owner, post]);
 
   const embedUrl = getYouTubeEmbedUrl(item.mediaUrl, true);
   const thumbnailUrl = getYouTubeThumbnail(item.mediaUrl);
@@ -165,7 +185,8 @@ const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
     return (
       <button
         type="button"
-        onClick={(e) => { stop(e); setStarted(true); }}
+        // Pressing play asks for the clip, so it starts with sound (muting any other preview).
+        onClick={(e) => { stop(e); setStarted(true); setSoundOn(true); }}
         onKeyDown={stop}
         className="group/play relative flex h-72 w-full items-center justify-center overflow-hidden rounded-lg bg-themed-tertiary"
         aria-label={`Play a preview of ${item.title}`}
