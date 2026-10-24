@@ -28,6 +28,8 @@ export interface Result {
   id: number;
   bracketId: number;
   ranking: number[];
+  /** The run's real matches; null for runs saved before matches were recorded. */
+  matches?: MatchOutcome[] | null;
   createdAt: string;
   displayName?: string | null;
   comment?: string | null;

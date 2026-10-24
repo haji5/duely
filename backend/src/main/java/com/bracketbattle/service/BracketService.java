@@ -26,6 +26,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -210,21 +211,23 @@ public class BracketService {
     /**
      * A run must rank 2..500 distinct items of the bracket, and its matches must be the real games
      * of a single-elimination tournament: n-1 matches between ranked items, no self-matches or
-     * repeated pairs, every item except the champion losing exactly once and the champion never.
+     * repeated pairs, every item except the champion losing exactly once and the champion never,
+     * and every winner ranked above the item it beat (a knockout eliminates the loser first).
      */
     static void validateRun(List<Long> ranking, List<MatchOutcome> matches, Set<Long> bracketItemIds) {
         if (ranking.size() < 2 || ranking.size() > MAX_ITEMS) {
             throw new InvalidRequestException("Ranking must contain between 2 and " + MAX_ITEMS + " items");
         }
-        Set<Long> ranked = new HashSet<>();
+        Map<Long, Integer> position = new HashMap<>();
         for (Long id : ranking) {
-            if (!ranked.add(id)) {
+            if (position.putIfAbsent(id, position.size()) != null) {
                 throw new InvalidRequestException("Ranking contains item " + id + " more than once");
             }
             if (!bracketItemIds.contains(id)) {
                 throw new InvalidRequestException("Item " + id + " does not belong to this bracket");
             }
         }
+        Set<Long> ranked = position.keySet();
         if (matches.size() != ranking.size() - 1) {
             throw new InvalidRequestException("A run of " + ranking.size() + " items must have exactly "
                     + (ranking.size() - 1) + " matches");
@@ -251,8 +254,13 @@ public class BracketService {
             if (!pairs.add(pair)) {
                 throw new InvalidRequestException("Items " + winner + " and " + loser + " play each other twice");
             }
+            if (position.get(winner) > position.get(loser)) {
+                throw new InvalidRequestException("Item " + winner + " beat item " + loser + " but is ranked below it");
+            }
         }
         // n-1 distinct losers, none of them the champion, means every other item lost exactly once.
+        // Winners always rank above their losers, so following "beaten by" from any item climbs the
+        // ranking and ends at the champion: the matches form one tree with no cycles.
     }
 
     private static Result requireSameSubmitter(Result existing, Long bracketId, String userId) {

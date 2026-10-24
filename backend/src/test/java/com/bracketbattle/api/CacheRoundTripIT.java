@@ -40,8 +40,8 @@ class CacheRoundTripIT extends IntegrationTest {
         List<Bracket> all = service.getAllBrackets();
 
         // Raw cache entries exist in Valkey under the versioned prefix...
-        assertThat(redis.hasKey("duely:v3:bracket::" + id)).isTrue();
-        assertThat(redis.hasKey("duely:v3:bracketRankings::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v4:bracket::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v4:bracketRankings::" + id)).isTrue();
 
         // ...and deserialize into the original types with the same content.
         Bracket cachedBracket = get("bracket", id, Bracket.class);
@@ -65,6 +65,7 @@ class CacheRoundTripIT extends IntegrationTest {
         List<?> cachedResults = get("userResults", "uid-a:" + id, List.class);
         assertThat(cachedResults).hasSize(1).allMatch(Result.class::isInstance);
         assertThat(((Result) cachedResults.get(0)).getRanking()).isEqualTo(results.get(0).getRanking());
+        assertThat(((Result) cachedResults.get(0)).getMatches()).isEqualTo(results.get(0).getMatches()).hasSize(1);
 
         assertThat(get("brackets", org.springframework.cache.interceptor.SimpleKey.EMPTY, List.class)).hasSameSizeAs(all);
 

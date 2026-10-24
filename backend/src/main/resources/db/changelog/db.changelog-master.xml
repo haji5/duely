@@ -189,4 +189,12 @@
         </sql>
     </changeSet>
 
+    <!-- "My brackets" filtered on created_by with no index, scanning every bracket per request. -->
+    <changeSet id="11" author="bracket-battle">
+        <createIndex indexName="idx_brackets_created_by" tableName="brackets">
+            <column name="created_by"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
 </databaseChangeLog>
