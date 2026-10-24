@@ -4,7 +4,7 @@ Welcome! This document provides essential knowledge for AI agents working on the
 
 ## 🏗️ System Architecture & Big Picture
 - **Stack**: React 19 (TypeScript, Vite 7, Tailwind CSS 4) + Spring Boot 4.1 (Java 21, Jackson 3, Hibernate 7). Postgres 15 and Valkey 8.
-- **Core Entity Flow**: `Bracket` has many `Item`s and `Result`s. Controllers return entities or small aggregation DTOs (`ItemRankingDto`, `CommentDto`); request bodies are records with Bean Validation (no MapStruct or big DTO layers). Fields that must not be public (`Bracket.createdBy`, `Result.userId`, `submissionToken`, `matches`) carry `@JsonIgnore`, which the Valkey cache also honours, so ownership checks must read the repository, never the cache.
+- **Core Entity Flow**: `Bracket` has many `Item`s and `Result`s. Controllers return entities or small aggregation DTOs (`ItemRankingDto`, `CommentDto`); request bodies are records with Bean Validation (no MapStruct or big DTO layers). Fields that must not be public (`Bracket.createdBy`, `Result.userId`, `submissionToken`) carry `@JsonIgnore`, which the Valkey cache also honours, so ownership checks must read the repository, never the cache.
 - **Network Proxying (CRITICAL PITFALL)**:
   - In Docker, `nginx` serves on port 3000 and maps `/api/*` to `http://backend:8080/*` (stripping the `/api` prefix). nginx does not proxy `/api/actuator/`.
   - The backend controllers (like `BracketController`) have **no prefix** mapped (`@GetMapping("/brackets")`, NOT `/api/brackets`).

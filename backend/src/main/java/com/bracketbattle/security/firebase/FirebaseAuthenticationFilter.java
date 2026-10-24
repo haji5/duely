@@ -18,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -65,7 +66,8 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         List<GrantedAuthority> authorities = new ArrayList<>();
         authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
         if (claims.get("role") instanceof String role && !role.isBlank()) {
-            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
+            // Locale.ROOT: in a Turkish locale "admin".toUpperCase() is "ADMİN", which never matches.
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase(Locale.ROOT)));
         }
         if (claims.get("admin") instanceof Boolean admin && admin) {
             authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));

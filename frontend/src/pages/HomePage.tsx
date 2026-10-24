@@ -135,7 +135,7 @@ const HomePage: React.FC = () => {
 
       {status === 'error' && (
         <section className="page pt-16">
-          <ErrorState title="Brackets couldn’t be loaded" message={error} onRetry={() => setReloadKey(k => k + 1)} />
+          <ErrorState title="Brackets couldnâ€™t be loaded" message={error} onRetry={() => setReloadKey(k => k + 1)} />
         </section>
       )}
 

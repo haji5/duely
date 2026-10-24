@@ -14,9 +14,11 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * One completed run of a bracket. Immutable once saved.
  *
- * <p>userId, submissionToken and matches are hidden from JSON: the public API must not expose
- * who voted, and the token is a per-submission secret. The Valkey cache honours the same
- * annotations, which is fine because the idempotency and ownership checks read the repository.
+ * <p>userId and submissionToken are hidden from JSON: the public API must not expose who voted,
+ * and the token is a per-submission secret. The Valkey cache honours the same annotations, which
+ * is fine because the idempotency and ownership checks read the repository. Results themselves
+ * only ever go to their submitter (public views use CommentDto), so the matches are included:
+ * the owner's "your ranking" needs them for real win percentages.
  */
 @Entity
 @Table(name = "results")
@@ -93,12 +95,10 @@ public class Result {
         this.rankingJson = write(ranking == null ? List.of() : ranking);
     }
 
-    @JsonIgnore
     public List<MatchOutcome> getMatches() {
         return matchesJson == null ? null : read(matchesJson, MATCHES_TYPE);
     }
 
-    @JsonIgnore
     public void setMatches(List<MatchOutcome> matches) {
         this.matchesJson = matches == null ? null : write(matches);
     }

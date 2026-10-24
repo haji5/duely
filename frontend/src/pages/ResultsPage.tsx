@@ -13,7 +13,7 @@ import { computeRankings } from '@/utils/rankings';
 interface Run {
   key: string;
   ranking: number[];
-  matches?: MatchOutcome[];
+  matches?: MatchOutcome[] | null;
   createdAt: string;
 }
 
@@ -70,7 +70,9 @@ const ResultsPage: React.FC = () => {
     const s = guard(setServerRuns);
     if (uid) {
       bracketApi.getMyResults(bracketId)
-        .then(results => s.ok(results.map(res => ({ key: `result-${res.id}`, ranking: res.ranking, createdAt: res.createdAt }))))
+        .then(results => s.ok(results.map(res => ({
+          key: `result-${res.id}`, ranking: res.ranking, matches: res.matches, createdAt: res.createdAt,
+        }))))
         .catch(s.fail);
     } else {
       s.ok([]);

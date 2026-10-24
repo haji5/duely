@@ -41,6 +41,15 @@ class ValidateRunTest {
         assertInvalid(List.of(1L, 2L), List.of(m(1, 3)), "ranked items");
         assertInvalid(List.of(1L, 2L, 3L), List.of(m(1, 2), m(3, 2)), "loses more than once");
         assertInvalid(List.of(1L, 2L, 3L), List.of(m(2, 3), m(3, 2)), "play each other twice");
+        assertInvalid(List.of(1L, 2L, 3L), List.of(m(1, 2), m(3, 1)), "champion");
+        // The runner-up beat by a round-one loser is not a knockout result
+        assertInvalid(List.of(1L, 2L, 3L, 4L), List.of(m(1, 3), m(4, 2), m(1, 4)), "ranked below");
+    }
+
+    @Test
+    void rejectsACycleThatLeavesTheChampionOut() {
+        // Each of 2, 3, 4 loses exactly once, but in a loop; the champion never plays.
+        assertInvalid(List.of(1L, 2L, 3L, 4L), List.of(m(2, 3), m(3, 4), m(4, 2)), "ranked below");
     }
 
     private static void assertInvalid(List<Long> ranking, List<MatchOutcome> matches, String message) {

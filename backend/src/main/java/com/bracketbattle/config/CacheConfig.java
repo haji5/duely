@@ -22,6 +22,7 @@ import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Server-side cache in Valkey (Redis-compatible). Entries have absolute TTLs; writes evict the
@@ -45,7 +46,7 @@ public class CacheConfig implements CachingConfigurer {
             "spotifyPlaylist", Duration.ofHours(1));
 
     // Bump when the cached JSON shape changes, so old entries are ignored instead of failing to parse.
-    private static final String KEY_PREFIX = "duely:v3:";
+    private static final String KEY_PREFIX = "duely:v4:";
 
     private final RedisCacheErrorHandler redisCacheErrorHandler;
 
@@ -96,16 +97,21 @@ public class CacheConfig implements CachingConfigurer {
     /**
      * The types cached JSON may name. The serializer has its own Jackson mapper (not a bean, so
      * Boot's HTTP mapper is untouched) that writes type information so values round-trip.
-     * SECURITY: only our own types and standard JDK value/collection types are allowed. Allowing
-     * every subtype of Object would let anyone who can write to Valkey trigger arbitrary-class
-     * deserialization gadgets.
+     * SECURITY: only our own types and an explicit list of JDK value/collection types are allowed.
+     * Allowing every subtype of Object would let anyone who can write to Valkey trigger
+     * arbitrary-class deserialization gadgets, and whole packages are too broad as well: java.util
+     * alone contains java.util.logging.FileHandler (creates files from a string) and Timer
+     * (starts threads).
      */
     private static PolymorphicTypeValidator cacheTypeValidator() {
         return BasicPolymorphicTypeValidator.builder()
                 .allowIfSubType("com.bracketbattle.")
-                .allowIfSubType("java.util.")
-                .allowIfSubType("java.time.")
-                .allowIfSubType("java.lang.")
+                .allowIfSubType(JDK_CACHE_TYPES)
                 .build();
     }
+
+    private static final Pattern JDK_CACHE_TYPES = Pattern.compile(
+            "java\\.util\\.(ArrayList|LinkedList|HashMap|LinkedHashMap|TreeMap|HashSet|LinkedHashSet|TreeSet)"
+                    + "|java\\.time\\.(Instant|LocalDate|LocalDateTime|OffsetDateTime|ZonedDateTime|Duration)"
+                    + "|java\\.lang\\.(String|Boolean|Byte|Short|Integer|Long|Float|Double|Character)");
 }

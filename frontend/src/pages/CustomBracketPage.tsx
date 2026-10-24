@@ -43,6 +43,9 @@ const CustomBracketPage: React.FC = () => {
   const [type, setType] = useState<BracketType>('video');
   const [category, setCategory] = useState('General');
   const [entries, setEntries] = useState<Entry[]>(() => [newEntry(), newEntry()]);
+  // Latest entries for async work (playlist import) that outlives the render it started in.
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
   const [entryErrors, setEntryErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -118,6 +121,8 @@ const CustomBracketPage: React.FC = () => {
     const worker = async () => {
       for (let entry = queue.shift(); entry; entry = queue.shift()) {
         const { id, title } = entry;
+        // Searches are rate limited per user: skip entries removed or edited while queued.
+        if (!entriesRef.current.some(e => e.id === id && e.status === 'fetching')) continue;
         let url: string | null = null;
         let failed = false;
         try {
@@ -153,15 +158,28 @@ const CustomBracketPage: React.FC = () => {
         setImportMessage({ kind: 'info', text: 'This playlist has no tracks.' });
         return;
       }
-      const imported = tracks.map(t => newEntry({
+      // Only as many tracks as still fit, so no YouTube lookups are spent on entries that get cut.
+      const room = LIMITS.maxEntries - entriesRef.current.filter(e => !isEmpty(e)).length;
+      if (room <= 0) {
+        setImportMessage({ kind: 'error', text: `A bracket can have at most ${LIMITS.maxEntries} entries.` });
+        return;
+      }
+      const imported = tracks.slice(0, room).map(t => newEntry({
         title: t.title.slice(0, LIMITS.title),
         titleSource: 'user',
         mediaUrl: type === 'video' ? '' : t.mediaUrl,
         status: type === 'video' ? 'fetching' : 'idle',
       }));
-      setEntries(prev => [...prev.filter(e => !isEmpty(e)), ...imported].slice(0, LIMITS.maxEntries));
+      const added = [...entriesRef.current.filter(e => !isEmpty(e)), ...imported].slice(0, LIMITS.maxEntries);
+      entriesRef.current = added;
+      setEntries(added);
       setPlaylistUrl('');
-      setImportMessage({ kind: 'info', text: `Added ${imported.length} ${imported.length === 1 ? 'track' : 'tracks'}.` });
+      const skipped = tracks.length - imported.length;
+      setImportMessage({
+        kind: 'info',
+        text: `Added ${imported.length} ${imported.length === 1 ? 'track' : 'tracks'}.`
+          + (skipped > 0 ? ` ${skipped} more didn’t fit (a bracket can have at most ${LIMITS.maxEntries} entries).` : ''),
+      });
       if (type === 'video') await findYouTubeLinks(imported);
     } catch (error) {
       if (mounted.current) setImportMessage({ kind: 'error', text: errorMessage(error, 'The playlist couldn’t be imported.') });

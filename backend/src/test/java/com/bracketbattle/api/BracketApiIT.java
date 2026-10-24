@@ -154,7 +154,8 @@ class BracketApiIT extends IntegrationTest {
         JsonNode guestResult = body(guest);
         assertThat(guestResult.has("userId")).isFalse();
         assertThat(guestResult.has("submissionToken")).isFalse();
-        assertThat(guestResult.has("matches")).isFalse();
+        // Only the submitter receives a Result, so it carries the run's real matches
+        assertThat(guestResult.get("matches")).hasSize(3);
         assertThat(guestResult.has("version")).isFalse();
 
         JsonNode first = body(perform(as(USER_A, postJson("/brackets/" + id + "/results", runPayload(ranking, "user-token-1", null)))));

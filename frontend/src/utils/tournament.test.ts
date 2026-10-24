@@ -77,6 +77,12 @@ describe('createTournament / pick / finalRanking', () => {
         expect(losers.size).toBe(entrants - 1);
         expect(losers.has(ranking[0].id)).toBe(false);
 
+        // The server rejects runs where a winner is ranked below the item it beat.
+        const position = new Map(ranking.map((item, i) => [item.id, i]));
+        for (const m of matches) {
+          expect(position.get(m.winnerId)!).toBeLessThan(position.get(m.loserId)!);
+        }
+
         // No entry gets more than one free round: reaching round r takes at least r - 1 wins.
         const wins = new Map<number, number>();
         matches.forEach(m => wins.set(m.winnerId, (wins.get(m.winnerId) ?? 0) + 1));
