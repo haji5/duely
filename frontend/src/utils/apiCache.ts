@@ -14,6 +14,8 @@ class ApiCache {
   private entries = new Map<string, CacheEntry>();
   /** Bumped by clear(); responses that started before a clear are not stored. */
   private generation = 0;
+  /** Per-key counterpart for invalidate(): a load that started before it is not stored. */
+  private keyVersions = new Map<string, number>();
 
   get<T>(key: string): T | undefined {
     const entry = this.entries.get(key);
@@ -37,11 +39,15 @@ class ApiCache {
   }
 
   invalidate(...keys: string[]): void {
-    keys.forEach(key => this.entries.delete(key));
+    keys.forEach(key => {
+      this.entries.delete(key);
+      this.keyVersions.set(key, (this.keyVersions.get(key) ?? 0) + 1);
+    });
   }
 
   clear(): void {
     this.entries.clear();
+    this.keyVersions.clear();
     this.generation++;
   }
 
@@ -50,8 +56,9 @@ class ApiCache {
     const cached = this.get<T>(key);
     if (cached !== undefined) return cached;
     const generation = this.generation;
+    const version = this.keyVersions.get(key);
     const data = await load();
-    if (generation === this.generation) {
+    if (generation === this.generation && version === this.keyVersions.get(key)) {
       this.set(key, data, ttlMs);
     }
     return data;

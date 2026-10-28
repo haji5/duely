@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getSpotifyEmbedUrl, mediaUrlProblem, spotifyResource, youTubeVideoId } from './mediaUtils';
+import {
+  getSpotifyEmbedUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, mediaUrlProblem, spotifyResource,
+  youTubeVideoId,
+} from './mediaUtils';
 import { randomId } from './ids';
 
 describe('youTubeVideoId (same rules as the backend)', () => {
@@ -56,6 +59,65 @@ describe('mediaUrlProblem', () => {
     expect(mediaUrlProblem('https://user:pw@example.com/x.png', 'image')).toMatch(/user name/);
     expect(mediaUrlProblem('https://example.com/a b.png', 'image')).toMatch(/spaces/);
     expect(mediaUrlProblem(`https://example.com/${'a'.repeat(2000)}`, 'image')).toMatch(/2000/);
+  });
+});
+
+describe('mediaUrlProblem parity with the server', () => {
+  it.each([
+    // The server normalises a trailing dot away before blocking
+    'https://localhost./x.png',
+    'https://printer.local./x.png',
+    // Browsers read leading-zero parts as octal: 012.0.0.1 is 10.0.0.1
+    'https://012.0.0.1/x.png',
+    'https://0177.0.0.1/x.png',
+    'https://0x7f000001/x.png',
+    'https://[fe80::1]/x.png',
+    'https://[fd00::1]/x.png',
+    'https://[ff02::1]/x.png',
+    'https://[::ffff:10.0.0.1]/x.png',
+    'https://169.254.169.254/latest',
+    'https://100.64.0.1/x.png',
+    'https://metadata.google.internal/x',
+  ])('blocks the local or private host in %s', (url) => {
+    expect(mediaUrlProblem(url, 'image')).toMatch(/public/);
+  });
+
+  it('rejects a YouTube id the server would not accept', () => {
+    // The server reads the raw query, so a percent-encoded id is not an id there.
+    expect(youTubeVideoId('https://www.youtube.com/watch?v=dQw4w9WgXc%51')).toBeNull();
+    expect(mediaUrlProblem('https://www.youtube.com/watch?v=dQw4w9WgXc%51', 'video')).toMatch(/YouTube/);
+  });
+
+  it('accepts what the server accepts', () => {
+    expect(mediaUrlProblem('  https://youtu.be/dQw4w9WgXcQ  ', 'video')).toBeNull();
+    expect(mediaUrlProblem('https://WWW.YOUTUBE.COM/watch?v=dQw4w9WgXcQ', 'video')).toBeNull();
+    expect(mediaUrlProblem('https://images.example.com:8443/cat.png?x=1#y', 'image')).toBeNull();
+    expect(mediaUrlProblem('https://93.184.216.34/x.png', 'image')).toBeNull();
+    expect(mediaUrlProblem('https://open.spotify.com/intl-de/track/abc', 'song')).toBeNull();
+  });
+
+  it('rejects broken links', () => {
+    expect(mediaUrlProblem('', 'image')).toBe('Add a link');
+    expect(mediaUrlProblem('   ', 'image')).toBe('Add a link');
+    expect(mediaUrlProblem('example.com/x.png', 'image')).toMatch(/valid link/);
+    expect(mediaUrlProblem('javascript:alert(1)', 'image')).toMatch(/https/);
+    expect(mediaUrlProblem('https://open.spotify.com/user/x', 'song')).toMatch(/Spotify/);
+  });
+});
+
+describe('embed URLs', () => {
+  it('builds embeds only for recognised links', () => {
+    expect(getSpotifyEmbedUrl('https://example.com/track/abc')).toBeNull();
+    expect(getYouTubeEmbedUrl('https://vimeo.com/1')).toBeNull();
+    expect(getYouTubeEmbedUrl('https://youtu.be/dQw4w9WgXcQ', false)).toMatch(/^https:\/\/www\.youtube\.com\/embed\/dQw4w9WgXcQ\?.*autoplay=0/);
+    expect(getYouTubeThumbnail('https://youtu.be/dQw4w9WgXcQ')).toBe('https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
+  });
+
+  it('only treats https as safe', () => {
+    expect(isSafeHttpsUrl('https://x.test/a.png')).toBe(true);
+    expect(isSafeHttpsUrl('http://x.test/a.png')).toBe(false);
+    expect(isSafeHttpsUrl('data:image/png;base64,AAAA')).toBe(false);
+    expect(isSafeHttpsUrl(null)).toBe(false);
   });
 });
 

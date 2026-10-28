@@ -26,7 +26,8 @@ public class MediaUrlValidator {
     private static final Set<String> BLOCKED_HOSTS = Set.of("localhost", "metadata", "metadata.google.internal");
     private static final Set<String> BLOCKED_SUFFIXES = Set.of(".localhost", ".local", ".internal");
     private static final Pattern NUMERIC_LABEL = Pattern.compile("^(?:0x[0-9a-f]*|[0-9]+)$");
-    private static final Pattern DOTTED_QUAD = Pattern.compile("^(?:\\d{1,3}\\.){3}\\d{1,3}$");
+    // Decimal octets without leading zeros: browsers read "012" as octal (10), Java as decimal (12).
+    private static final Pattern DOTTED_QUAD = Pattern.compile("^(?:(?:0|[1-9]\\d{0,2})\\.){3}(?:0|[1-9]\\d{0,2})$");
 
     private final HostResolver resolver;
 

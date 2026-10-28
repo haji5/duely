@@ -42,12 +42,21 @@ export function youTubeVideoId(url: string | null | undefined): string | null {
     candidate = segments[0];
   } else if (YOUTUBE_HOSTS.has(host)) {
     if (u.pathname === '/watch' || u.pathname === '/watch/') {
-      candidate = u.searchParams.get('v');
+      candidate = rawQueryParam(u.search, 'v');
     } else if (segments.length >= 2 && YOUTUBE_PATH_PREFIXES.has(segments[0])) {
       candidate = segments[1];
     }
   }
   return candidate && YOUTUBE_ID.test(candidate) ? candidate : null;
+}
+
+/** A query parameter as written, without percent-decoding (the server reads the raw query). */
+function rawQueryParam(search: string, name: string): string | null {
+  for (const pair of search.replace(/^\?/, '').split('&')) {
+    const eq = pair.indexOf('=');
+    if (eq > 0 && pair.slice(0, eq) === name) return pair.slice(eq + 1);
+  }
+  return null;
 }
 
 export function isYouTubeUrl(url: string | null | undefined): boolean {
@@ -101,7 +110,7 @@ export function mediaUrlProblem(url: string, type: BracketType): string | null {
   if (!u) return 'This isn’t a valid link';
   if (u.protocol !== 'https:') return 'Links must start with https://';
   if (u.username || u.password) return 'Links can’t contain a user name or password';
-  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
   if (BLOCKED_HOSTS.has(host) || BLOCKED_SUFFIXES.some(s => host.endsWith(s)) || isPrivateIpLiteral(host)) {
     return 'Links must point to a public website';
   }

@@ -93,6 +93,10 @@ describe('createTournament / pick / finalRanking', () => {
             }
           }
         });
+
+        // The server caps wins at the number of rounds, ceil(log2(entrants)).
+        const rounds = Math.ceil(Math.log2(entrants));
+        wins.forEach(w => expect(w).toBeLessThanOrEqual(rounds));
       });
     }
   }
@@ -135,7 +139,38 @@ describe('createTournament / pick / finalRanking', () => {
     expect(state.rounds[0].flatMap(m => [m.a, m.b]).every(e => e !== null)).toBe(true);
   });
 
+  it('refuses picks once the tournament is complete', () => {
+    const start = createTournament(makeItems(2), 2, seeded(8));
+    const done = pick(start, currentMatch(start)!.a!);
+    expect(done.complete).toBe(true);
+    expect(currentMatch(done)).toBeNull();
+    expect(() => pick(done, start.rounds[0][0].a!)).toThrow(/complete/);
+    expect(progress(done)).toMatchObject({ roundSize: 2, matchNumber: 1, matchesInRound: 1, played: 1, total: 1 });
+  });
+
+  it('has no ranking until the tournament is complete', () => {
+    const start = createTournament(makeItems(4), 4, seeded(9));
+    expect(finalRanking(start)).toEqual([]);
+    expect(playedMatches(start)).toEqual([]);
+  });
+
+  it('accepts a winner object that is equal but not identical (e.g. re-fetched items)', () => {
+    const start = createTournament(makeItems(2), 2, seeded(10));
+    const m = currentMatch(start)!;
+    const done = pick(start, { ...m.b! });
+    expect(finalRanking(done).map(i => i.id)).toEqual([m.b!.id, m.a!.id]);
+    expect(playedMatches(done)).toEqual([{ winnerId: m.b!.id, loserId: m.a!.id }]);
+  });
+
+  it('three entries: one bye, two real matches', () => {
+    const { state, picks } = playOut(createTournament(makeItems(3), 4, seeded(11)), seeded(12));
+    expect(picks).toBe(2);
+    expect(finalRanking(state)).toHaveLength(3);
+  });
+
   it('rejects impossible sizes', () => {
+    expect(() => createTournament(makeItems(4), 0)).toThrow();
+    expect(() => createTournament(makeItems(4), 1)).toThrow();
     expect(() => createTournament(makeItems(5), 16)).toThrow();
     expect(() => createTournament(makeItems(5), 6)).toThrow();
     expect(() => createTournament(makeItems(1), 2)).toThrow();
