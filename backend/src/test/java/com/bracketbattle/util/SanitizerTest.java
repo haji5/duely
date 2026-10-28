@@ -37,4 +37,35 @@ class SanitizerTest {
         assertThat(Sanitizer.stripToPlain("abcdef", 3)).isEqualTo("abc");
         assertThat(Sanitizer.stripToPlain(null, 3)).isNull();
     }
+
+    @Test
+    void truncationNeverSplitsASurrogatePair() {
+        // An emoji is two UTF-16 chars; cutting between them leaves a lone surrogate, which is not
+        // valid text (Postgres stores it as '?', and JSON encoders reject or mangle it).
+        assertThat(Sanitizer.stripToPlain("a".repeat(99) + "😀", 100)).isEqualTo("a".repeat(99));
+        assertThat(Sanitizer.stripToPlain("😀😀", 3)).isEqualTo("😀");
+        assertThat(Sanitizer.stripToPlain("😀", 2)).isEqualTo("😀");
+    }
+
+    @Test
+    void markupOnlyInputBecomesBlank() {
+        assertThat(Sanitizer.stripToPlain("<b></b>", 100)).isEmpty();
+        assertThat(Sanitizer.stripToPlain("<script>alert(1)</script>", 100)).isEmpty();
+        assertThat(Sanitizer.stripToPlain("   \n\t  ", 100)).isEmpty();
+    }
+
+    @Test
+    void doublyEncodedMarkupIsDecodedOnlyOnce() {
+        assertThat(Sanitizer.stripToPlain("&amp;lt;b&amp;gt;", 100)).isEqualTo("&lt;b&gt;");
+    }
+
+    @Test
+    void nonBreakingSpacesBecomeSpacesAndAreTrimmed() {
+        assertThat(Sanitizer.stripToPlain(" a b&nbsp;", 100)).isEqualTo("a b");
+    }
+
+    @Test
+    void truncationTrimsTheCutEnd() {
+        assertThat(Sanitizer.stripToPlain("abc def", 4)).isEqualTo("abc");
+    }
 }

@@ -148,4 +148,60 @@ class MediaUrlValidatorTest {
         assertThat(MediaUrlValidator.isPublic(InetAddress.getByName("172.32.0.1"))).isTrue();
         assertThat(MediaUrlValidator.isPublic(InetAddress.getByName("240.0.0.1"))).isFalse();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            // Browsers read dotted parts with a leading zero as octal: 012.0.0.1 is 10.0.0.1,
+            // while Java reads it as the public 12.0.0.1.
+            "https://012.0.0.1/x.png", "https://012.1.2.3/x.png", "https://00.0.0.0/x.png",
+            "https://0177.0.0.1/x.png", "https://017.0.0.1/x.png", "https://127.000.000.001/x.png"
+    })
+    void rejectsIpv4LiteralsWithLeadingZeros(String url) {
+        assertThat(check(url, "image")).isNotNull();
+    }
+
+    @Test
+    void outOfRangeDottedQuadsAreRejectedWithoutAnyLookup() {
+        assertThat(check("https://1.2.3.256/x.png", "image")).isNotNull();
+        assertThat(lookups).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"https://localhost./x.png", "https://LOCALHOST/x.png", "https://Printer.LOCAL./x.png",
+            "https://[::]/x.png", "https://[0:0:0:0:0:0:0:1]/x.png", "https://[::7f00:1]/x.png"})
+    void normalisesHostsBeforeBlocking(String url) {
+        assertThat(check(url, "image")).isNotNull();
+    }
+
+    @Test
+    void acceptsPortsQueriesAndMappedPublicAddresses() {
+        assertThat(check("https://images.example.com:8443/cat.png?size=large#top", "image")).isNull();
+        assertThat(check("https://[::ffff:93.184.216.34]/x.png", "image")).isNull();
+        assertThat(check("  https://images.example.com/cat.png  ", "image")).isNull();
+    }
+
+    @Test
+    void rejectsMissingAndRelativeLinks() {
+        assertThat(check(null, "image")).contains("required");
+        assertThat(check("   ", "image")).contains("required");
+        assertThat(check("/relative/path.png", "image")).contains("not a valid link");
+        assertThat(check("https:///x.png", "image")).contains("not a valid link");
+        assertThat(check("https://exa_mple.com/x.png", "image")).contains("not a valid link");
+    }
+
+    @Test
+    void unknownTypesAreRejected() {
+        assertThat(check("https://images.example.com/cat.png", "gif")).contains("unknown bracket type");
+    }
+
+    @Test
+    void typeProblemsAreReportedBeforeAnyLookup() {
+        assertThat(check("https://vimeo.com/123", "video")).contains("YouTube");
+        assertThat(lookups).isEmpty();
+    }
+
+    @Test
+    void schemeIsCaseInsensitive() {
+        assertThat(check("HTTPS://images.example.com/cat.png", "image")).isNull();
+    }
 }

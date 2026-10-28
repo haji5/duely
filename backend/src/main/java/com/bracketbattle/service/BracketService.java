@@ -233,6 +233,9 @@ public class BracketService {
                     + (ranking.size() - 1) + " matches");
         }
         Long champion = ranking.get(0);
+        // A knockout of n entries has ceil(log2 n) rounds, so nobody can win more matches than that.
+        int rounds = 32 - Integer.numberOfLeadingZeros(ranking.size() - 1);
+        Map<Long, Integer> wins = new HashMap<>();
         Set<Long> losers = new HashSet<>();
         Set<String> pairs = new HashSet<>();
         for (MatchOutcome m : matches) {
@@ -256,6 +259,10 @@ public class BracketService {
             }
             if (position.get(winner) > position.get(loser)) {
                 throw new InvalidRequestException("Item " + winner + " beat item " + loser + " but is ranked below it");
+            }
+            if (wins.merge(winner, 1, Integer::sum) > rounds) {
+                throw new InvalidRequestException("Item " + winner + " has more wins than a bracket of "
+                        + ranking.size() + " has rounds");
             }
         }
         // n-1 distinct losers, none of them the champion, means every other item lost exactly once.

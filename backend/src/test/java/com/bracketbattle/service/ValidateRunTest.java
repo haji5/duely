@@ -4,8 +4,10 @@ import com.bracketbattle.advice.InvalidRequestException;
 import com.bracketbattle.model.MatchOutcome;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -50,6 +52,30 @@ class ValidateRunTest {
     void rejectsACycleThatLeavesTheChampionOut() {
         // Each of 2, 3, 4 loses exactly once, but in a loop; the champion never plays.
         assertInvalid(List.of(1L, 2L, 3L, 4L), List.of(m(2, 3), m(3, 4), m(4, 2)), "ranked below");
+    }
+
+    @Test
+    void rejectsAChampionWithMoreWinsThanAKnockoutHasRounds() {
+        // Four entries make a two-round bracket, so nobody can win three matches. A "star" where
+        // the champion beats everyone passes the per-match rules but inflates its stats.
+        assertInvalid(List.of(1L, 2L, 3L, 4L), List.of(m(1, 2), m(1, 3), m(1, 4)), "wins");
+        // Five entries (size 8 with byes) have three rounds, so three wins is fine there
+        assertThatCode(() -> BracketService.validateRun(List.of(1L, 2L, 3L, 4L, 5L),
+                List.of(m(1, 5), m(1, 4), m(2, 3), m(1, 2)), ITEMS)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsOversizedRankings() {
+        List<Long> ranking = LongStream.rangeClosed(1, BracketService.MAX_ITEMS + 1).boxed().toList();
+        assertThatThrownBy(() -> BracketService.validateRun(ranking, List.of(), new HashSet<>(ranking)))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("between 2");
+    }
+
+    @Test
+    void acceptsAPartialRunOfABiggerBracket() {
+        assertThatCode(() -> BracketService.validateRun(List.of(5L, 2L), List.of(m(5, 2)), ITEMS))
+                .doesNotThrowAnyException();
     }
 
     private static void assertInvalid(List<Long> ranking, List<MatchOutcome> matches, String message) {

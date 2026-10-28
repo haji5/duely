@@ -40,7 +40,7 @@ export function errorMessage(error: unknown, fallback = 'Something went wrong. P
 export function fieldErrors(error: unknown): Record<string, string> {
   if (axios.isAxiosError(error)) {
     const errors = (error.response?.data as { errors?: unknown } | undefined)?.errors;
-    if (errors && typeof errors === 'object') return errors as Record<string, string>;
+    if (errors && typeof errors === 'object' && !Array.isArray(errors)) return errors as Record<string, string>;
   }
   return {};
 }

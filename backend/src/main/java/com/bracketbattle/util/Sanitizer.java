@@ -28,6 +28,9 @@ public final class Sanitizer {
                 // Drop control characters except tab and newline
                 .replaceAll("[\\p{Cntrl}&&[^\n\t]]", "")
                 .strip();
-        return clean.length() > maxLen ? clean.substring(0, maxLen).strip() : clean;
+        if (clean.length() <= maxLen) return clean;
+        // Never cut between the two halves of a surrogate pair (emoji): a lone half is not text.
+        int end = Character.isHighSurrogate(clean.charAt(maxLen - 1)) ? maxLen - 1 : maxLen;
+        return clean.substring(0, end).strip();
     }
 }
