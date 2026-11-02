@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { SessionBattleProvider } from './contexts/SessionBattleContext';
 import Navbar from './components/Navbar';
 import ScrollToTop from './components/ScrollToTop';
+import Footer from './components/Footer';
 import { PageLoader } from './components/BracketCard';
 
 // Each page is its own chunk, so the first visit only downloads what it shows.
@@ -13,6 +14,7 @@ const BrowsePage = React.lazy(() => import('./pages/BrowsePage'));
 const CustomBracketPage = React.lazy(() => import('./pages/CustomBracketPage'));
 const BracketPage = React.lazy(() => import('./pages/BracketPage'));
 const ResultsPage = React.lazy(() => import('./pages/ResultsPage'));
+const AboutPage = React.lazy(() => import('./pages/AboutPage'));
 const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage'));
 
 function App() {
@@ -22,9 +24,9 @@ function App() {
         <AuthProvider>
           <SessionBattleProvider>
             <ScrollToTop />
-            <div className="min-h-screen bg-themed-primary">
+            <div className="flex min-h-screen flex-col bg-themed-primary">
               <Navbar />
-              <main>
+              <main className="flex-1">
                 <Suspense fallback={<PageLoader />}>
                   <Routes>
                     <Route path="/" element={<HomePage />} />
@@ -32,10 +34,12 @@ function App() {
                     <Route path="/create" element={<CustomBracketPage />} />
                     <Route path="/bracket/:id" element={<BracketPage />} />
                     <Route path="/results/:id" element={<ResultsPage />} />
+                    <Route path="/about" element={<AboutPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>
                 </Suspense>
               </main>
+              <Footer />
             </div>
           </SessionBattleProvider>
         </AuthProvider>

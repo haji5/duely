@@ -85,14 +85,17 @@ const HomePage: React.FC = () => {
       <section className="border-b border-themed-primary">
         <div className="page grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-[1.05fr_1fr] lg:gap-14">
           <div>
+            <p className="mb-4 text-[0.95rem] font-bold uppercase tracking-[0.14em] text-accent">
+              Song, video &amp; image bracket maker
+            </p>
             <h1 className="font-display text-[3.4rem] font-black uppercase leading-[0.9] tracking-tight text-themed-primary sm:text-[4.75rem] lg:text-[5.5rem]">
               Settle it{' '}
               <br />
               head to head.
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-themed-secondary">
-              Line up songs, videos or images in a bracket. Each match you pick one of two,
-              round after round, until a single favourite is left standing.
+              Line up songs, videos or images in a bracket, or turn a public Spotify playlist into one.
+              Each match you pick one of two, round after round, until a single favourite is left standing.
             </p>
 
             <form
@@ -141,6 +144,8 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
+      <HowItWorks />
+
       {status === 'error' && (
         <section className="page pt-16">
           <ErrorState title="Brackets couldn’t be loaded" message={error} onRetry={() => setReloadKey(k => k + 1)} />
@@ -188,6 +193,43 @@ const HomePage: React.FC = () => {
     </div>
   );
 };
+
+const STEPS = [
+  {
+    title: 'Pick or make a bracket',
+    text: 'Play one of the brackets below, or make your own from YouTube links, Spotify tracks or images. A Spotify playlist fills it in for you.',
+  },
+  {
+    title: 'Choose one of two',
+    text: 'Each match shows two entries. Your pick moves on to the next round until one champion is left.',
+  },
+  {
+    title: 'Compare with everyone',
+    text: 'Every finished run counts towards the community ranking, so you can see how your champion stacks up.',
+  },
+];
+
+const HowItWorks: React.FC = () => (
+  <section className="page pt-14 sm:pt-16" aria-labelledby="how-it-works">
+    <div className="mb-6 flex items-end justify-between gap-4">
+      <h2 id="how-it-works" className="font-display text-[2.1rem] font-extrabold leading-none text-themed-primary">How it works</h2>
+      <Link to="/about" className="shrink-0 rounded-md px-1 text-[0.95rem] font-semibold text-accent hover:underline underline-offset-4">
+        How rankings work
+      </Link>
+    </div>
+    <ol className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {STEPS.map((step, i) => (
+        <li key={step.title} className="card flex gap-4 p-5">
+          <span className="font-display text-[2.25rem] font-black leading-none text-accent tabular" aria-hidden="true">{i + 1}</span>
+          <div>
+            <h3 className="font-semibold text-themed-primary">{step.title}</h3>
+            <p className="mt-1 text-themed-secondary">{step.text}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </section>
+);
 
 const BracketSection: React.FC<{
   title: string;
