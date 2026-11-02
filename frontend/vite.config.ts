@@ -21,14 +21,8 @@ export default defineConfig({
     outDir: 'build',
     // No public source maps: they would publish the original source next to the bundle.
     sourcemap: false,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          firebase: ['firebase/app', 'firebase/auth'],
-          motion: ['framer-motion'],
-        },
-      },
-    },
+    // No manualChunks: Rollup keeps framer-motion in the BracketPage chunk and Firebase in the
+    // dynamically imported auth chunk, so neither is on the critical path of other pages.
   },
   resolve: {
     alias: {

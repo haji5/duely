@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { loadAuth } from '../config/firebase';
 
 const LoginButton: React.FC = () => {
   const { signInWithGoogle } = useAuth();
@@ -17,9 +18,18 @@ const LoginButton: React.FC = () => {
     }
   };
 
+  // Fetch Firebase as soon as a click looks likely, so the popup opens straight from the click
+  // and isn't blocked for coming too long after it.
+  const prefetchAuth = () => {
+    loadAuth().catch(() => { /* signing in retries and reports it */ });
+  };
+
   return (
     <button
       onClick={handleGoogleSignIn}
+      onPointerEnter={prefetchAuth}
+      onFocus={prefetchAuth}
+      onTouchStart={prefetchAuth}
       disabled={isLoading}
       className="btn btn-secondary px-3 py-2"
       aria-label="Sign in with Google"

@@ -2,7 +2,7 @@ import axios from 'axios';
 import type {
   Bracket, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Result,
 } from '@/types';
-import { auth } from '@/config/firebase';
+import { currentFirebaseUser } from '@/config/firebase';
 import { apiCache } from '@/utils/apiCache';
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -14,7 +14,7 @@ const api = axios.create({
 
 // Firebase's getIdToken() returns the cached token and refreshes it shortly before it expires.
 api.interceptors.request.use(async (config) => {
-  const token = await auth.currentUser?.getIdToken();
+  const token = await currentFirebaseUser()?.getIdToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -91,7 +91,7 @@ export const bracketApi = {
     run: { ranking: number[]; matches: MatchOutcome[]; submissionToken: string; displayName?: string; comment?: string },
   ): Promise<Result> => {
     const response = await api.post<Result>(`/brackets/${bracketId}/results`, run);
-    const uid = auth.currentUser?.uid;
+    const uid = currentFirebaseUser()?.uid;
     if (uid) {
       apiCache.invalidate(keys.myResults(uid), keys.myResults(uid, bracketId));
     }
@@ -110,7 +110,7 @@ export const bracketApi = {
 
   /** The signed-in user's runs (optionally for one bracket), oldest first. */
   getMyResults: (bracketId?: number): Promise<Result[]> => {
-    const uid = auth.currentUser?.uid;
+    const uid = currentFirebaseUser()?.uid;
     if (!uid) return Promise.resolve([]);
     return apiCache.getOrLoad(keys.myResults(uid, bracketId), 5 * MINUTE,
       () => get<Result[]>('/me/results', bracketId === undefined ? undefined : { bracketId }));

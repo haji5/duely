@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { motion, useReducedMotion } from 'framer-motion';
+import { domAnimation, LazyMotion, m, useReducedMotion } from 'framer-motion';
 import { bracketApi, errorMessage, errorStatus } from '../services/api';
 import type { Bracket, Item } from '@/types';
 import MediaPreview from '../components/MediaPreview';
@@ -386,13 +386,13 @@ const BracketPage: React.FC = () => {
 };
 
 const ChampionReveal: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <motion.div
+  <m.div
     initial={{ opacity: 0, transform: 'translateY(12px)' }}
     animate={{ opacity: 1, transform: 'translateY(0px)' }}
     transition={useMoveTransition({ duration: 0.35, ease: EASE_OUT })}
   >
     {children}
-  </motion.div>
+  </m.div>
 );
 
 const BattleArena: React.FC<{
@@ -435,7 +435,7 @@ const BattleItem: React.FC<{
   return (
     // Full transform strings rather than x/scale so the animation stays on the compositor while
     // the new match's iframes and images load.
-    <motion.div
+    <m.div
       initial={{ opacity: 0, transform: `translateX(${side === 'left' ? -24 : 24}px) scale(1)` }}
       animate={{
         opacity: isLoser ? 0.55 : 1,
@@ -493,7 +493,7 @@ const BattleItem: React.FC<{
         {isWinner && (
           <>
             {!reduceMotion && <Confetti sideColor={sideColor} />}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, transform: 'scale(0.85)' }}
               animate={{ opacity: 1, transform: 'scale(1)' }}
               transition={winnerBadgeTransition}
@@ -501,22 +501,22 @@ const BattleItem: React.FC<{
               style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)' }}
             >
               Winner
-            </motion.div>
+            </m.div>
           </>
         )}
 
         {isLoser && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, transform: 'scale(0.9)' }}
             animate={{ opacity: 1, transform: 'scale(1)' }}
             transition={loserBadgeTransition}
             className="absolute right-4 top-4 z-10 rounded-md bg-themed-tertiary px-3 py-1.5 font-display text-lg font-extrabold text-themed-secondary"
           >
             Out
-          </motion.div>
+          </m.div>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 };
 
@@ -531,7 +531,7 @@ const Confetti: React.FC<{ sideColor: string }> = ({ sideColor }) => {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
       {pieces.map((piece, i) => (
-        <motion.div
+        <m.div
           key={i}
           className="absolute left-1/2 top-1/2 -ml-[5px] -mt-[5px] h-2.5 w-2.5 rounded-sm"
           style={{ backgroundColor: i % 3 === 0 ? sideColor : 'var(--accent-primary)' }}
@@ -547,4 +547,11 @@ const Confetti: React.FC<{ sideColor: string }> = ({ sideColor }) => {
   );
 };
 
-export default BracketPage;
+// LazyMotion + `m` ships only the DOM animation features this page uses, not all of framer-motion.
+const BracketPageWithMotion: React.FC = () => (
+  <LazyMotion features={domAnimation} strict>
+    <BracketPage />
+  </LazyMotion>
+);
+
+export default BracketPageWithMotion;

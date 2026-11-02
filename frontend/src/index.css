@@ -3,6 +3,26 @@
    (primary palette, Barlow / Big Shoulders fonts). */
 @config "../tailwind.config.js";
 
+/* Arial sized to match the web fonts' widths and line boxes, so text barely moves when they swap in.
+   Measured against Barlow 400 and Big Shoulders 900 (the H1 weight). */
+@font-face {
+  font-family: "Barlow Fallback";
+  src: local("Arial");
+  size-adjust: 94%;
+  ascent-override: 106.4%;
+  descent-override: 21.3%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Big Shoulders Display Fallback";
+  src: local("Arial");
+  size-adjust: 70%;
+  ascent-override: 140%;
+  descent-override: 30%;
+  line-gap-override: 0%;
+}
+
 @layer base {
   :root {
     /* Light theme: cool chalk paper with ink text */
@@ -149,7 +169,7 @@
 @layer components {
   /* Display face: condensed, scoreboard-like */
   .font-display {
-    font-family: "Big Shoulders Display", Barlow, ui-sans-serif, sans-serif;
+    font-family: "Big Shoulders Display", "Big Shoulders Display Fallback", Barlow, ui-sans-serif, sans-serif;
     letter-spacing: 0.005em;
   }
 

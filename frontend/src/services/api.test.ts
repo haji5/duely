@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AxiosError, AxiosHeaders } from 'axios';
 
-vi.mock('@/config/firebase', () => ({ auth: { currentUser: null } }));
+vi.mock('@/config/firebase', () => ({ currentFirebaseUser: () => null }));
 
 import { errorMessage, errorStatus, fieldErrors } from './api';
 
