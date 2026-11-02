@@ -3,6 +3,7 @@ import BracketCard, { PageLoader } from '../components/BracketCard';
 import BracketDiagram from '../components/BracketDiagram';
 import { bracketApi, errorMessage } from '../services/api';
 import { ErrorState } from '../components/PageStates';
+import PageMeta from '../components/PageMeta';
 import { Bracket } from '@/types';
 import { Link, useNavigate } from "react-router-dom";
 
@@ -62,8 +63,15 @@ const HomePage: React.FC = () => {
 
   const categorizedBrackets = React.useMemo(() => categorize(brackets, popularBrackets), [brackets, popularBrackets]);
 
+  const meta = (
+    <PageMeta
+      title="Duely — Song, video & image brackets, voted head to head"
+      description="Make a bracket of songs, videos or images and pick a favourite of two each match, round after round, until one is left. Play brackets others made."
+    />
+  );
+
   if (status === 'loading') {
-    return <PageLoader label="Loading brackets" />;
+    return <>{meta}<PageLoader label="Loading brackets" /></>;
   }
 
   const recentBrackets = [...brackets]
@@ -72,12 +80,13 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="pb-24">
+      {meta}
       {/* Hero */}
       <section className="border-b border-themed-primary">
         <div className="page grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-[1.05fr_1fr] lg:gap-14">
           <div>
             <h1 className="font-display text-[3.4rem] font-black uppercase leading-[0.9] tracking-tight text-themed-primary sm:text-[4.75rem] lg:text-[5.5rem]">
-              Settle it
+              Settle it{' '}
               <br />
               head to head.
             </h1>
@@ -117,13 +126,12 @@ const HomePage: React.FC = () => {
               <Link to="/browse" className="font-semibold text-themed-primary underline decoration-[color:var(--border-secondary)] decoration-2 underline-offset-4 hover:decoration-[color:var(--accent-primary)]">
                 Browse all brackets
               </Link>
-              <button
-                type="button"
-                onClick={() => navigate('/create')}
+              <Link
+                to="/create"
                 className="font-semibold text-themed-primary underline decoration-[color:var(--border-secondary)] decoration-2 underline-offset-4 hover:decoration-[color:var(--accent-primary)]"
               >
                 Make your own
-              </button>
+              </Link>
             </div>
           </div>
 

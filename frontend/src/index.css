@@ -182,7 +182,9 @@
     transform: scale(var(--press-scale, 0.97));
   }
 
-  .btn:disabled {
+  /* aria-disabled: a <Link> styled as a button can't be :disabled */
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
     @apply opacity-50 cursor-not-allowed;
   }
 

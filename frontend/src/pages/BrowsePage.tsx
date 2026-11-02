@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import BracketCard, { PageLoader, typeLabel } from '../components/BracketCard';
 import { ErrorState } from '../components/PageStates';
+import PageMeta, { pageTitle } from '../components/PageMeta';
 import { bracketApi, errorMessage } from '../services/api';
 import type { Bracket } from '@/types';
 import { useDebounce } from '@/utils/debounce';
@@ -100,6 +101,12 @@ const BrowsePage: React.FC = () => {
 
   return (
     <div className="page pb-24 pt-10 sm:pt-14">
+      <PageMeta
+        title={mine ? 'My brackets | Duely' : category !== 'all' ? pageTitle(`${category} brackets`) : 'Browse brackets | Duely'}
+        description={category !== 'all' && !mine
+          ? `Play ${category} brackets on Duely: pick a favourite of two each match until one is left standing.`
+          : 'Find a song, video or image bracket to play on Duely. Search by name, or filter by type and category.'}
+      />
       <header className="mb-8 max-w-2xl">
         <h1 className="font-display text-[3rem] font-black leading-none text-themed-primary sm:text-[3.5rem]">
           {mine ? 'My brackets' : 'Browse brackets'}

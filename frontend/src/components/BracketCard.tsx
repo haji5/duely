@@ -47,9 +47,13 @@ export const formatDate = (value: string) => {
 };
 
 const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
+  // The card's accessible name (and anchor text) is just the bracket name, not every line inside it.
+  // useId: the home page can show the same bracket in more than one section.
+  const titleId = React.useId();
   return (
     <Link
       to={`/bracket/${bracket.id}`}
+      aria-labelledby={titleId}
       className="group card pressable relative flex h-full flex-col p-5 hover:border-[color:var(--accent-primary)] [--press-scale:0.98]"
     >
       <div className="mb-3 flex items-center justify-between gap-3 text-sm text-themed-secondary">
@@ -60,7 +64,7 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
         <span className="truncate text-themed-tertiary">{bracket.category || 'General'}</span>
       </div>
 
-      <h3 className="font-display text-[1.65rem] font-extrabold leading-[1.05] text-themed-primary line-clamp-2">
+      <h3 id={titleId} className="font-display text-[1.65rem] font-extrabold leading-[1.05] text-themed-primary line-clamp-2">
         {bracket.name}
       </h3>
 
