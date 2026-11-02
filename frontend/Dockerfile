@@ -40,9 +40,10 @@ WORKDIR /
 
 # Copy build artifacts
 COPY --from=build /app/build /usr/share/nginx/html
-# Nginx config and the shared security headers it includes
+# Nginx config and the snippets it includes
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY security-headers.conf /etc/nginx/security-headers.conf
+COPY page-proxy.conf /etc/nginx/page-proxy.conf
 
 # Ensure nginx user can read/write necessary dirs and drop privileges
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/run /var/log/nginx

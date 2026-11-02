@@ -31,6 +31,8 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    private static final String[] PAGE_PATHS = {"/pages/home", "/pages/bracket/*", "/pages/results/*", "/sitemap.xml"};
+
     @Value("${app.cors.allowed-origins}")
     private List<String> allowedOrigins;
 
@@ -47,6 +49,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/brackets", "/brackets/popular", "/brackets/*",
                         "/brackets/*/items", "/brackets/*/rankings", "/brackets/*/comments",
                         "/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                // Pages with per-route head tags, and the sitemap (PageController, SitemapController).
+                // HEAD too, since link checkers and crawlers use it on page URLs.
+                .requestMatchers(HttpMethod.GET, PAGE_PATHS).permitAll()
+                .requestMatchers(HttpMethod.HEAD, PAGE_PATHS).permitAll()
                 // Guests may submit runs (rate limited per IP)
                 .requestMatchers(HttpMethod.POST, "/brackets/*/results").permitAll()
                 // /admin/** additionally needs ROLE_ADMIN via @PreAuthorize

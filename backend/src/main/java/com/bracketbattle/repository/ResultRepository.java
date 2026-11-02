@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,4 +25,13 @@ public interface ResultRepository extends JpaRepository<Result, Long> {
             ORDER BY r.createdAt DESC, r.id DESC
             """)
     List<Result> findLatestComments(Long bracketId, Limit limit);
+
+    /** When each bracket with at least one run was last played (sitemap lastmod). */
+    @Query("SELECT r.bracketId AS bracketId, MAX(r.createdAt) AS latest FROM Result r GROUP BY r.bracketId")
+    List<LatestResult> findLatestResultPerBracket();
+
+    interface LatestResult {
+        Long getBracketId();
+        Instant getLatest();
+    }
 }
