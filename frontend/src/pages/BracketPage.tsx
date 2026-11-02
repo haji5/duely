@@ -2,23 +2,28 @@ import React from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { domAnimation, LazyMotion, m, useReducedMotion } from 'framer-motion';
 import { bracketApi, errorMessage, errorStatus } from '../services/api';
-import type { Bracket, Item } from '@/types';
+import type { Bracket, Item, ItemRanking } from '@/types';
 import MediaPreview from '../components/MediaPreview';
-import { PageLoader, TypeIcon } from '../components/BracketCard';
+import { PageLoader, TypeIcon, formatDate, typeLabel } from '../components/BracketCard';
+import ShareButton from '../components/ShareButton';
 import PageMeta, { pageTitle } from '../components/PageMeta';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
 import {
-  bracketSizeOptions, createTournament, currentMatch, finalRanking, pick, playedMatches, progress,
+  bracketSizeOptions, createTournament, currentMatch, defaultBracketSize, finalRanking, pick, playedMatches, progress,
   realMatchCount, roundName, TournamentState,
 } from '@/utils/tournament';
 import { randomId } from '@/utils/ids';
+import { displayScore } from '@/utils/rankings';
 import { playSelectionTick, playSuccessChime, playTick } from '@/utils/sound';
 
 type Load =
   | { status: 'loading' }
   | { status: 'error'; title: string; message: string; notFound?: boolean }
   | { status: 'ready'; bracket: Bracket; items: Item[] };
+
+// The current leader loads on its own, so a failed ranking never blocks playing the bracket.
+type Leader = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; value: ItemRanking | null };
 
 interface Animation {
   winnerId: number;
@@ -45,6 +50,8 @@ const BracketPage: React.FC = () => {
 
   const [load, setLoad] = React.useState<Load>({ status: 'loading' });
   const [reloadKey, setReloadKey] = React.useState(0);
+  const [leader, setLeader] = React.useState<Leader>({ status: 'loading' });
+  const [leaderReloadKey, setLeaderReloadKey] = React.useState(0);
   const [selectedSize, setSelectedSize] = React.useState<number | null>(null);
   const [tournament, setTournament] = React.useState<TournamentState | null>(null);
   const [animation, setAnimation] = React.useState<Animation | null>(null);
@@ -74,6 +81,7 @@ const BracketPage: React.FC = () => {
           setLoad({ status: 'error', title: 'This bracket can’t start', message: 'It needs at least 2 entries.' });
         } else {
           setLoad({ status: 'ready', bracket, items });
+          setSelectedSize(defaultBracketSize(items.length));
         }
       })
       .catch((error) => {
@@ -84,6 +92,17 @@ const BracketPage: React.FC = () => {
       });
     return () => { cancelled = true; };
   }, [bracketId, reloadKey]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLeader({ status: 'loading' });
+    if (!Number.isInteger(bracketId) || bracketId <= 0) return;
+    bracketApi.getBracketRankings(bracketId).then(
+      rankings => { if (!cancelled) setLeader({ status: 'ready', value: rankings[0] ?? null }); },
+      error => { if (!cancelled) setLeader({ status: 'error', message: errorMessage(error) }); },
+    );
+    return () => { cancelled = true; };
+  }, [bracketId, leaderReloadKey]);
 
   const complete = tournament?.complete ?? false;
   React.useEffect(() => {
@@ -174,7 +193,8 @@ const BracketPage: React.FC = () => {
           </div>
         </fieldset>
 
-        <div className="mt-8 flex flex-col gap-3 border-t border-themed-primary pt-8 sm:flex-row">
+        {/* On phones the start button sticks to the bottom of the screen, so it's never below the size grid. */}
+        <div className="sticky bottom-0 z-20 -mx-4 mt-8 border-t border-themed-primary bg-themed-primary px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:px-0 sm:pb-0 sm:pt-8">
           <button
             disabled={!selectedSize}
             onClick={() => {
@@ -182,14 +202,65 @@ const BracketPage: React.FC = () => {
               playTick(1000, 0.1, 0.08);
               setTournament(createTournament(items, selectedSize));
             }}
-            className="btn btn-primary btn-lg sm:min-w-[16rem]"
+            className="btn btn-primary btn-lg w-full sm:w-auto sm:min-w-[16rem]"
           >
             {selectedSize ? `Start the ${roundName(selectedSize).toLowerCase()}` : 'Pick a size to start'}
           </button>
-          <Link to={`/results/${bracketId}`} className="btn btn-secondary btn-lg">
+        </div>
+
+        <section className="card mt-10 p-5 sm:p-6" aria-labelledby="leader-title">
+          <h2 id="leader-title" className="text-sm font-semibold text-themed-tertiary">Leading everyone’s ranking</h2>
+          {leader.status === 'loading' && <p className="mt-2 text-themed-tertiary">Loading the ranking…</p>}
+          {leader.status === 'error' && (
+            <div className="mt-2" role="alert">
+              <p className="text-themed-secondary">The ranking couldn’t be loaded. {leader.message}</p>
+              <button type="button" onClick={() => setLeaderReloadKey(k => k + 1)} className="btn btn-secondary mt-3">
+                Try again
+              </button>
+            </div>
+          )}
+          {leader.status === 'ready' && (leader.value ? (
+            <div className="mt-2 flex items-center gap-4">
+              <div className="h-14 w-24 shrink-0 overflow-hidden rounded-md bg-themed-tertiary">
+                <MediaPreview item={leader.value.item} size="thumbnail" className="h-full w-full" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-display text-[1.6rem] font-extrabold leading-[1.05] text-themed-primary line-clamp-2">
+                  {leader.value.item.title}
+                </p>
+                <p className="mt-1 text-sm text-themed-secondary tabular">
+                  Score {displayScore(leader.value.averageScore)} · {leader.value.winPercentage}% of matches won
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-themed-secondary">Nobody has finished this bracket yet. Yours will be the first run.</p>
+          ))}
+          <Link to={`/results/${bracketId}`} className="btn btn-secondary mt-5">
             See results so far
           </Link>
-        </div>
+        </section>
+
+        <p className="mt-4 text-sm text-themed-tertiary">
+          {typeLabel(bracket.type)} bracket in {bracket.category || 'General'}
+          {formatDate(bracket.createdAt) && <>, created {formatDate(bracket.createdAt)}</>}
+        </p>
+
+        <section className="mt-12" aria-labelledby="entries-title">
+          <h2 id="entries-title" className="font-display text-2xl font-extrabold text-themed-primary">
+            The {items.length} entries
+          </h2>
+          <ol className="mt-4 grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+            {items.map(item => (
+              <li key={item.id} className="flex items-center gap-3 border-b border-themed-primary py-2.5">
+                <div className="h-12 w-20 shrink-0 overflow-hidden rounded-md bg-themed-tertiary">
+                  <MediaPreview item={item} size="thumbnail" className="h-full w-full" />
+                </div>
+                <span className="min-w-0 font-semibold leading-snug text-themed-primary line-clamp-2">{item.title}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
       </div>
     );
   }
@@ -244,6 +315,15 @@ const BracketPage: React.FC = () => {
             <h1 className="relative mt-2 pr-10 font-display text-[2.5rem] font-black leading-[0.95] sm:text-[3.25rem]" style={{ color: 'inherit' }}>
               {champion ? champion.title : 'Bracket complete'}
             </h1>
+          </div>
+
+          <div className="mt-4">
+            <ShareButton
+              path={path}
+              title={bracket.name}
+              text={champion ? `My champion of ${bracket.name}: ${champion.title}. Who’s yours?` : `Play ${bracket.name} on Duely`}
+              label="Share my champion"
+            />
           </div>
 
           <form

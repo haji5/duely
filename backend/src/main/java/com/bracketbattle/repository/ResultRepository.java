@@ -19,6 +19,8 @@ public interface ResultRepository extends JpaRepository<Result, Long> {
 
     Optional<Result> findBySubmissionToken(String submissionToken);
 
+    long countByBracketId(Long bracketId);
+
     @Query("""
             SELECT r FROM Result r
             WHERE r.bracketId = :bracketId AND r.comment IS NOT NULL AND TRIM(r.comment) <> ''

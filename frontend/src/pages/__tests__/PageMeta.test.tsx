@@ -21,6 +21,7 @@ vi.mock('../../services/api', () => ({
     getBracketItems: vi.fn(async (id: number) => { if (id !== 3) throw notFound; return items; }),
     getBracketRankings: vi.fn(async () => []),
     getBracketComments: vi.fn(async () => []),
+    getBracketStats: vi.fn(async () => ({ runCount: 0 })),
     getMyResults: vi.fn(async () => []),
   },
   errorMessage: () => 'failed',

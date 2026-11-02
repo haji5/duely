@@ -40,6 +40,7 @@ public class CacheConfig implements CachingConfigurer {
             "bracket", Duration.ofMinutes(30),
             "bracketItems", Duration.ofMinutes(30),
             "bracketRankings", Duration.ofMinutes(10), // evicted on every run
+            "bracketStats", Duration.ofMinutes(10),    // evicted on every run
             "bracketComments", Duration.ofMinutes(5),  // evicted on every run
             "userResults", Duration.ofMinutes(10),     // evicted on every run by that user
             "youtubeSearch", Duration.ofHours(24),

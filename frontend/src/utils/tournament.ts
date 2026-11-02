@@ -61,6 +61,14 @@ export function bracketSizeOptions(count: number): number[] {
   return options;
 }
 
+/**
+ * The size a bracket page preselects: the largest power of two that fits, so every slot holds a
+ * real entry (no byes) and the start button works on arrival.
+ */
+export function defaultBracketSize(count: number): number | null {
+  return count < 2 ? null : floorPow2(count);
+}
+
 /** Real matches a run of the given size will have. */
 export function realMatchCount(count: number, size: number): number {
   return Math.min(count, size) - 1;

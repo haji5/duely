@@ -239,6 +239,21 @@ class BracketApiIT extends IntegrationTest {
         assertRanking(rankings.get(3), c, 0, 3, 0, (1.0 / 3 + 0 + 0) / 3, 3);
     }
 
+    @Test
+    void runCountIncludesGuestsAndSubsetRunsAndIsFreshAfterEachRun() throws Exception {
+        long id = createBracket(USER_A, "Counted", 4).get("id").asLong();
+        List<Long> items = itemIds(id);
+        assertThat(body(perform(get("/brackets/" + id + "/stats"))).get("runCount").asLong()).isZero();
+
+        submit(id, items);                                   // guest, full bracket
+        submit(id, List.of(items.get(2), items.get(3)));     // guest, 2-entry subset
+        assertThat(body(perform(get("/brackets/" + id + "/stats"))).get("runCount").asLong()).isEqualTo(2);
+
+        perform(as(USER_B, postJson("/brackets/" + id + "/results", runPayload(List.of(items.get(0), items.get(1)), null, null))));
+        // No item was in all three runs, so only this endpoint knows the total.
+        assertThat(body(perform(get("/brackets/" + id + "/stats"))).get("runCount").asLong()).isEqualTo(3);
+    }
+
     private void submit(long bracketId, List<Long> ranking) throws Exception {
         MvcResult result = perform(postJson("/brackets/" + bracketId + "/results", runPayload(ranking, null, null)));
         assertThat(result.getResponse().getStatus()).as(result.getResponse().getContentAsString()).isEqualTo(200);
@@ -319,6 +334,7 @@ class BracketApiIT extends IntegrationTest {
         assertThat(perform(get("/brackets/987654321/items")).getResponse().getStatus()).isEqualTo(404);
         assertThat(perform(get("/brackets/987654321/rankings")).getResponse().getStatus()).isEqualTo(404);
         assertThat(perform(get("/brackets/987654321/comments")).getResponse().getStatus()).isEqualTo(404);
+        assertThat(perform(get("/brackets/987654321/stats")).getResponse().getStatus()).isEqualTo(404);
 
         MvcResult typeMismatch = perform(get("/brackets/abc"));
         assertThat(typeMismatch.getResponse().getStatus()).isEqualTo(400);

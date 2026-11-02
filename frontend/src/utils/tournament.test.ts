@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Item } from '@/types';
 import {
-  bracketSizeOptions, createTournament, currentMatch, finalRanking, pick, playedMatches, progress,
+  bracketSizeOptions, createTournament, defaultBracketSize, currentMatch, finalRanking, pick, playedMatches, progress,
   realMatchCount, roundName, shuffle, TournamentState,
 } from './tournament';
 
@@ -44,6 +44,30 @@ describe('bracketSizeOptions', () => {
   it('counts only real matches', () => {
     expect(realMatchCount(9, 16)).toBe(8);
     expect(realMatchCount(9, 4)).toBe(3);
+  });
+});
+
+describe('defaultBracketSize', () => {
+  it('picks the largest power of two that fits, so there are no byes', () => {
+    expect(defaultBracketSize(32)).toBe(32);
+    expect(defaultBracketSize(23)).toBe(16);
+    expect(defaultBracketSize(9)).toBe(8);
+    expect(defaultBracketSize(5)).toBe(4);
+    expect(defaultBracketSize(3)).toBe(2);
+    expect(defaultBracketSize(2)).toBe(2);
+  });
+
+  it('is always one of the offered sizes, and a size a tournament can start with', () => {
+    for (let n = 2; n <= 40; n++) {
+      const size = defaultBracketSize(n)!;
+      expect(bracketSizeOptions(n)).toContain(size);
+      expect(createTournament(makeItems(n), size).entrantCount).toBe(size);
+    }
+  });
+
+  it('has nothing to offer below two entries', () => {
+    expect(defaultBracketSize(1)).toBeNull();
+    expect(defaultBracketSize(0)).toBeNull();
   });
 });
 

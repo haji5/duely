@@ -18,6 +18,9 @@ export const pageTitle = (main: string, detail = '', shortDetail = '') => {
   return `${truncate(main, MAX_TITLE - SUFFIX.length - shortDetail.length)}${shortDetail}${SUFFIX}`;
 };
 
+/** The canonical URL of a path: what PageMeta links as canonical, and what Share hands out. */
+export const canonicalUrl = (path: string) => `${window.location.origin}${path}`;
+
 /**
  * Per-route <title>, description, canonical and robots. React 19 hoists these into <head>.
  * The canonical is the clean path, so query strings (?fromBattle, ?sort, ?category…) never count
@@ -33,7 +36,7 @@ const PageMeta: React.FC<{ title: string; description?: string; path?: string; n
       {description && <meta name="description" content={truncate(description, MAX_DESCRIPTION)} />}
       {noindex
         ? <meta name="robots" content="noindex" />
-        : <link rel="canonical" href={`${window.location.origin}${path ?? pathname}`} />}
+        : <link rel="canonical" href={canonicalUrl(path ?? pathname)} />}
     </>
   );
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Item } from '@/types';
-import { computeRankings } from './rankings';
+import { computeRankings, displayScore, rankingRunCount, runsLabel } from './rankings';
 
 const item = (id: number): Item => ({ id, bracketId: 1, title: `#${id}`, mediaUrl: 'https://x.test', mediaType: 'image' });
 const items = [1, 2, 3, 4].map(item);
@@ -69,5 +69,32 @@ describe('computeRankings', () => {
   it('breaks ties by appearances, then id, and skips unknown items', () => {
     const rankings = computeRankings([{ ranking: [4, 3] }, { ranking: [2, 1] }, { ranking: [9, 1] }], items);
     expect(rankings.map(r => r.item.id)).toEqual([2, 4, 1, 3]);
+  });
+});
+
+describe('rankingRunCount', () => {
+  it('is exact when every item was in every run', () => {
+    const count = rankingRunCount(computeRankings([{ ranking: [1, 2, 3, 4] }, { ranking: [4, 3, 2, 1] }], items));
+    expect(count).toEqual({ runs: 2, atLeast: false });
+    expect(runsLabel(count)).toBe('2 runs');
+  });
+
+  it('is a lower bound when smaller runs left items out', () => {
+    const count = rankingRunCount(computeRankings([{ ranking: [1, 2, 3, 4] }, { ranking: [1, 3] }], items));
+    expect(count).toEqual({ runs: 2, atLeast: true });
+    expect(runsLabel(count)).toBe('at least 2 runs');
+  });
+
+  it('handles no runs and one run', () => {
+    expect(rankingRunCount([])).toEqual({ runs: 0, atLeast: false });
+    expect(runsLabel({ runs: 1, atLeast: false })).toBe('1 run');
+  });
+});
+
+describe('displayScore', () => {
+  it('shows average finish on a 0-100 scale', () => {
+    expect(displayScore(1)).toBe(100);
+    expect(displayScore(0.7419)).toBe(74);
+    expect(displayScore(0)).toBe(0);
   });
 });

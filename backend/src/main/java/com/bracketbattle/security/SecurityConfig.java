@@ -47,7 +47,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/brackets", "/brackets/popular", "/brackets/*",
-                        "/brackets/*/items", "/brackets/*/rankings", "/brackets/*/comments",
+                        "/brackets/*/items", "/brackets/*/rankings", "/brackets/*/stats", "/brackets/*/comments",
                         "/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                 // Pages with per-route head tags, and the sitemap (PageController, SitemapController).
                 // HEAD too, since link checkers and crawlers use it on page URLs.

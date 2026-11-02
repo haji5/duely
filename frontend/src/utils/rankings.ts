@@ -62,3 +62,22 @@ export function compareRankings(a: ItemRanking, b: ItemRanking): number {
     || b.timesRanked - a.timesRanked
     || a.item.id - b.item.id;
 }
+
+/**
+ * A fallback for how many runs a ranking rests on, while the exact count (bracket stats) is
+ * loading or failed. Smaller runs play a random subset, so the most-ranked item gives a lower
+ * bound; when items differ the count is reported as "at least".
+ */
+export function rankingRunCount(rankings: ItemRanking[]): { runs: number; atLeast: boolean } {
+  if (rankings.length === 0) return { runs: 0, atLeast: false };
+  const counts = rankings.map(r => r.timesRanked);
+  const runs = Math.max(...counts);
+  return { runs, atLeast: Math.min(...counts) !== runs };
+}
+
+export function runsLabel({ runs, atLeast }: { runs: number; atLeast: boolean }): string {
+  return `${atLeast ? 'at least ' : ''}${runs} ${runs === 1 ? 'run' : 'runs'}`;
+}
+
+/** The sort score shown to people: average finish on a 0-100 scale (100 = won every run). */
+export const displayScore = (averageScore: number) => Math.round(averageScore * 100);
