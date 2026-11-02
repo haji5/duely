@@ -234,11 +234,11 @@ const ResultsPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
               <button onClick={() => setView({ kind: 'everyone' })} aria-pressed={view.kind === 'everyone'} className="choice">
                 <span className="block text-themed-primary">Everyone</span>
-                <span className="block text-xs font-medium text-themed-tertiary">All completed runs</span>
+                <span className="block text-[0.8125rem] font-medium text-themed-tertiary">All completed runs</span>
               </button>
               <button onClick={() => setView({ kind: 'personal' })} aria-pressed={view.kind === 'personal'} className="choice">
                 <span className="block text-themed-primary">You</span>
-                <span className="block text-xs font-medium text-themed-tertiary">
+                <span className="block text-[0.8125rem] font-medium text-themed-tertiary">
                   Average of your {runs.length} {runs.length === 1 ? 'run' : 'runs'}{!currentUser && ', this tab'}
                 </span>
               </button>
@@ -254,7 +254,7 @@ const ResultsPage: React.FC = () => {
                   className="choice shrink-0 py-1.5 text-sm"
                 >
                   <span className="block text-themed-primary">Run {runs.length - index}</span>
-                  <span className="block text-xs font-medium text-themed-tertiary">{formatDate(run.createdAt)}</span>
+                  <span className="block text-[0.8125rem] font-medium text-themed-tertiary">{formatDate(run.createdAt)}</span>
                 </button>
               ))}
             </div>
@@ -292,7 +292,7 @@ const ResultsPage: React.FC = () => {
                   <li key={c.id} className="card p-4">
                     <div className="mb-2 flex items-baseline justify-between gap-3">
                       <span className="truncate font-semibold text-themed-primary">{c.displayName || 'Anonymous'}</span>
-                      <span className="shrink-0 text-xs text-themed-tertiary">{formatDate(c.createdAt)}</span>
+                      <span className="shrink-0 text-[0.8125rem] text-themed-tertiary">{formatDate(c.createdAt)}</span>
                     </div>
                     <p className="whitespace-pre-line leading-relaxed text-themed-secondary">{c.comment}</p>
                     {champion && (

@@ -5,7 +5,8 @@ export const REPO_URL = 'https://github.com/haji5/duely';
 export const LICENSE_URL = `${REPO_URL}/blob/master/LICENSE`;
 export const ISSUES_URL = `${REPO_URL}/issues`;
 
-const linkClass = 'rounded-md font-semibold text-themed-secondary hover:text-themed-primary';
+// min-h-6: standalone links get a 24 px target (WCAG 2.2 target size)
+const linkClass = 'inline-flex min-h-6 items-center rounded-md font-semibold text-themed-secondary hover:text-themed-primary';
 
 const Footer: React.FC = () => (
   <footer className="border-t border-themed-primary">

@@ -83,7 +83,7 @@ const HomePage: React.FC = () => {
       {meta}
       {/* Hero */}
       <section className="border-b border-themed-primary">
-        <div className="page grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-[1.05fr_1fr] lg:gap-14">
+        <div className="page grid items-center gap-10 py-10 sm:py-20 lg:grid-cols-[1.05fr_1fr] lg:gap-14">
           <div>
             <p className="mb-4 text-[0.95rem] font-bold uppercase tracking-[0.14em] text-accent">
               Song, video &amp; image bracket maker
@@ -126,19 +126,20 @@ const HomePage: React.FC = () => {
             </form>
 
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.95rem]">
-              <Link to="/browse" className="font-semibold text-themed-primary underline decoration-[color:var(--border-secondary)] decoration-2 underline-offset-4 hover:decoration-[color:var(--accent-primary)]">
+              <Link to="/browse" className="inline-flex min-h-6 items-center py-1 font-semibold text-themed-primary underline decoration-[color:var(--border-secondary)] decoration-2 underline-offset-4 hover:decoration-[color:var(--accent-primary)]">
                 Browse all brackets
               </Link>
               <Link
                 to="/create"
-                className="font-semibold text-themed-primary underline decoration-[color:var(--border-secondary)] decoration-2 underline-offset-4 hover:decoration-[color:var(--accent-primary)]"
+                className="inline-flex min-h-6 items-center py-1 font-semibold text-themed-primary underline decoration-[color:var(--border-secondary)] decoration-2 underline-offset-4 hover:decoration-[color:var(--accent-primary)]"
               >
                 Make your own
               </Link>
             </div>
           </div>
 
-          <div className="mx-auto w-full max-w-[560px]">
+          {/* Decorative: below lg it would stack under the hero and push every bracket out of the first screen */}
+          <div className="mx-auto hidden w-full max-w-[560px] lg:block">
             <BracketDiagram className="h-auto w-full" />
           </div>
         </div>
@@ -213,7 +214,7 @@ const HowItWorks: React.FC = () => (
   <section className="page pt-14 sm:pt-16" aria-labelledby="how-it-works">
     <div className="mb-6 flex items-end justify-between gap-4">
       <h2 id="how-it-works" className="font-display text-[2.1rem] font-extrabold leading-none text-themed-primary">How it works</h2>
-      <Link to="/about" className="shrink-0 rounded-md px-1 text-[0.95rem] font-semibold text-accent hover:underline underline-offset-4">
+      <Link to="/about" className="inline-flex min-h-6 shrink-0 items-center rounded-md px-1 py-1 text-[0.95rem] font-semibold text-accent hover:underline underline-offset-4">
         How rankings work
       </Link>
     </div>
@@ -246,7 +247,7 @@ const BracketSection: React.FC<{
       </div>
       <Link
         to={moreHref}
-        className="shrink-0 rounded-md px-1 text-[0.95rem] font-semibold text-accent hover:underline underline-offset-4"
+        className="inline-flex min-h-6 shrink-0 items-center rounded-md px-1 py-1 text-[0.95rem] font-semibold text-accent hover:underline underline-offset-4"
       >
         {moreLabel}
       </Link>

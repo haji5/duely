@@ -31,7 +31,7 @@
     --bg-tertiary: #e1e5ec;
     --text-primary: #151a24;
     --text-secondary: #4a5262;
-    --text-tertiary: #737c8d;
+    --text-tertiary: #5d6676;
     --border-primary: #d2d8e1;
     --border-secondary: #b6becb;
     --shadow-sm: 0 1px 2px rgba(21, 26, 36, 0.06);
@@ -43,7 +43,7 @@
     --accent-primary: #f5b82e;
     --accent-primary-hover: #e9a919;
     --accent-primary-text: #151a24;
-    --accent-ink: #9a6a00; /* gold that reads as text on light surfaces */
+    --accent-ink: #845a00; /* gold that reads as text on light surfaces (4.8:1 or better on every surface) */
 
     /* The two corners of every match */
     --side-a: #e0464b;
@@ -68,7 +68,7 @@
     --bg-tertiary: #263042;
     --text-primary: #eef1f6;
     --text-secondary: #aab3c3;
-    --text-tertiary: #7d889b;
+    --text-tertiary: #949fb2;
     --border-primary: #2d384b;
     --border-secondary: #3d4a60;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
