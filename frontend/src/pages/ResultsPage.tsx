@@ -8,7 +8,8 @@ import { bracketApi, errorMessage, errorStatus } from '../services/api';
 import type { Bracket, Comment, Item, ItemRanking, MatchOutcome } from '@/types';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
-import { computeRankings } from '@/utils/rankings';
+import { computeRankings, displayScore, rankingRunCount, runsLabel } from '@/utils/rankings';
+import ShareButton from '../components/ShareButton';
 
 /** One of the viewer's own runs: from the server when signed in, from this tab when a guest. */
 interface Run {
@@ -142,6 +143,13 @@ const ResultsPage: React.FC = () => {
       : view.kind === 'personal'
         ? personalRanking.map(r => ({ item: r.item, stats: r }))
         : (selectedRun?.ranking ?? []).map(itemId => itemsById.get(itemId)).filter((i): i is Item => !!i).map(item => ({ item }));
+    const scored = rows.flatMap(r => (r.stats ? [r.stats] : []));
+    const note = scored.length === 0 ? null : (
+      <p className="mb-3 text-sm text-themed-tertiary">
+        Ranked by average finish across {view.kind === 'personal' ? 'your ' : ''}{runsLabel(rankingRunCount(scored))}.
+        {' '}A score of 100 means it won every run it was in; the win rate counts head-to-head matches only.
+      </p>
+    );
     rankingBody = rows.length === 0 ? (
       <div className="card flex flex-col items-start px-6 py-12">
         <h3 className="font-display text-2xl font-extrabold">No results yet</h3>
@@ -153,13 +161,19 @@ const ResultsPage: React.FC = () => {
         <Link to={`/bracket/${bracketId}`} className="btn btn-primary mt-6">Play this bracket</Link>
       </div>
     ) : (
-      <ol className="divide-y divide-[color:var(--border-primary)]">
-        {rows.map(({ item, stats }, index) => <RankingRow key={item.id} item={item} stats={stats} index={index} />)}
-      </ol>
+      <>
+        {note}
+        <ol className="divide-y divide-[color:var(--border-primary)]">
+          {rows.map(({ item, stats }, index) => <RankingRow key={item.id} item={item} stats={stats} index={index} />)}
+        </ol>
+      </>
     );
   }
 
   const leader = rankings.status === 'ready' ? rankings.value[0]?.item.title : undefined;
+  const everyoneRuns = rankings.status === 'ready' ? runsLabel(rankingRunCount(rankings.value)) : '';
+  // "Everyone" on its own is no choice at all, so the filter appears once you have runs.
+  const showFilter = runs.length > 0;
 
   return (
     <div className="page pb-24 pt-10 sm:pt-14">
@@ -178,10 +192,20 @@ const ResultsPage: React.FC = () => {
           <h1 className="font-display text-[2.75rem] font-black leading-[0.95] text-themed-primary sm:text-[3.5rem]">
             {bracket.name}
           </h1>
+          {leader && (
+            <p className="mt-3 max-w-2xl text-lg font-semibold text-themed-primary">
+              {leader} leads everyone’s ranking of {items.length} entries, based on {everyoneRuns}.
+            </p>
+          )}
           {bracket.description && <p className="mt-3 max-w-2xl whitespace-pre-line text-lg text-themed-secondary">{bracket.description}</p>}
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap items-start gap-2">
           <Link to={`/bracket/${bracketId}`} className="btn btn-primary">Play again</Link>
+          <ShareButton
+            path={path}
+            title={`${bracket.name} results`}
+            text={leader ? `${leader} leads the ${bracket.name} ranking on Duely.` : `${bracket.name} results on Duely`}
+          />
           <Link to="/browse" className="btn btn-secondary">Browse brackets</Link>
         </div>
       </header>
@@ -193,43 +217,42 @@ const ResultsPage: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[14rem_minmax(0,1fr)] xl:grid-cols-[13rem_minmax(0,1fr)_18rem]">
-        <aside className="lg:sticky lg:top-24 lg:self-start">
-          <h2 className="mb-2 text-sm font-semibold text-themed-tertiary">Show</h2>
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-            <button onClick={() => setView({ kind: 'everyone' })} aria-pressed={view.kind === 'everyone'} className="choice">
-              <span className="block text-themed-primary">Everyone</span>
-              <span className="block text-xs font-medium text-themed-tertiary">All completed runs</span>
-            </button>
-            {runs.length > 0 && (
+      <div className={`grid grid-cols-1 gap-8 ${showFilter
+        ? 'lg:grid-cols-[14rem_minmax(0,1fr)] xl:grid-cols-[13rem_minmax(0,1fr)_18rem]'
+        : 'xl:grid-cols-[minmax(0,1fr)_20rem]'}`}
+      >
+        {showFilter && (
+          <aside className="lg:sticky lg:top-24 lg:self-start">
+            <h2 className="mb-2 text-sm font-semibold text-themed-tertiary">Show</h2>
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+              <button onClick={() => setView({ kind: 'everyone' })} aria-pressed={view.kind === 'everyone'} className="choice">
+                <span className="block text-themed-primary">Everyone</span>
+                <span className="block text-xs font-medium text-themed-tertiary">All completed runs</span>
+              </button>
               <button onClick={() => setView({ kind: 'personal' })} aria-pressed={view.kind === 'personal'} className="choice">
                 <span className="block text-themed-primary">You</span>
                 <span className="block text-xs font-medium text-themed-tertiary">
                   Average of your {runs.length} {runs.length === 1 ? 'run' : 'runs'}{!currentUser && ', this tab'}
                 </span>
               </button>
-            )}
-          </div>
+            </div>
 
-          {runs.length > 0 && (
-            <>
-              <h2 className="mb-2 mt-6 text-sm font-semibold text-themed-tertiary">Your runs{!currentUser && ' in this tab'}</h2>
-              <div className="flex gap-2 overflow-x-auto pb-1 lg:max-h-72 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0">
-                {[...runs].reverse().slice(0, 10).map((run, index) => (
-                  <button
-                    key={run.key}
-                    onClick={() => setView({ kind: 'run', key: run.key })}
-                    aria-pressed={view.kind === 'run' && view.key === run.key}
-                    className="choice shrink-0 py-1.5 text-sm"
-                  >
-                    <span className="block text-themed-primary">Run {runs.length - index}</span>
-                    <span className="block text-xs font-medium text-themed-tertiary">{formatDate(run.createdAt)}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </aside>
+            <h2 className="mb-2 mt-6 text-sm font-semibold text-themed-tertiary">Your runs{!currentUser && ' in this tab'}</h2>
+            <div className="flex gap-2 overflow-x-auto pb-1 lg:max-h-72 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0">
+              {[...runs].reverse().slice(0, 10).map((run, index) => (
+                <button
+                  key={run.key}
+                  onClick={() => setView({ kind: 'run', key: run.key })}
+                  aria-pressed={view.kind === 'run' && view.key === run.key}
+                  className="choice shrink-0 py-1.5 text-sm"
+                >
+                  <span className="block text-themed-primary">Run {runs.length - index}</span>
+                  <span className="block text-xs font-medium text-themed-tertiary">{formatDate(run.createdAt)}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
 
         <section aria-labelledby="ranking-title">
           <div className="mb-4 flex items-baseline justify-between gap-4 border-b border-themed-primary pb-3">
@@ -244,7 +267,7 @@ const ResultsPage: React.FC = () => {
         </section>
 
         {/* Comments show in every view, so a comment just posted is visible next to your run. */}
-        <section className="lg:col-start-2 xl:col-start-auto" aria-labelledby="comments-title">
+        <section className={showFilter ? 'lg:col-start-2 xl:col-start-auto' : ''} aria-labelledby="comments-title">
           <h2 id="comments-title" className="mb-4 border-b border-themed-primary pb-3 font-display text-[2rem] font-extrabold leading-none text-themed-primary">
             What people said
           </h2>
@@ -303,17 +326,19 @@ const RankingRow: React.FC<{ item: Item; stats?: ItemRanking; index: number }> =
         <MediaPreview item={item} size="thumbnail" className="h-full w-full" />
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className={`truncate font-semibold text-themed-primary ${isTop ? 'text-lg' : ''}`} title={item.title}>{item.title}</h3>
+        <h3 className={`break-words font-semibold leading-snug text-themed-primary line-clamp-2 ${isTop ? 'text-lg' : ''}`} title={item.title}>{item.title}</h3>
         {stats ? (
-          <div className="mt-1.5 flex items-center gap-3">
-            <div className="h-1.5 max-w-[14rem] flex-1 overflow-hidden rounded-full bg-themed-tertiary">
+          // The bar shows the score the list is sorted by, so bars only ever shrink down the list.
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div className="h-1.5 min-w-[4rem] max-w-[14rem] flex-1 overflow-hidden rounded-full bg-themed-tertiary" aria-hidden="true">
               <div
                 className="h-full rounded-full"
-                style={{ width: `${Math.max(0, Math.min(100, stats.winPercentage))}%`, backgroundColor: isTop ? 'var(--accent-primary)' : 'var(--text-tertiary)' }}
+                style={{ width: `${Math.max(0, Math.min(100, displayScore(stats.averageScore)))}%`, backgroundColor: isTop ? 'var(--accent-primary)' : 'var(--text-tertiary)' }}
               />
             </div>
-            <span className="shrink-0 text-sm text-themed-secondary tabular">
-              {stats.winPercentage}% of {stats.totalMatches} {stats.totalMatches === 1 ? 'match' : 'matches'} won
+            <span className="min-w-0 text-sm text-themed-secondary tabular">
+              <span className="font-semibold text-themed-primary">Score {displayScore(stats.averageScore)}</span>
+              {' · '}{stats.winPercentage}% of {stats.totalMatches} {stats.totalMatches === 1 ? 'match' : 'matches'} won
             </span>
           </div>
         ) : (
