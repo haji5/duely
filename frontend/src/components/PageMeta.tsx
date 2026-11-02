@@ -18,6 +18,10 @@ export const pageTitle = (main: string, detail = '', shortDetail = '') => {
   return `${truncate(main, MAX_TITLE - SUFFIX.length - shortDetail.length)}${shortDetail}${SUFFIX}`;
 };
 
+/** "song" for video brackets in Music (music videos), else the bracket type. Same rule as PageHeads.kind. */
+export const bracketKind = (type: string, category?: string | null) =>
+  type === 'video' && category === 'Music' ? 'song' : type;
+
 /** The canonical URL of a path: what PageMeta links as canonical, and what Share hands out. */
 export const canonicalUrl = (path: string) => `${window.location.origin}${path}`;
 

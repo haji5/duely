@@ -52,11 +52,11 @@ class PageHeadsTest {
         Document page = heads.bracket(shell(), bracket("Best songs", ""),
                 List.of(item(1, "First", "https://youtu.be/dQw4w9WgXcQ"), item(2, "Second", "https://youtu.be/aaaaaaaaaaa")));
 
-        assertThat(page.title()).isEqualTo("Best songs — 2-entry video bracket | Duely");
+        assertThat(page.title()).isEqualTo("Best songs — 2-entry song bracket | Duely");
         assertThat(page.select("title")).hasSize(1);
         assertThat(page.select("meta[name=description]")).hasSize(1);
         assertThat(page.select("meta[name=description]").attr("content"))
-                .isEqualTo("Play Best songs, a 2-entry video bracket in Music. Pick a favourite of two each match until one is left standing.");
+                .isEqualTo("Play Best songs, a 2-entry song bracket in Music. Pick a favourite of two each match until one is left standing.");
         assertThat(page.select("link[rel=canonical]").attr("href")).isEqualTo("https://duely.example/bracket/7");
         assertThat(page.select("meta[property=og:url]").attr("content")).isEqualTo("https://duely.example/bracket/7");
         assertThat(page.select("meta[property=og:image]").attr("content")).isEqualTo("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");

@@ -10,6 +10,12 @@ import '@fontsource/big-shoulders-display/900';
 import './index.css';
 import App from './App';
 
+// The served head carries a title, description and canonical for crawlers that don't run JS.
+// PageMeta renders its own, so drop the served ones to avoid two of each.
+document.head
+  .querySelectorAll('title, meta[name="description"], link[rel="canonical"]')
+  .forEach((el) => el.remove());
+
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );

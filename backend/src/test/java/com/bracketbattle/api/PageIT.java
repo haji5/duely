@@ -86,7 +86,7 @@ class PageIT extends IntegrationTest {
         String xml = result.getResponse().getContentAsString();
         Document sitemap = Jsoup.parse(xml, "", org.jsoup.parser.Parser.xmlParser());
         List<String> locs = sitemap.select("loc").eachText();
-        assertThat(locs).contains("https://duely.example/", "https://duely.example/browse",
+        assertThat(locs).contains("https://duely.example/", "https://duely.example/browse", "https://duely.example/about",
                 "https://duely.example/bracket/" + played, "https://duely.example/bracket/" + unplayed,
                 "https://duely.example/results/" + played);
         assertThat(locs).doesNotContain("https://duely.example/results/" + unplayed);

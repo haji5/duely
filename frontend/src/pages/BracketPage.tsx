@@ -6,7 +6,7 @@ import type { Bracket, Item, ItemRanking } from '@/types';
 import MediaPreview from '../components/MediaPreview';
 import { PageLoader, TypeIcon, formatDate, typeLabel } from '../components/BracketCard';
 import ShareButton from '../components/ShareButton';
-import PageMeta, { pageTitle } from '../components/PageMeta';
+import PageMeta, { bracketKind, pageTitle } from '../components/PageMeta';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
 import {
@@ -136,8 +136,8 @@ const BracketPage: React.FC = () => {
   const { bracket, items } = load;
   const meta = (
     <PageMeta
-      title={pageTitle(bracket.name, ` — ${items.length}-entry ${bracket.type} bracket`)}
-      description={`Play ${bracket.name}, a ${items.length}-entry ${bracket.type} bracket in ${bracket.category || 'General'}. `
+      title={pageTitle(bracket.name, ` — ${items.length}-entry ${bracketKind(bracket.type, bracket.category)} bracket`)}
+      description={`Play ${bracket.name}, a ${items.length}-entry ${bracketKind(bracket.type, bracket.category)} bracket in ${bracket.category || 'General'}. `
         + (bracket.description || 'Pick a favourite of two each match until one is left standing.')}
       path={path}
     />

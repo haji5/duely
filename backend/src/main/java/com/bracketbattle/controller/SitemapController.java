@@ -53,6 +53,7 @@ public class SitemapController {
                 + "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
         url(xml, "/", newestBracket);
         url(xml, "/browse", newestBracket);
+        url(xml, "/about", null);
         brackets.forEach(b -> url(xml, "/bracket/" + b.getId(), b.getCreatedAt()));
         brackets.stream().filter(b -> latestRun.containsKey(b.getId()))
                 .forEach(b -> url(xml, "/results/" + b.getId(), latestRun.get(b.getId())));

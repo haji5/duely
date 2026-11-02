@@ -3,7 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom';
 import MediaPreview from '../components/MediaPreview';
 import { PageLoader, TypeIcon, formatDate } from '../components/BracketCard';
 import { ErrorState } from '../components/PageStates';
-import PageMeta, { pageTitle } from '../components/PageMeta';
+import PageMeta, { bracketKind, pageTitle } from '../components/PageMeta';
 import { bracketApi, errorMessage, errorStatus } from '../services/api';
 import type { Bracket, BracketStats, Comment, Item, ItemRanking, MatchOutcome } from '@/types';
 import { useAuth } from '../contexts/AuthContext';
@@ -186,7 +186,7 @@ const ResultsPage: React.FC = () => {
     <div className="page pb-24 pt-10 sm:pt-14">
       <PageMeta
         title={pageTitle(bracket.name, ' results: everyone’s ranking', ' results')}
-        description={`Everyone’s ranking for ${bracket.name}, a ${items.length}-entry ${bracket.type} bracket on Duely.`
+        description={`Everyone’s ranking for ${bracket.name}, a ${items.length}-entry ${bracketKind(bracket.type, bracket.category)} bracket on Duely.`
           + (leader ? ` In the lead: ${leader}.` : ' Play it and add your own run.')}
         path={path}
       />
