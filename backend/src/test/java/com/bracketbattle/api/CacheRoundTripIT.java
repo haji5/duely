@@ -1,5 +1,6 @@
 package com.bracketbattle.api;
 
+import com.bracketbattle.dto.BracketStatsDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.model.Bracket;
@@ -35,6 +36,7 @@ class CacheRoundTripIT extends IntegrationTest {
         Optional<Bracket> bracket = service.getBracketById(id);
         List<Item> items = service.getBracketItems(id);
         List<ItemRankingDto> rankings = service.getBracketRankings(id);
+        BracketStatsDto stats = service.getBracketStats(id);
         List<CommentDto> comments = service.getBracketComments(id);
         List<Result> results = service.getUserResults("uid-a", id);
         List<Bracket> all = service.getAllBrackets();
@@ -42,6 +44,8 @@ class CacheRoundTripIT extends IntegrationTest {
         // Raw cache entries exist in Valkey under the versioned prefix...
         assertThat(redis.hasKey("duely:v4:bracket::" + id)).isTrue();
         assertThat(redis.hasKey("duely:v4:bracketRankings::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v4:bracketStats::" + id)).isTrue();
+        assertThat(get("bracketStats", id, BracketStatsDto.class).getRunCount()).isEqualTo(stats.getRunCount()).isEqualTo(1);
 
         // ...and deserialize into the original types with the same content.
         Bracket cachedBracket = get("bracket", id, Bracket.class);

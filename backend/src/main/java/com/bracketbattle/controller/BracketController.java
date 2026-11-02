@@ -1,5 +1,6 @@
 package com.bracketbattle.controller;
 
+import com.bracketbattle.dto.BracketStatsDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.ItemRankingDto;
@@ -60,6 +61,12 @@ public class BracketController {
     public List<ItemRankingDto> getBracketRankings(@PathVariable Long id) {
         requireBracket(id);
         return bracketService.getBracketRankings(id);
+    }
+
+    @GetMapping("/brackets/{id}/stats")
+    public BracketStatsDto getBracketStats(@PathVariable Long id) {
+        requireBracket(id);
+        return bracketService.getBracketStats(id);
     }
 
     @GetMapping("/brackets/{id}/comments")

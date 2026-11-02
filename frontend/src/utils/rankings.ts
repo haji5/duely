@@ -64,9 +64,9 @@ export function compareRankings(a: ItemRanking, b: ItemRanking): number {
 }
 
 /**
- * How many runs a ranking rests on. The rankings only carry per-item counts, and smaller runs
- * play a random subset, so the most-ranked item gives a lower bound; when items differ the
- * count is reported as "at least".
+ * A fallback for how many runs a ranking rests on, while the exact count (bracket stats) is
+ * loading or failed. Smaller runs play a random subset, so the most-ranked item gives a lower
+ * bound; when items differ the count is reported as "at least".
  */
 export function rankingRunCount(rankings: ItemRanking[]): { runs: number; atLeast: boolean } {
   if (rankings.length === 0) return { runs: 0, atLeast: false };

@@ -5,7 +5,7 @@ import { PageLoader, TypeIcon, formatDate } from '../components/BracketCard';
 import { ErrorState } from '../components/PageStates';
 import PageMeta, { pageTitle } from '../components/PageMeta';
 import { bracketApi, errorMessage, errorStatus } from '../services/api';
-import type { Bracket, Comment, Item, ItemRanking, MatchOutcome } from '@/types';
+import type { Bracket, BracketStats, Comment, Item, ItemRanking, MatchOutcome } from '@/types';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
 import { computeRankings, displayScore, rankingRunCount, runsLabel } from '@/utils/rankings';
@@ -35,6 +35,7 @@ const ResultsPage: React.FC = () => {
   const [notFound, setNotFound] = React.useState(false);
   const [rankings, setRankings] = React.useState<Section<ItemRanking[]>>({ status: 'loading' });
   const [comments, setComments] = React.useState<Section<Comment[]>>({ status: 'loading' });
+  const [stats, setStats] = React.useState<Section<BracketStats>>({ status: 'loading' });
   const [serverRuns, setServerRuns] = React.useState<Section<Run[]>>({ status: 'loading' });
   const [view, setView] = React.useState<View>({ kind: 'everyone' });
   const [reloadKey, setReloadKey] = React.useState(0);
@@ -51,6 +52,7 @@ const ResultsPage: React.FC = () => {
     setNotFound(false);
     setRankings({ status: 'loading' });
     setComments({ status: 'loading' });
+    setStats({ status: 'loading' });
     setServerRuns({ status: 'loading' });
     setView({ kind: 'everyone' });
     if (!Number.isInteger(bracketId) || bracketId <= 0) {
@@ -67,6 +69,8 @@ const ResultsPage: React.FC = () => {
       });
     const r = guard(setRankings);
     bracketApi.getBracketRankings(bracketId).then(r.ok, r.fail);
+    const st = guard(setStats);
+    bracketApi.getBracketStats(bracketId).then(st.ok, st.fail);
     const c = guard(setComments);
     bracketApi.getBracketComments(bracketId).then(c.ok, c.fail);
     const s = guard(setServerRuns);
@@ -130,6 +134,12 @@ const ResultsPage: React.FC = () => {
   const selectedRun = view.kind === 'run' ? runs.find(r => r.key === view.key) : undefined;
   const rankingTitle = view.kind === 'everyone' ? 'Everyone’s ranking' : view.kind === 'personal' ? 'Your ranking' : 'Your run';
 
+  const leader = rankings.status === 'ready' ? rankings.value[0]?.item.title : undefined;
+  // The exact count comes from the bracket stats; until they load (or if they fail) the rankings give a lower bound.
+  const everyoneRuns = stats.status === 'ready'
+    ? runsLabel({ runs: stats.value.runCount, atLeast: false })
+    : runsLabel(rankingRunCount(rankings.status === 'ready' ? rankings.value : []));
+
   let rankingBody: React.ReactNode;
   if (view.kind === 'everyone' && rankings.status !== 'ready') {
     rankingBody = rankings.status === 'loading'
@@ -143,10 +153,9 @@ const ResultsPage: React.FC = () => {
       : view.kind === 'personal'
         ? personalRanking.map(r => ({ item: r.item, stats: r }))
         : (selectedRun?.ranking ?? []).map(itemId => itemsById.get(itemId)).filter((i): i is Item => !!i).map(item => ({ item }));
-    const scored = rows.flatMap(r => (r.stats ? [r.stats] : []));
-    const note = scored.length === 0 ? null : (
+    const note = view.kind === 'run' || rows.length === 0 ? null : (
       <p className="mb-3 text-sm text-themed-tertiary">
-        Ranked by average finish across {view.kind === 'personal' ? 'your ' : ''}{runsLabel(rankingRunCount(scored))}.
+        Ranked by average finish across {view.kind === 'personal' ? `your ${runsLabel({ runs: runs.length, atLeast: false })}` : everyoneRuns}.
         {' '}A score of 100 means it won every run it was in; the win rate counts head-to-head matches only.
       </p>
     );
@@ -170,8 +179,6 @@ const ResultsPage: React.FC = () => {
     );
   }
 
-  const leader = rankings.status === 'ready' ? rankings.value[0]?.item.title : undefined;
-  const everyoneRuns = rankings.status === 'ready' ? runsLabel(rankingRunCount(rankings.value)) : '';
   // "Everyone" on its own is no choice at all, so the filter appears once you have runs.
   const showFilter = runs.length > 0;
 

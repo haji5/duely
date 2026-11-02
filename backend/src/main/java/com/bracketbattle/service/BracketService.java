@@ -1,6 +1,7 @@
 package com.bracketbattle.service;
 
 import com.bracketbattle.advice.InvalidRequestException;
+import com.bracketbattle.dto.BracketStatsDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.ItemRankingDto;
@@ -84,6 +85,11 @@ public class BracketService {
     @Cacheable(value = "bracketRankings", key = "#bracketId")
     public List<ItemRankingDto> getBracketRankings(Long bracketId) {
         return itemStatsRepository.findRankings(bracketId);
+    }
+
+    @Cacheable(value = "bracketStats", key = "#bracketId")
+    public BracketStatsDto getBracketStats(Long bracketId) {
+        return new BracketStatsDto(resultRepository.countByBracketId(bracketId));
     }
 
     @Cacheable(value = "bracketComments", key = "#bracketId")
@@ -172,6 +178,7 @@ public class BracketService {
      */
     @Caching(evict = {
             @CacheEvict(value = "bracketRankings", key = "#bracketId"),
+            @CacheEvict(value = "bracketStats", key = "#bracketId"),
             @CacheEvict(value = "bracketComments", key = "#bracketId"),
             @CacheEvict(value = "userResults", key = "#userId + ':all'", condition = "#userId != null"),
             @CacheEvict(value = "userResults", key = "#userId + ':' + #bracketId", condition = "#userId != null")

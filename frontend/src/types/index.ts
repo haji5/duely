@@ -43,6 +43,12 @@ export interface Comment {
   championItemId: number | null;
 }
 
+/** Bracket-wide numbers the per-item rankings can't give. */
+export interface BracketStats {
+  /** Completed runs saved for the bracket, guests' included. */
+  runCount: number;
+}
+
 export interface ItemRanking {
   item: Item;
   wins: number;

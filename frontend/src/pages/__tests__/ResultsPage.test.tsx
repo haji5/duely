@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { Bracket, Item, ItemRanking } from '@/types';
@@ -16,12 +16,15 @@ const rankings: ItemRanking[] = [
   { item: items[2], wins: 1, totalMatches: 6, winPercentage: 17, averageScore: 0.2, timesRanked: 4 },
 ];
 
+const api = vi.hoisted(() => ({ getBracketStats: vi.fn() }));
+
 vi.mock('../../services/api', () => ({
   bracketApi: {
     getBracket: vi.fn(async () => bracket),
     getBracketItems: vi.fn(async () => items),
     getBracketRankings: vi.fn(async () => rankings),
     getBracketComments: vi.fn(async () => []),
+    getBracketStats: api.getBracketStats,
     getMyResults: vi.fn(async () => []),
   },
   errorMessage: () => 'failed',
@@ -43,22 +46,34 @@ const renderResults = () => render(
   </MemoryRouter>,
 );
 
+afterEach(() => api.getBracketStats.mockReset());
+
 describe('ResultsPage ranking', () => {
-  it('explains the order and shows the score it is sorted by', async () => {
+  it('explains the order with the exact run count and shows the score it is sorted by', async () => {
+    api.getBracketStats.mockResolvedValue({ runCount: 5 });
     renderResults();
 
-    expect(await screen.findByText(/Ranked by average finish across at least 4 runs\./)).toBeInTheDocument();
+    expect(await screen.findByText(/Ranked by average finish across 5 runs\./)).toBeInTheDocument();
     const rows = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(rows.map(r => within(r).getByText(/^Score \d+$/).textContent)).toEqual(['Score 74', 'Score 71', 'Score 20']);
     expect(rows[1]).toHaveTextContent('71% of 7 matches won');
   });
 
   it('opens with a one-line summary of the leader and the run count', async () => {
+    api.getBracketStats.mockResolvedValue({ runCount: 5 });
     renderResults();
-    expect(await screen.findByText('Alpha leads everyone’s ranking of 3 entries, based on at least 4 runs.')).toBeInTheDocument();
+    expect(await screen.findByText('Alpha leads everyone’s ranking of 3 entries, based on 5 runs.')).toBeInTheDocument();
+  });
+
+  it('falls back to a lower bound from the rankings when the run count fails', async () => {
+    api.getBracketStats.mockRejectedValue(new Error('down'));
+    renderResults();
+    expect(await screen.findByText(/Ranked by average finish across at least 4 runs\./)).toBeInTheDocument();
+    expect(screen.getByText(/based on at least 4 runs\./)).toBeInTheDocument();
   });
 
   it('hides the "Show" filter when Everyone is the only option', async () => {
+    api.getBracketStats.mockResolvedValue({ runCount: 5 });
     renderResults();
     await screen.findByText(/Ranked by average finish/);
     expect(screen.queryByRole('button', { name: /Everyone/ })).not.toBeInTheDocument();

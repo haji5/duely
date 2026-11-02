@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type {
-  Bracket, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Result,
+  Bracket, BracketStats, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Result,
 } from '@/types';
 import { currentFirebaseUser } from '@/config/firebase';
 import { apiCache } from '@/utils/apiCache';
@@ -83,6 +83,8 @@ export const bracketApi = {
 
   // Rankings and comments change with every run, so they are always fetched fresh.
   getBracketRankings: (id: number): Promise<ItemRanking[]> => get<ItemRanking[]>(`/brackets/${id}/rankings`),
+
+  getBracketStats: (id: number): Promise<BracketStats> => get<BracketStats>(`/brackets/${id}/stats`),
 
   getBracketComments: (id: number): Promise<Comment[]> => get<Comment[]>(`/brackets/${id}/comments`),
 
