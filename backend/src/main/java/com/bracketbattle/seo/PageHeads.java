@@ -89,8 +89,8 @@ public class PageHeads {
     public Document bracket(Document shell, Bracket bracket, List<Item> items) {
         String path = "/bracket/" + bracket.getId();
         String name = bracket.getName();
-        String summary = items.size() + "-entry " + bracket.getType() + " bracket";
         String category = blankTo(bracket.getCategory(), "General");
+        String summary = items.size() + "-entry " + kind(bracket) + " bracket";
         String description = "Play " + name + ", a " + summary + " in " + category + ". "
                 + blankTo(bracket.getDescription(), "Pick a favourite of two each match until one is left standing.");
 
@@ -144,7 +144,7 @@ public class PageHeads {
         String path = "/results/" + bracket.getId();
         String name = bracket.getName();
         String leader = rankings.isEmpty() ? null : rankings.get(0).getItem().getTitle();
-        String description = "Everyone’s ranking for " + name + ", a " + items.size() + "-entry " + bracket.getType()
+        String description = "Everyone’s ranking for " + name + ", a " + items.size() + "-entry " + kind(bracket)
                 + " bracket on Duely." + (leader != null ? " In the lead: " + leader + "." : " Play it and add your own run.");
 
         common(shell, pageTitle(name, " results: everyone’s ranking", " results"), description, path);
@@ -209,6 +209,11 @@ public class PageHeads {
         String full = main + detail + SUFFIX;
         if (full.length() <= MAX_TITLE) return full;
         return truncate(main, MAX_TITLE - SUFFIX.length() - shortDetail.length()) + shortDetail + SUFFIX;
+    }
+
+    /** "song" for video brackets in Music (music videos), else the bracket type. Same rule as bracketKind in PageMeta.tsx. */
+    static String kind(Bracket bracket) {
+        return "video".equals(bracket.getType()) && "Music".equals(bracket.getCategory()) ? "song" : bracket.getType();
     }
 
     /** Same wording as the results page: "95% of 62 matches won". */

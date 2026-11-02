@@ -85,8 +85,9 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
   );
 };
 
+// Full screen height keeps the footer below the fold while loading, so it doesn't jump when the page renders.
 export const PageLoader: React.FC<{ label?: string }> = ({ label = 'Loading' }) => (
-  <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3" role="status" aria-live="polite">
+  <div className="flex min-h-screen flex-col items-center justify-center gap-3" role="status" aria-live="polite">
     <span className="spinner" style={{ width: '2rem', height: '2rem', borderWidth: 3 }} />
     <span className="text-sm text-themed-tertiary">{label}</span>
   </div>

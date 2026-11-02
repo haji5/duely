@@ -75,8 +75,8 @@ describe('page titles and canonicals', () => {
   it('bracket', async () => {
     renderAt('/bracket/3');
     await screen.findByRole('heading', { level: 1, name: 'THE BUN ZONE BRACKET' });
-    expect(document.title).toBe('THE BUN ZONE BRACKET — 3-entry video bracket | Duely');
-    expect(description()).toContain('a 3-entry video bracket in Music');
+    expect(document.title).toBe('THE BUN ZONE BRACKET — 3-entry song bracket | Duely');
+    expect(description()).toContain('a 3-entry song bracket in Music');
     expect(canonical()).toBe(`${window.location.origin}/bracket/3`);
     expect(screen.getByRole('link', { name: 'See results so far' })).toHaveAttribute('href', '/results/3');
   });
