@@ -20,8 +20,8 @@ export default {
         },
       },
       fontFamily: {
-        'sans': ['Barlow', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        'display': ['"Big Shoulders Display"', 'Barlow', 'ui-sans-serif', 'sans-serif'],
+        'sans': ['Barlow', '"Barlow Fallback"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        'display': ['"Big Shoulders Display"', '"Big Shoulders Display Fallback"', 'Barlow', 'ui-sans-serif', 'sans-serif'],
       },
     },
   },
