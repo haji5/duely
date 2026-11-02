@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { bracketApi, errorMessage, fieldErrors } from '../services/api';
 import { fetchMediaTitle } from '../services/oembed';
 import { useAuth } from '../contexts/AuthContext';
 import { TypeIcon } from '../components/BracketCard';
+import PageMeta from '../components/PageMeta';
 import type { BracketType } from '@/types';
 import { randomId } from '@/utils/ids';
 import {
@@ -265,6 +266,10 @@ const CustomBracketPage: React.FC = () => {
 
   return (
     <div className="page max-w-3xl pb-24 pt-10 sm:pt-14">
+      <PageMeta
+        title="Make a bracket | Duely"
+        description="Make a bracket from songs, YouTube videos or images, or import a Spotify playlist, then share it so others can pick their favourite head to head."
+      />
       <header className="mb-10">
         <h1 className="font-display text-[3rem] font-black leading-none text-themed-primary sm:text-[3.5rem]">
           Make a bracket
@@ -489,9 +494,14 @@ const CustomBracketPage: React.FC = () => {
         )}
 
         <div className="flex flex-col-reverse gap-3 border-t border-themed-primary pt-6 sm:flex-row sm:justify-end">
-          <button type="button" onClick={() => navigate('/')} className="btn btn-secondary btn-lg" disabled={submitting}>
+          <Link
+            to="/"
+            onClick={(e) => { if (submitting) e.preventDefault(); }}
+            aria-disabled={submitting || undefined}
+            className="btn btn-secondary btn-lg"
+          >
             Cancel
-          </button>
+          </Link>
           <button
             type="submit"
             className="btn btn-primary btn-lg sm:min-w-[14rem]"

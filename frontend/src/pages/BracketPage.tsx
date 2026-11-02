@@ -1,10 +1,11 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { bracketApi, errorMessage, errorStatus } from '../services/api';
 import type { Bracket, Item } from '@/types';
 import MediaPreview from '../components/MediaPreview';
 import { PageLoader, TypeIcon } from '../components/BracketCard';
+import PageMeta, { pageTitle } from '../components/PageMeta';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
 import {
@@ -16,7 +17,7 @@ import { playSelectionTick, playSuccessChime, playTick } from '@/utils/sound';
 
 type Load =
   | { status: 'loading' }
-  | { status: 'error'; title: string; message: string }
+  | { status: 'error'; title: string; message: string; notFound?: boolean }
   | { status: 'ready'; bracket: Bracket; items: Item[] };
 
 interface Animation {
@@ -63,7 +64,7 @@ const BracketPage: React.FC = () => {
     setTournament(null);
     setSelectedSize(null);
     if (!Number.isInteger(bracketId) || bracketId <= 0) {
-      setLoad({ status: 'error', title: 'Bracket not found', message: 'The link looks wrong.' });
+      setLoad({ status: 'error', title: 'Bracket not found', message: 'The link looks wrong.', notFound: true });
       return;
     }
     Promise.all([bracketApi.getBracket(bracketId), bracketApi.getBracketItems(bracketId)])
@@ -78,7 +79,7 @@ const BracketPage: React.FC = () => {
       .catch((error) => {
         if (cancelled) return;
         setLoad(errorStatus(error) === 404
-          ? { status: 'error', title: 'Bracket not found', message: 'It may have been removed, or the link is wrong.' }
+          ? { status: 'error', title: 'Bracket not found', message: 'It may have been removed, or the link is wrong.', notFound: true }
           : { status: 'error', title: 'Couldn’t load this bracket', message: errorMessage(error) });
       });
     return () => { cancelled = true; };
@@ -93,29 +94,41 @@ const BracketPage: React.FC = () => {
     }
   }, [complete, currentUser]);
 
+  const path = `/bracket/${bracketId}`;
+
   if (load.status === 'loading') {
-    return <PageLoader label="Loading bracket" />;
+    return <><PageMeta title="Bracket | Duely" path={path} /><PageLoader label="Loading bracket" /></>;
   }
 
   if (load.status === 'error') {
     return (
       <div className="page flex min-h-[60vh] flex-col items-start justify-center py-16">
+        <PageMeta title={pageTitle(load.title)} path={path} noindex={load.notFound} />
         <h1 className="font-display text-[2.75rem] font-black leading-none">{load.title}</h1>
         <p className="mt-3 max-w-lg text-lg text-themed-secondary">{load.message}</p>
         <div className="mt-8 flex flex-wrap gap-3">
           <button onClick={() => setReloadKey(k => k + 1)} className="btn btn-primary">Try again</button>
-          <button onClick={() => navigate('/browse')} className="btn btn-secondary">Browse brackets</button>
+          <Link to="/browse" className="btn btn-secondary">Browse brackets</Link>
         </div>
       </div>
     );
   }
 
   const { bracket, items } = load;
+  const meta = (
+    <PageMeta
+      title={pageTitle(bracket.name, ` — ${items.length}-entry ${bracket.type} bracket`)}
+      description={`Play ${bracket.name}, a ${items.length}-entry ${bracket.type} bracket in ${bracket.category || 'General'}. `
+        + (bracket.description || 'Pick a favourite of two each match until one is left standing.')}
+      path={path}
+    />
+  );
 
   if (!tournament) {
     const options = bracketSizeOptions(items.length);
     return (
       <div className="page max-w-3xl pb-24 pt-10 sm:pt-16">
+        {meta}
         <p className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-themed-secondary">
           <TypeIcon type={bracket.type} />
           {items.length} entries in this bracket
@@ -173,9 +186,9 @@ const BracketPage: React.FC = () => {
           >
             {selectedSize ? `Start the ${roundName(selectedSize).toLowerCase()}` : 'Pick a size to start'}
           </button>
-          <button onClick={() => navigate(`/results/${bracketId}`)} className="btn btn-secondary btn-lg">
+          <Link to={`/results/${bracketId}`} className="btn btn-secondary btn-lg">
             See results so far
-          </button>
+          </Link>
         </div>
       </div>
     );
@@ -218,6 +231,7 @@ const BracketPage: React.FC = () => {
 
     return (
       <div className="page max-w-2xl pb-24 pt-10 sm:pt-16">
+        {meta}
         <ChampionReveal>
           <div
             className="relative overflow-hidden rounded-lg px-6 py-8 sm:px-8"
@@ -321,6 +335,7 @@ const BracketPage: React.FC = () => {
 
   return (
     <div className="page max-w-6xl pb-16 pt-6 sm:pt-10">
+      {meta}
       <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-themed-secondary">{bracket.name}</p>

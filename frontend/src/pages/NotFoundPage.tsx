@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import PageMeta from '../components/PageMeta';
 
 const NotFoundPage: React.FC = () => (
   <div className="page flex min-h-[60vh] flex-col items-start justify-center py-16">
+    <PageMeta title="Page not found | Duely" description="This page doesn’t exist on Duely." noindex />
     <h1 className="font-display text-[2.75rem] font-black leading-none">Page not found</h1>
     <p className="mt-3 text-lg text-themed-secondary">The link may be wrong or out of date.</p>
     <div className="mt-8 flex flex-wrap gap-3">

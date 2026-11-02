@@ -3,6 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom';
 import MediaPreview from '../components/MediaPreview';
 import { PageLoader, TypeIcon, formatDate } from '../components/BracketCard';
 import { ErrorState } from '../components/PageStates';
+import PageMeta, { pageTitle } from '../components/PageMeta';
 import { bracketApi, errorMessage, errorStatus } from '../services/api';
 import type { Bracket, Comment, Item, ItemRanking, MatchOutcome } from '@/types';
 import { useAuth } from '../contexts/AuthContext';
@@ -100,19 +101,25 @@ const ResultsPage: React.FC = () => {
   const itemsById = React.useMemo(() => new Map(items.map(item => [item.id, item])), [items]);
   const personalRanking = React.useMemo(() => computeRankings(runs, items), [runs, items]);
 
+  const path = `/results/${bracketId}`;
+
   if (notFound) {
     return (
       <div className="page flex min-h-[60vh] flex-col items-start justify-center py-16">
+        <PageMeta title="Bracket not found | Duely" noindex />
         <h1 className="font-display text-[2.75rem] font-black leading-none">Bracket not found</h1>
         <p className="mt-3 text-lg text-themed-secondary">It may have been removed, or the link is wrong.</p>
         <Link to="/browse" className="btn btn-primary mt-8">Browse brackets</Link>
       </div>
     );
   }
-  if (page.status === 'loading') return <PageLoader label="Loading results" />;
+  if (page.status === 'loading') {
+    return <><PageMeta title="Results | Duely" path={path} /><PageLoader label="Loading results" /></>;
+  }
   if (page.status === 'error') {
     return (
       <div className="page py-16">
+        <PageMeta title="Results couldn’t be loaded | Duely" path={path} />
         <ErrorState title="Results couldn’t be loaded" message={page.message} onRetry={() => setReloadKey(k => k + 1)} />
       </div>
     );
@@ -152,8 +159,16 @@ const ResultsPage: React.FC = () => {
     );
   }
 
+  const leader = rankings.status === 'ready' ? rankings.value[0]?.item.title : undefined;
+
   return (
     <div className="page pb-24 pt-10 sm:pt-14">
+      <PageMeta
+        title={pageTitle(bracket.name, ' results: everyone’s ranking', ' results')}
+        description={`Everyone’s ranking for ${bracket.name}, a ${items.length}-entry ${bracket.type} bracket on Duely.`
+          + (leader ? ` In the lead: ${leader}.` : ' Play it and add your own run.')}
+        path={path}
+      />
       <header className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-themed-secondary">
