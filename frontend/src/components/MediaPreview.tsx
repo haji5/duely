@@ -178,7 +178,7 @@ const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
   if (thumbnail) {
     return thumbFailed
       ? <Unavailable label="" tall={false} />
-      : <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />;
+      : <img src={thumbnailUrl} alt="" width={480} height={360} className="h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />;
   }
 
   if (!started) {
@@ -192,7 +192,7 @@ const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
         aria-label={`Play a preview of ${item.title}`}
       >
         {!thumbFailed && (
-          <img src={thumbnailUrl} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />
+          <img src={thumbnailUrl} alt="" width={480} height={360} className="absolute inset-0 h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />
         )}
         <span className="absolute inset-0 bg-black/30 transition-colors group-hover/play:bg-black/40" />
         <span className="relative rounded-full bg-white/90 p-4 text-gray-800 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-active/play:scale-95">

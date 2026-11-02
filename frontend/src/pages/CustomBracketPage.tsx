@@ -545,7 +545,7 @@ const EntryPreview: React.FC<{ url: string; type: BracketType; label: string }> 
   if (type === 'video') {
     const thumbnail = getYouTubeThumbnail(url);
     return thumbnail ? (
-      <img src={thumbnail} alt={label} className="mt-3 h-24 w-40 rounded object-cover" loading="lazy" onError={() => setFailedUrl(url)} />
+      <img src={thumbnail} alt={label} width={480} height={360} className="mt-3 h-24 w-40 rounded object-cover" loading="lazy" onError={() => setFailedUrl(url)} />
     ) : null;
   }
   if (type === 'song') {

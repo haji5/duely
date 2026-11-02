@@ -376,7 +376,7 @@ const BracketPage: React.FC = () => {
                   </button>
                 </div>
                 {!currentUser && (
-                  <p className="mt-2 text-xs">Without saving, the run stays only in this tab.</p>
+                  <p className="mt-2 text-[0.8125rem]">Without saving, the run stays only in this tab.</p>
                 )}
               </div>
             )}

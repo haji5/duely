@@ -56,7 +56,7 @@ const LoginButton: React.FC = () => {
           />
         </svg>
       )}
-      <span className="hidden sm:inline">{isLoading ? 'Signing in…' : 'Sign in'}</span>
+      <span>{isLoading ? 'Signing in…' : 'Sign in'}</span>
     </button>
   );
 };

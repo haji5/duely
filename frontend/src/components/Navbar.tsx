@@ -20,7 +20,7 @@ export const Logo: React.FC<{ className?: string }> = ({ className = 'w-7 h-7' }
 );
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `hidden sm:inline-flex px-3 py-2 rounded-md text-[0.95rem] font-semibold transition-colors ${
+  `inline-flex px-2 sm:px-3 py-2 rounded-md text-[0.95rem] font-semibold transition-colors ${
     isActive ? 'text-themed-primary' : 'text-themed-secondary hover:text-themed-primary'
   }`;
 
