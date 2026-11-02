@@ -19,6 +19,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 }));
 
 import CustomBracketPage from '../CustomBracketPage';
+import { bracketApi } from '../../services/api';
 
 const URL_1 = 'https://youtu.be/AAAAAAAAAAA';
 const URL_2 = 'https://youtu.be/BBBBBBBBBBB';
@@ -53,5 +54,50 @@ describe('CustomBracketPage', () => {
     await act(async () => pending.get(url)!('Fetched title'));
 
     expect(title1).toHaveValue('My own title');
+  });
+
+  it('requires a category instead of defaulting to General', async () => {
+    render(<MemoryRouter><CustomBracketPage /></MemoryRouter>);
+    const category = screen.getByLabelText('Category');
+    expect(category).toHaveValue('');
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Best videos' } });
+    const [url1, url2] = screen.getAllByLabelText(/YouTube link/);
+    const [title1, title2] = screen.getAllByLabelText('Title');
+    fireEvent.change(url1, { target: { value: 'https://youtu.be/DDDDDDDDDDD' } });
+    fireEvent.change(url2, { target: { value: 'https://youtu.be/EEEEEEEEEEE' } });
+    fireEvent.change(title1, { target: { value: 'One' } });
+    fireEvent.change(title2, { target: { value: 'Two' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create bracket' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pick a category');
+    expect(category).toHaveAttribute('aria-invalid', 'true');
+    expect(bracketApi.createBracket).not.toHaveBeenCalled();
+  });
+
+  it('infers Music for song brackets, but keeps a category the user picked', () => {
+    render(<MemoryRouter><CustomBracketPage /></MemoryRouter>);
+    const category = screen.getByLabelText('Category');
+    fireEvent.click(screen.getByLabelText('Songs'));
+    expect(category).toHaveValue('Music');
+
+    fireEvent.change(category, { target: { value: 'Movies' } });
+    fireEvent.click(screen.getByLabelText('Videos'));
+    fireEvent.click(screen.getByLabelText('Songs'));
+    expect(category).toHaveValue('Movies');
+  });
+
+  it('infers Music after a Spotify playlist import', async () => {
+    vi.mocked(bracketApi.getSpotifyPlaylist).mockResolvedValue([
+      { title: 'Song A', mediaUrl: 'https://open.spotify.com/track/a' },
+      { title: 'Song B', mediaUrl: 'https://open.spotify.com/track/b' },
+    ] as Awaited<ReturnType<typeof bracketApi.getSpotifyPlaylist>>);
+    vi.mocked(bracketApi.searchYouTube).mockResolvedValue('https://youtu.be/FFFFFFFFFFF');
+    render(<MemoryRouter><CustomBracketPage /></MemoryRouter>);
+
+    fireEvent.change(screen.getByLabelText('Fill from a Spotify playlist'), { target: { value: 'https://open.spotify.com/playlist/abc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Category')).toHaveValue('Music'));
   });
 });

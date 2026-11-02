@@ -29,6 +29,8 @@ const CATEGORIES = [
   'General', 'Music', 'TV', 'Movies', 'Sports', 'Gaming', 'Food', 'Travel', 'Art', 'Technology', 'Entertainment',
 ];
 
+const CATEGORY_MISSING = 'Pick a category';
+
 const newEntry = (fields: Partial<Entry> = {}): Entry =>
   ({ id: randomId(), title: '', mediaUrl: '', titleSource: null, status: 'idle', ...fields });
 
@@ -42,7 +44,8 @@ const CustomBracketPage: React.FC = () => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<BracketType>('video');
-  const [category, setCategory] = useState('General');
+  // No default: an unchosen category used to be saved as "General", even for music brackets.
+  const [category, setCategory] = useState('');
   const [entries, setEntries] = useState<Entry[]>(() => [newEntry(), newEntry()]);
   // Latest entries for async work (playlist import) that outlives the render it started in.
   const entriesRef = useRef(entries);
@@ -65,6 +68,14 @@ const CustomBracketPage: React.FC = () => {
       timers.forEach(({ timer, abort }) => { clearTimeout(timer); abort.abort(); });
     };
   }, []);
+
+  /** Songs and Spotify imports are music, unless the user already picked a category. */
+  const inferMusic = () => setCategory(c => c || 'Music');
+
+  const chooseType = (t: BracketType) => {
+    setType(t);
+    if (t === 'song') inferMusic();
+  };
 
   const patch = (id: string, change: (e: Entry) => Partial<Entry>) =>
     setEntries(prev => prev.map(e => (e.id === id ? { ...e, ...change(e) } : e)));
@@ -174,6 +185,7 @@ const CustomBracketPage: React.FC = () => {
       const added = [...entriesRef.current.filter(e => !isEmpty(e)), ...imported].slice(0, LIMITS.maxEntries);
       entriesRef.current = added;
       setEntries(added);
+      inferMusic();
       setPlaylistUrl('');
       const skipped = tracks.length - imported.length;
       setImportMessage({
@@ -213,6 +225,7 @@ const CustomBracketPage: React.FC = () => {
     let message: string | null = null;
     if (!name.trim()) message = 'Give the bracket a name';
     else if (name.trim().length > LIMITS.name) message = `The name can be at most ${LIMITS.name} characters`;
+    else if (!category) message = CATEGORY_MISSING;
     else if (description.length > LIMITS.description) message = `The description can be at most ${LIMITS.description} characters`;
     else if (Object.keys(errors).length > 0) message = Object.values(errors)[0];
     else if (filled.length < LIMITS.minEntries) message = `Add at least ${LIMITS.minEntries} entries`;
@@ -318,7 +331,7 @@ const CustomBracketPage: React.FC = () => {
             <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Bracket type">
               {(['video', 'song', 'image'] as const).map((t) => (
                 <label key={t} className="choice flex cursor-pointer items-center justify-center gap-2 py-2.5">
-                  <input type="radio" name="bracket-type" value={t} checked={type === t} onChange={() => setType(t)} className="sr-only" />
+                  <input type="radio" name="bracket-type" value={t} checked={type === t} onChange={() => chooseType(t)} className="sr-only" />
                   <TypeIcon type={t} className="h-5 w-5" />
                   {typeLabel(t)}
                 </label>
@@ -328,7 +341,15 @@ const CustomBracketPage: React.FC = () => {
 
           <div>
             <label htmlFor="bracketCategory" className="field-label">Category</label>
-            <select id="bracketCategory" value={category} onChange={(e) => setCategory(e.target.value)} className="field">
+            <select
+              id="bracketCategory"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="field"
+              required
+              aria-invalid={formError === CATEGORY_MISSING && !category}
+            >
+              <option value="" disabled>Choose a category</option>
               {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
