@@ -7,7 +7,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
  * Per-IP limit on GET (and HEAD, which runs the same handler) requests. getRemoteAddr() is already the real client address: nginx
- * overwrites X-Forwarded-For and Spring's forward-headers-strategy applies it.
+ * overwrites X-Forwarded-For, clears any client Forwarded header (which Spring would prefer), and
+ * Spring's forward-headers-strategy applies it.
  */
 @Component
 public class ReadRateLimitInterceptor implements HandlerInterceptor {

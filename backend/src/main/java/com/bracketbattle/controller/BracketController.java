@@ -5,6 +5,7 @@ import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.dto.SaveResultRequest;
+import com.bracketbattle.dto.ValidationOrder;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Item;
 import com.bracketbattle.model.Result;
@@ -12,9 +13,9 @@ import com.bracketbattle.ratelimit.RateLimiter;
 import com.bracketbattle.security.CurrentUser;
 import com.bracketbattle.service.BracketService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -77,7 +78,7 @@ public class BracketController {
 
     /** Open to guests; signed-in runs are attributed to the user and show up in their history. */
     @PostMapping("/brackets/{id}/results")
-    public Result saveBracketResult(@PathVariable Long id, @Valid @RequestBody SaveResultRequest payload,
+    public Result saveBracketResult(@PathVariable Long id, @Validated(ValidationOrder.class) @RequestBody SaveResultRequest payload,
                                     Authentication authentication, HttpServletRequest request) {
         String userId = CurrentUser.uidOrNull(authentication);
         if (userId != null) {
@@ -89,7 +90,7 @@ public class BracketController {
     }
 
     @PostMapping("/brackets")
-    public Bracket createBracket(@Valid @RequestBody CreateBracketRequest payload, Authentication authentication) {
+    public Bracket createBracket(@Validated(ValidationOrder.class) @RequestBody CreateBracketRequest payload, Authentication authentication) {
         String userId = CurrentUser.uidOrNull(authentication);
         rateLimiter.tryAcquire("bracket-create", userId);
         return bracketService.createBracket(payload, userId);

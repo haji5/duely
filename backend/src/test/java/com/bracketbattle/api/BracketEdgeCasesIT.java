@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -128,6 +129,40 @@ class BracketEdgeCasesIT extends IntegrationTest {
                 "comment", "x".repeat(501)));
         assertBadRun(id, Map.of("ranking", "not a list", "matches", List.of(), "submissionToken", "n3"));
         assertBadRun(id, Map.of("ranking", List.of(r.get(0), "abc"), "matches", List.of(), "submissionToken", "n4"));
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isZero();
+    }
+
+    /** Oversized lists stop at the size check: one error, not one per element (guest CPU before the rate limit). */
+    @Test
+    void oversizedListsAreOneErrorWithoutCheckingEachElement() throws Exception {
+        long id = createBracket(USER_A, "Oversized", 2).get("id").asLong();
+
+        MvcResult ranking = perform(postJson("/brackets/" + id + "/results",
+                Map.of("ranking", Collections.nCopies(5000, 0L), "matches", List.of(), "submissionToken", "big-1")));
+        assertThat(ranking.getResponse().getStatus()).isEqualTo(400);
+        assertThat(body(ranking).get("errors").size()).isEqualTo(1);
+        assertThat(body(ranking).get("errors").has("ranking")).isTrue();
+
+        MvcResult matches = perform(postJson("/brackets/" + id + "/results",
+                Map.of("ranking", itemIds(id), "matches", Collections.nCopies(5000, Map.of()), "submissionToken", "big-2")));
+        assertThat(matches.getResponse().getStatus()).isEqualTo(400);
+        assertThat(body(matches).get("errors").size()).isEqualTo(1);
+        assertThat(body(matches).get("errors").has("matches")).isTrue();
+
+        Map<String, Object> bracket = bracketPayload("Huge", "image", 2);
+        bracket.put("items", Collections.nCopies(2000, Map.of()));
+        MvcResult items = perform(as(USER_A, postJson("/brackets", bracket)));
+        assertThat(items.getResponse().getStatus()).isEqualTo(400);
+        assertThat(body(items).get("errors").size()).isEqualTo(1);
+        assertThat(body(items).get("errors").has("items")).isTrue();
+
+        // Within the size limit every bad element is still reported, up to a capped response.
+        MvcResult capped = perform(postJson("/brackets/" + id + "/results",
+                Map.of("ranking", Collections.nCopies(500, 0L), "matches", List.of(), "submissionToken", "big-3")));
+        assertThat(capped.getResponse().getStatus()).isEqualTo(400);
+        assertThat(body(capped).get("errors").has("ranking[0]")).isTrue();
+        assertThat(body(capped).get("errors").size()).isEqualTo(50);
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isZero();
     }
