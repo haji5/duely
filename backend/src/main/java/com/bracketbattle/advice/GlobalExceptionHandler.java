@@ -28,10 +28,14 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    /** Enough for a whole form; keeps the response small however many elements a body gets wrong. */
+    static final int MAX_FIELD_ERRORS = 50;
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new LinkedHashMap<>();
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
+            if (errors.size() >= MAX_FIELD_ERRORS) break;
             errors.putIfAbsent(fe.getField(), fe.getDefaultMessage());
         }
         String message = errors.isEmpty() ? "Validation failed" : errors.values().iterator().next();
