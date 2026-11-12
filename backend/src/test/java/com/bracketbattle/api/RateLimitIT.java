@@ -31,6 +31,9 @@ class RateLimitIT extends IntegrationTest {
         long retryAfter = Long.parseLong(limited.getResponse().getHeader("Retry-After"));
         assertThat(retryAfter).isBetween(1L, 60L);
         assertThat(body(limited).get("message").asString()).startsWith("Too many requests: the limit is 3 per minute");
+        // Counted per bucket, and exported for Prometheus.
+        String metrics = perform(get("/actuator/prometheus")).getResponse().getContentAsString();
+        assertThat(metrics).containsPattern("duely_rate_limit_rejections_total\\{bucket=\"read\"[^}]*} [1-9]");
 
         // Other clients have their own bucket
         MvcResult other = perform(get("/brackets").with(r -> { r.setRemoteAddr("203.0.113.9"); return r; }));

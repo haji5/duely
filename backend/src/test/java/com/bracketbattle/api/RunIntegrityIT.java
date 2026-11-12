@@ -3,6 +3,7 @@ package com.bracketbattle.api;
 import com.bracketbattle.repository.ItemStatsRepository;
 import com.bracketbattle.service.StatsService;
 import com.bracketbattle.support.IntegrationTest;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,6 +40,9 @@ class RunIntegrityIT extends IntegrationTest {
 
     @Autowired
     StatsService statsService;
+
+    @Autowired
+    MeterRegistry meters;
 
     // ---- starting a run ------------------------------------------------------------------------
 
@@ -122,6 +126,7 @@ class RunIntegrityIT extends IntegrationTest {
     @Test
     void aRunFasterThanTheUiAllowsIsSavedButNotCounted() throws Exception {
         long id = createBracket(USER_A, "Speedrun", 8).get("id").asLong();
+        double tooFast = uncounted("too_fast");
         JsonNode run = startRun(USER_A, id, 8);
         Map<String, Object> payload = Map.of("ticket", run.get("ticket").asString(), "matches", knockoutMatches(ids(run)),
                 "comment", "too quick", "displayName", "Speedy");
@@ -135,6 +140,7 @@ class RunIntegrityIT extends IntegrationTest {
         assertThat(body(perform(get("/brackets/" + id + "/comments")))).isEmpty();
         // Still the player's own run.
         assertThat(body(perform(as(USER_A, get("/me/results").param("bracketId", Long.toString(id)))))).hasSize(1);
+        assertThat(uncounted("too_fast")).isEqualTo(tooFast + 1);
     }
 
     @Test
@@ -142,6 +148,7 @@ class RunIntegrityIT extends IntegrationTest {
         long id = createBracket(USER_A, "Quota", 4).get("id").asLong();
         long other = createBracket(USER_A, "Quota elsewhere", 4).get("id").asLong();
         List<Long> r = itemIds(id);
+        double overQuota = uncounted("quota");
 
         for (int i = 0; i < 3; i++) {
             assertThat(perform(as(USER_A, postJson("/brackets/" + id + "/results", runPayload(r, null, null))))
@@ -160,6 +167,12 @@ class RunIntegrityIT extends IntegrationTest {
         }
         assertThat(runCount(id)).isEqualTo(4);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isEqualTo(6);
+        assertThat(uncounted("quota")).isEqualTo(overQuota + 2);
+    }
+
+    private double uncounted(String reason) {
+        var counter = meters.find("duely.runs.uncounted").tag("reason", reason).counter();
+        return counter == null ? 0 : counter.count();
     }
 
     // ---- (e): tiers ----------------------------------------------------------------------------

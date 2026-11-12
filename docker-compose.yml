@@ -49,6 +49,9 @@ services:
     environment:
       # Pinned here (this block overrides env_file): nginx and the port mapping expect 8080.
       SERVER_PORT: 8080
+      # Health checks and Prometheus metrics (/actuator/prometheus). Deliberately not published:
+      # only containers on this network reach it.
+      MANAGEMENT_PORT: 8081
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/bracket_battle}
       DB_USERNAME: ${DB_USERNAME:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-password}
@@ -68,7 +71,7 @@ services:
       - bracket-battle-network
     healthcheck:
       # Readiness covers the app and Postgres; a Valkey outage doesn't make the backend unready.
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health/readiness"]
       interval: 10s
       timeout: 5s
       retries: 6

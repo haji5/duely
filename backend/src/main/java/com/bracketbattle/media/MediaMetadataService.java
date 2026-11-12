@@ -1,12 +1,10 @@
 package com.bracketbattle.media;
 
-import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jsoup.parser.Parser;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,6 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -27,96 +26,106 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Scrapes YouTube search and Spotify playlist embeds for the bracket creator. Results are cached
- * in Valkey so repeated imports don't hit the upstream sites again.
+ * Scrapes YouTube search and Spotify playlist embeds for the bracket creator. This depends on
+ * those pages' markup, which they can change at any time; when they do, lookups fail with a 502
+ * (counted, see UpstreamGuard) until the parsing here is updated. Every request goes through
+ * {@link UpstreamGuard}. Results are cached in Valkey, and so is "no match" (for an hour), so
+ * repeated imports don't hit the upstream sites again.
  */
 @Service
 public class MediaMetadataService {
 
-    private static final Logger log = LoggerFactory.getLogger(MediaMetadataService.class);
-    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
-    private static final int TIMEOUT_MS = 5000;
+    private static final Duration SEARCH_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration OEMBED_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration PLAYLIST_TIMEOUT = Duration.ofSeconds(5);
     private static final int MAX_CANDIDATES = 3;
     private static final Pattern VIDEO_ID = Pattern.compile("\"videoId\":\"([a-zA-Z0-9_-]{11})\"");
 
+    /** What {@link #findEmbeddableYouTubeUrl} returns when none of the top results can be embedded. */
+    public static final String NO_MATCH = "";
+
     private final JsonMapper mapper = JsonMapper.builder().build();
+    private final UpstreamHttp http;
+    private final UpstreamGuard guard;
 
-    /**
-     * The first embeddable video for a search, as a watch URL, or null if none of the top results
-     * can be embedded.
-     */
-    @Cacheable(value = "youtubeSearch", key = "#query.strip().toLowerCase()", unless = "#result == null")
-    public String findEmbeddableYouTubeUrl(String query) {
-        String html;
-        try {
-            html = Jsoup.connect("https://www.youtube.com/results?search_query="
-                            + URLEncoder.encode(query.strip(), StandardCharsets.UTF_8))
-                    .userAgent(USER_AGENT)
-                    .timeout(TIMEOUT_MS)
-                    .execute()
-                    .body();
-        } catch (IOException e) {
-            log.warn("YouTube search failed: {}", e.toString());
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "YouTube search is unavailable right now");
-        }
-
-        Set<String> candidates = new LinkedHashSet<>();
-        Matcher matcher = VIDEO_ID.matcher(html);
-        while (matcher.find() && candidates.size() < MAX_CANDIDATES) {
-            candidates.add(matcher.group(1));
-        }
-        for (String videoId : candidates) {
-            if (isEmbeddable(videoId)) {
-                return "https://www.youtube.com/watch?v=" + videoId;
-            }
-        }
-        return null;
+    public MediaMetadataService(UpstreamHttp http, UpstreamGuard guard) {
+        this.http = http;
+        this.guard = guard;
     }
 
     /**
-     * Asks YouTube's oEmbed endpoint whether a video may be embedded (200 = yes, 401/403/404 = no).
-     * If the check itself fails (network error), the video is assumed embeddable so a flaky
-     * check doesn't block an import.
+     * The first embeddable video for a search, as a watch URL, or {@link #NO_MATCH}. A match is
+     * cached for a day, no match for an hour; failures aren't cached.
      */
-    private boolean isEmbeddable(String videoId) {
+    @Caching(cacheable = {
+            @Cacheable(value = "youtubeSearch", key = "#query.strip().toLowerCase()", unless = "#result.isEmpty()"),
+            @Cacheable(value = "youtubeNoMatch", key = "#query.strip().toLowerCase()", unless = "!#result.isEmpty()")
+    })
+    public String findEmbeddableYouTubeUrl(String query) {
+        return guard.call(UpstreamGuard.Upstream.YOUTUBE, () -> {
+            UpstreamHttp.Response page = http.get("https://www.youtube.com/results?search_query="
+                    + URLEncoder.encode(query.strip(), StandardCharsets.UTF_8), SEARCH_TIMEOUT, true);
+            if (!page.ok()) {
+                throw new UpstreamGuard.Failure("search answered " + page.status());
+            }
+            Set<String> candidates = new LinkedHashSet<>();
+            Matcher matcher = VIDEO_ID.matcher(page.body());
+            while (matcher.find() && candidates.size() < MAX_CANDIDATES) {
+                candidates.add(matcher.group(1));
+            }
+            boolean checkFailed = false;
+            for (String videoId : candidates) {
+                Embeddable verdict = embeddable(videoId);
+                if (verdict == Embeddable.YES) {
+                    return "https://www.youtube.com/watch?v=" + videoId;
+                }
+                checkFailed |= verdict == Embeddable.UNKNOWN;
+            }
+            // A video whose check failed is never offered. But then "no match" isn't known either,
+            // and caching it would hide the right answer for an hour.
+            if (checkFailed) {
+                throw new UpstreamGuard.Failure("couldn't check whether the videos found can be embedded");
+            }
+            return NO_MATCH;
+        });
+    }
+
+    private enum Embeddable { YES, NO, UNKNOWN }
+
+    /** YouTube's oEmbed endpoint answers 200 for embeddable videos and 401/403/404 for the rest. */
+    private Embeddable embeddable(String videoId) {
+        String url = "https://www.youtube.com/oembed?format=json&url="
+                + URLEncoder.encode("https://www.youtube.com/watch?v=" + videoId, StandardCharsets.UTF_8);
         try {
-            String url = "https://www.youtube.com/oembed?format=json&url="
-                    + URLEncoder.encode("https://www.youtube.com/watch?v=" + videoId, StandardCharsets.UTF_8);
-            int status = Jsoup.connect(url)
-                    .userAgent(USER_AGENT)
-                    .timeout(TIMEOUT_MS)
-                    .ignoreContentType(true)
-                    .ignoreHttpErrors(true)
-                    .execute()
-                    .statusCode();
-            return status == 200;
+            int status = http.get(url, OEMBED_TIMEOUT, false).status();
+            if (status == 200) return Embeddable.YES;
+            return status == 401 || status == 403 || status == 404 ? Embeddable.NO : Embeddable.UNKNOWN;
         } catch (IOException e) {
-            return true;
+            return Embeddable.UNKNOWN;
         }
     }
 
     /** Tracks of a public playlist as {title, mediaUrl} pairs, in playlist order. */
     @Cacheable(value = "spotifyPlaylist", key = "#playlistId")
     public List<Map<String, String>> getSpotifyPlaylistTracks(String playlistId) {
-        Element script;
-        try {
-            script = Jsoup.connect("https://open.spotify.com/embed/playlist/" + playlistId)
-                    .userAgent(USER_AGENT)
-                    .timeout(TIMEOUT_MS)
-                    .followRedirects(false)
-                    .get()
-                    .getElementById("__NEXT_DATA__");
-        } catch (HttpStatusException e) {
-            if (e.getStatusCode() == 404) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Playlist not found (is it public?)");
+        List<Map<String, String>> tracks = guard.call(UpstreamGuard.Upstream.SPOTIFY, () -> {
+            UpstreamHttp.Response page = http.get("https://open.spotify.com/embed/playlist/" + playlistId, PLAYLIST_TIMEOUT, false);
+            if (page.status() == 404) {
+                return null; // the upstream is fine; the playlist isn't public, or doesn't exist
             }
-            log.warn("Spotify playlist fetch failed: {}", e.toString());
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Spotify is unavailable right now");
-        } catch (IOException e) {
-            log.warn("Spotify playlist fetch failed: {}", e.toString());
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Spotify is unavailable right now");
+            if (!page.ok()) {
+                throw new UpstreamGuard.Failure("the playlist page answered " + page.status());
+            }
+            return parseTracks(page.body());
+        });
+        if (tracks == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Playlist not found (is it public?)");
         }
+        return tracks;
+    }
 
+    private List<Map<String, String>> parseTracks(String html) throws UpstreamGuard.Failure {
+        Element script = Jsoup.parse(html).getElementById("__NEXT_DATA__");
         JsonNode trackList;
         try {
             trackList = script == null ? null
@@ -125,7 +134,7 @@ public class MediaMetadataService {
             trackList = null;
         }
         if (trackList == null || !trackList.isArray()) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Spotify playlist format not recognised");
+            throw new UpstreamGuard.Failure("playlist format not recognised");
         }
 
         List<Map<String, String>> tracks = new ArrayList<>();

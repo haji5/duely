@@ -46,6 +46,7 @@ public class CacheConfig implements CachingConfigurer {
             "bracketComments", Duration.ofMinutes(5),  // evicted on every counted run with a comment
             "userResults", Duration.ofMinutes(10),     // evicted on every run by that user
             "youtubeSearch", Duration.ofHours(24),
+            "youtubeNoMatch", Duration.ofHours(1),    // searches none of whose top results can be embedded
             "spotifyPlaylist", Duration.ofHours(1));
 
     // Bump when the cached JSON shape changes, so old entries are ignored instead of failing to parse.

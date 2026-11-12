@@ -8,9 +8,18 @@ import org.springframework.context.annotation.Primary;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-/** Resolves every name to a public address, except hosts that name a private or missing one. */
+/**
+ * Keeps tests off the network. DNS resolves every name to a public address, except hosts that
+ * name a private or missing one; the scraped sites are a {@link FakeUpstreamHttp}.
+ */
 @TestConfiguration
 public class FakeDnsConfig {
+    @Bean
+    @Primary
+    FakeUpstreamHttp fakeUpstreamHttp() {
+        return new FakeUpstreamHttp();
+    }
+
     @Bean
     @Primary
     HostResolver fakeHostResolver() {

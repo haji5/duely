@@ -1,5 +1,7 @@
 package com.bracketbattle.ratelimit;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * reads fail open, because a cache outage should not take the game down; every other bucket keeps
  * its limit in a bounded in-process map (per instance), so a Valkey restart does not lift the
  * limits on writes and upstream lookups. Either way it logs a throttled warning.
+ *
+ * <p>Refused requests are counted per bucket in {@code duely.rate_limit.rejections}.
  */
 @Component
 public class RateLimiter {
@@ -39,18 +43,20 @@ public class RateLimiter {
     private final StringRedisTemplate redis;
     private final RateLimitProperties properties;
     private final Clock clock;
+    private final MeterRegistry meters;
     private final AtomicLong lastWarning = new AtomicLong();
     private final LocalWindowCounter local = new LocalWindowCounter(LOCAL_MAX_SUBJECTS);
 
     @Autowired
-    public RateLimiter(StringRedisTemplate redis, RateLimitProperties properties) {
-        this(redis, properties, Clock.systemUTC());
+    public RateLimiter(StringRedisTemplate redis, RateLimitProperties properties, MeterRegistry meters) {
+        this(redis, properties, Clock.systemUTC(), meters);
     }
 
-    RateLimiter(StringRedisTemplate redis, RateLimitProperties properties, Clock clock) {
+    RateLimiter(StringRedisTemplate redis, RateLimitProperties properties, Clock clock, MeterRegistry meters) {
         this.redis = redis;
         this.properties = properties;
         this.clock = clock;
+        this.meters = meters;
     }
 
     /**
@@ -64,6 +70,7 @@ public class RateLimiter {
         long period = limit.periodSeconds();
         Long count = increment(bucket, subject, now, period);
         if (count != null && count > limit.limit()) {
+            rejections(bucket).increment();
             long retryAfter = period - (now % period);
             throw new RateLimitExceededException(describe(limit.limit(), period, retryAfter), retryAfter);
         }
@@ -102,6 +109,13 @@ public class RateLimiter {
             local.clear(); // Valkey counts again; the local windows would only go stale
         }
         return count;
+    }
+
+    private Counter rejections(String bucket) {
+        return Counter.builder("duely.rate_limit.rejections")
+                .description("Requests refused by a rate limit")
+                .tag("bucket", bucket)
+                .register(meters);
     }
 
     static String windowKey(String bucket, String subject, long epochSecond, long periodSeconds) {

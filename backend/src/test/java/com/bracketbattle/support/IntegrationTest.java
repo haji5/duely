@@ -4,6 +4,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
+import com.bracketbattle.media.UpstreamGuard;
 import com.bracketbattle.service.RunTickets;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,6 +85,12 @@ public abstract class IntegrationTest {
     @Autowired
     private JdbcTemplate baseJdbc;
 
+    @Autowired
+    protected FakeUpstreamHttp upstream;
+
+    @Autowired
+    private UpstreamGuard upstreamGuard;
+
     private final Map<String, String> ticketsByToken = new HashMap<>();
 
     @BeforeEach
@@ -92,6 +99,8 @@ public abstract class IntegrationTest {
             c.serverCommands().flushAll();
             return null;
         });
+        upstream.reset();
+        upstreamGuard.reset();
         doThrow(new IllegalArgumentException("invalid token")).when(firebaseAuth).verifyIdToken(anyString());
         stubToken(USER_A, "uid-a", Map.of());
         stubToken(USER_B, "uid-b", Map.of());
