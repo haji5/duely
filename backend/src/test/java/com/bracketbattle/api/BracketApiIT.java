@@ -119,10 +119,27 @@ class BracketApiIT extends IntegrationTest {
     }
 
     @Test
-    void invalidTokenIsTreatedAsAnonymous() throws Exception {
+    void invalidTokenIsA401OnWritesAndAnonymousOnReads() throws Exception {
         MvcResult result = perform(as("garbage", postJson("/brackets", bracketPayload("Nope", "image", 2))));
         assertThat(result.getResponse().getStatus()).isEqualTo(401);
         assertThat(perform(as("garbage", get("/brackets"))).getResponse().getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void aRunWithAnInvalidTokenIsRejectedNotSavedAsAGuestRun() throws Exception {
+        long id = createBracket(USER_A, "Expired token", 2).get("id").asLong();
+        long before = jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id);
+
+        MvcResult result = perform(as("garbage", postJson("/brackets/" + id + "/results", runPayload(itemIds(id), null, null))));
+        assertThat(result.getResponse().getStatus()).isEqualTo(401);
+        assertThat(result.getResponse().getHeader("WWW-Authenticate")).isEqualTo("Bearer error=\"invalid_token\"");
+        assertThat(body(result).get("message").asString()).contains("sign in again");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM item_stats WHERE bracket_id = ?", Long.class, id)).isZero();
+
+        // Without any token it is an ordinary guest run.
+        assertThat(perform(postJson("/brackets/" + id + "/results", runPayload(itemIds(id), null, null)))
+                .getResponse().getStatus()).isEqualTo(200);
     }
 
     // ---- lists ---------------------------------------------------------------------------------
