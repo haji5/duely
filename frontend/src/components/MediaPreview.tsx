@@ -3,6 +3,7 @@ import type { Item } from '@/types';
 import {
   getSpotifyEmbedUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl,
 } from '../utils/mediaUtils';
+import { useLatest } from '@/utils/useLatest';
 
 interface MediaPreviewProps {
   item: Item;
@@ -19,16 +20,15 @@ function announceAudio(owner: symbol) {
 }
 
 function useExclusiveAudio(onOtherStarted: () => void): symbol {
-  const owner = React.useRef(Symbol('preview')).current;
-  const callback = React.useRef(onOtherStarted);
-  callback.current = onOtherStarted;
+  const [owner] = React.useState(() => Symbol('preview'));
+  const callback = useLatest(onOtherStarted);
   React.useEffect(() => {
     const listener = (e: Event) => {
       if ((e as CustomEvent<symbol>).detail !== owner) callback.current();
     };
     window.addEventListener(AUDIO_EVENT, listener);
     return () => window.removeEventListener(AUDIO_EVENT, listener);
-  }, [owner]);
+  }, [owner, callback]);
   return owner;
 }
 
@@ -106,6 +106,8 @@ const AudioPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
       <button type="button" onClick={toggle} onKeyDown={stop} className="btn btn-secondary" aria-pressed={playing}>
         {playing ? 'Pause preview' : 'Play preview'}
       </button>
+      {/* Players' own audio files: there are no captions to offer. */}
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio
         ref={audioRef}
         src={item.mediaUrl}

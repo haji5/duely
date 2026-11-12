@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useLatest } from '@/utils/useLatest';
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -15,10 +16,8 @@ const Dialog: React.FC<{
 }> = ({ title, onClose, busy = false, children }) => {
   const titleId = React.useId();
   const panel = React.useRef<HTMLDivElement>(null);
-  const close = React.useRef(onClose);
-  close.current = onClose;
-  const busyRef = React.useRef(busy);
-  busyRef.current = busy;
+  const close = useLatest(onClose);
+  const busyRef = useLatest(busy);
 
   React.useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -46,7 +45,7 @@ const Dialog: React.FC<{
       document.removeEventListener('keydown', onKeyDown);
       opener?.focus?.();
     };
-  }, []);
+  }, [busyRef, close]); // stable refs: runs once
 
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end justify-center p-4 sm:items-center">

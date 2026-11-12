@@ -7,6 +7,7 @@ import { TypeIcon } from '../components/BracketCard';
 import PageMeta from '../components/PageMeta';
 import type { BracketType } from '@/types';
 import { randomId } from '@/utils/ids';
+import { useLatest } from '@/utils/useLatest';
 import { CATEGORIES } from '@/utils/categories';
 import {
   getSpotifyEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl, isYouTubeUrl, mediaUrlProblem,
@@ -45,8 +46,7 @@ const CustomBracketPage: React.FC = () => {
   const [category, setCategory] = useState('');
   const [entries, setEntries] = useState<Entry[]>(() => [newEntry(), newEntry()]);
   // Latest entries for async work (playlist import) that outlives the render it started in.
-  const entriesRef = useRef(entries);
-  entriesRef.current = entries;
+  const entriesRef = useLatest(entries);
   const [entryErrors, setEntryErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -91,7 +91,7 @@ const CustomBracketPage: React.FC = () => {
     cancelTitleLookup(id);
     if (!isYouTubeUrl(url) && !isSpotifyUrl(url)) return;
     const abort = new AbortController();
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => void (async () => {
       let title: string | null = null;
       try {
         title = await fetchMediaTitle(url, abort.signal);
@@ -106,7 +106,7 @@ const CustomBracketPage: React.FC = () => {
         if (e.titleSource === 'user' && e.title.trim()) return e;
         return { ...e, title: title.slice(0, LIMITS.title), titleSource: 'auto' };
       }));
-    }, TITLE_LOOKUP_DELAY_MS);
+    })(), TITLE_LOOKUP_DELAY_MS);
     titleTimers.current.set(id, { timer, abort });
   };
 
@@ -247,7 +247,7 @@ const CustomBracketPage: React.FC = () => {
         category,
         items: filled.map(entry => ({ title: entry.title.trim(), mediaUrl: entry.mediaUrl.trim() })),
       });
-      navigate(`/bracket/${bracket.id}`);
+      void navigate(`/bracket/${bracket.id}`);
     } catch (error) {
       if (!mounted.current) return;
       // Map the server's per-field errors (items[i].x refers to the submitted list) back to rows.
@@ -550,6 +550,8 @@ const EntryPreview: React.FC<{ url: string; type: BracketType; label: string }> 
     if (embed) {
       return <iframe src={embed} title={label} height="80" className="mt-3 w-full rounded border-0" loading="lazy" allow="encrypted-media" />;
     }
+    // A link the user is adding to their own bracket: there are no captions to offer.
+    // eslint-disable-next-line jsx-a11y/media-has-caption
     return isSpotifyUrl(url) ? null : <audio controls preload="none" src={url} className="mt-3 h-8 w-full" />;
   }
   return <img src={url} alt={label} className="mt-3 h-32 w-full rounded object-cover" loading="lazy" onError={() => setFailedUrl(url)} />;

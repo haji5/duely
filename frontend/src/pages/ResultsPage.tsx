@@ -92,7 +92,8 @@ const ResultsPage: React.FC = () => {
     key: `session-${b.sessionId}`, ranking: b.ranking, matches: b.matches, createdAt: b.createdAt,
   }))), [uid, bracketId, getSessionBattlesForBracket]);
 
-  const runs: Run[] = uid ? (serverRuns.status === 'ready' ? serverRuns.value : []) : guestRuns;
+  const runs = React.useMemo<Run[]>(
+    () => (uid ? (serverRuns.status === 'ready' ? serverRuns.value : []) : guestRuns), [uid, serverRuns, guestRuns]);
   const runsReady = uid ? serverRuns.status === 'ready' : true;
 
   // Arriving from a finished battle shows that run, once, when the runs have loaded.
@@ -104,7 +105,7 @@ const ResultsPage: React.FC = () => {
     if (runs.length > 0) setView({ kind: 'run', key: runs[runs.length - 1].key });
   }, [fromBattle, runsReady, runs, bracketId, uid, reloadKey]);
 
-  const items = page.status === 'ready' ? page.value.items : [];
+  const items = React.useMemo(() => (page.status === 'ready' ? page.value.items : []), [page]);
   const itemsById = React.useMemo(() => new Map(items.map(item => [item.id, item])), [items]);
   const personalRanking = React.useMemo(() => computeRankings(runs, items), [runs, items]);
 

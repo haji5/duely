@@ -33,8 +33,9 @@ COPY . .
 # Build the application (VITE_* envs are inlined now)
 RUN npm run build
 
-# Runtime stage
-FROM nginx:alpine
+# Runtime stage. An exact version, so a rebuild can't change nginx underneath; Dependabot
+# proposes updates.
+FROM nginx:1.31.8-alpine
 
 WORKDIR /
 

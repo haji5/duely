@@ -51,7 +51,7 @@ const connector = (x1: number, yA: number, yB: number, x2: number) => {
 };
 
 const mirrorPath = (d: string) =>
-  d.replace(/([MH])(\d+(?:\.\d+)?)/g, (_, cmd, x) => `${cmd}${W - parseFloat(x)}`);
+  d.replace(/([MH])(\d+(?:\.\d+)?)/g, (_, cmd: string, x: string) => `${cmd}${W - parseFloat(x)}`);
 
 const BracketDiagram: React.FC<{ className?: string }> = ({ className }) => {
   const leftConnectors = [

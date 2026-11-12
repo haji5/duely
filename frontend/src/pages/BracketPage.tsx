@@ -17,6 +17,7 @@ import {
 } from '@/utils/tournament';
 import { displayScore, scoreRun } from '@/utils/rankings';
 import { playSelectionTick, playSuccessChime, playTick } from '@/utils/sound';
+import { useLatest } from '@/utils/useLatest';
 
 type Load =
   | { status: 'loading' }
@@ -112,14 +113,13 @@ const BracketPage: React.FC = () => {
 
   const complete = tournament?.complete ?? false;
   const signedInName = currentUser?.displayName ?? '';
-  const signedInNameRef = React.useRef(signedInName);
-  signedInNameRef.current = signedInName;
+  const signedInNameRef = useLatest(signedInName);
   React.useEffect(() => {
     if (complete) {
       setForm({ displayName: signedInNameRef.current, comment: '' });
       setSaveError(null);
     }
-  }, [complete]);
+  }, [complete, signedInNameRef]);
   // Signing in on the champion screen fills in an empty name and never touches the comment.
   React.useEffect(() => {
     if (signedInName) setForm(f => (f.displayName ? f : { ...f, displayName: signedInName }));
@@ -325,7 +325,7 @@ const BracketPage: React.FC = () => {
         if (!currentUser) {
           addSessionBattle({ bracketId, bracketName: bracket.name, ranking: saved.ranking, matches, ...details });
         }
-        navigate(`/results/${bracketId}?fromBattle=true`);
+        void navigate(`/results/${bracketId}?fromBattle=true`);
       } catch (error) {
         setSaveError(errorMessage(error, 'Your result couldn’t be saved.'));
         setSaving(false);
@@ -336,9 +336,9 @@ const BracketPage: React.FC = () => {
       if (!currentUser) {
         // The same ranking the server would have derived from these matches.
         addSessionBattle({ bracketId, bracketName: bracket.name, ranking: scoreRun(matches).ranking, matches });
-        navigate(`/results/${bracketId}?fromBattle=true`);
+        void navigate(`/results/${bracketId}?fromBattle=true`);
       } else {
-        navigate(`/results/${bracketId}`);
+        void navigate(`/results/${bracketId}`);
       }
     };
 
@@ -567,6 +567,7 @@ const BattleItem: React.FC<{
       className="relative"
     >
       {/* Clicking the card picks it (mouse convenience); the Pick button is the accessible control. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         onClick={() => canPick && onSelect()}
         className={`group card pressable relative flex min-h-[24rem] flex-col overflow-hidden border-2 sm:min-h-[30rem] ${canPick ? 'cursor-pointer [--press-scale:0.99]' : 'cursor-default [--press-scale:1]'}`}
@@ -644,11 +645,11 @@ const BattleItem: React.FC<{
 
 // Bursts from the card's centre. Offsets are picked once per mount so re-renders don't retarget them.
 const Confetti: React.FC<{ sideColor: string }> = ({ sideColor }) => {
-  const pieces = React.useMemo(() => Array.from({ length: 12 }, (_, i) => {
+  const [pieces] = React.useState(() => Array.from({ length: 12 }, (_, i) => {
     const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.5;
     const distance = 120 + Math.random() * 120;
     return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance, rotate: Math.random() * 360 };
-  }), []);
+  }));
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">

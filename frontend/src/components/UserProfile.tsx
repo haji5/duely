@@ -41,7 +41,7 @@ const UserProfile: React.FC = () => {
     await bracketApi.deleteMyData();
     // Leave before signing out: this menu unmounts once the user is gone.
     setConfirmingDelete(false);
-    navigate('/');
+    void navigate('/');
     clearSessionBattles();
     await logout();
   };
@@ -154,6 +154,7 @@ const UserProfile: React.FC = () => {
       {showDropdown && (
         <div
           className="fixed inset-0 z-40"
+          aria-hidden="true"
           onClick={() => setShowDropdown(false)}
         />
       )}
