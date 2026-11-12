@@ -57,11 +57,6 @@ public class GlobalExceptionHandler {
         return body(HttpStatus.BAD_REQUEST, "Invalid value for '" + ex.getName() + "'", null, null);
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
-        return body(HttpStatus.BAD_REQUEST, ex.getMessage(), null, null);
-    }
-
     /** From @PreAuthorize. Anonymous callers never get here: the filter chain answers 401 first. */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
@@ -71,6 +66,8 @@ public class GlobalExceptionHandler {
     /**
      * Exceptions that carry their own status (ResponseStatusException, unknown routes, 405, 415,
      * missing parameters, ...) keep it. Everything else is unexpected: log it and answer 500.
+     * That includes IllegalArgumentException: thrown by a library or our own code it is a bug on
+     * our side, and its message is internal. Client mistakes are InvalidRequestException.
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleOther(Exception ex) {
