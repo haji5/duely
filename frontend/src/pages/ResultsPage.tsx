@@ -8,7 +8,7 @@ import { bracketApi, errorMessage, errorStatus } from '../services/api';
 import type { Bracket, BracketStats, Comment, Item, ItemRanking, MatchOutcome } from '@/types';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
-import { computeRankings, displayScore, rankingRunCount, runsLabel } from '@/utils/rankings';
+import { computeRankings, displayScore, placeLabel, rankingRunCount, runsLabel, scoreStoredRun } from '@/utils/rankings';
 import ShareButton from '../components/ShareButton';
 
 /** One of the viewer's own runs: from the server when signed in, from this tab when a guest. */
@@ -148,15 +148,16 @@ const ResultsPage: React.FC = () => {
   } else if (view.kind !== 'everyone' && uid && serverRuns.status === 'error') {
     rankingBody = <ErrorState title="Your runs couldn’t be loaded" message={serverRuns.message} onRetry={() => setReloadKey(k => k + 1)} />;
   } else {
-    const rows: { item: Item; stats?: ItemRanking }[] = view.kind === 'everyone'
+    const rows: Row[] = view.kind === 'everyone'
       ? (rankings.status === 'ready' ? rankings.value : []).map(r => ({ item: r.item, stats: r }))
       : view.kind === 'personal'
         ? personalRanking.map(r => ({ item: r.item, stats: r }))
-        : (selectedRun?.ranking ?? []).map(itemId => itemsById.get(itemId)).filter((i): i is Item => !!i).map(item => ({ item }));
+        : runRows(selectedRun, itemsById);
     const note = view.kind === 'run' || rows.length === 0 ? null : (
       <p className="mb-3 text-sm text-themed-tertiary">
-        Ranked by average finish across {view.kind === 'personal' ? `your ${runsLabel({ runs: runs.length, atLeast: false })}` : everyoneRuns}.
-        {' '}A score of 100 means it won every run it was in; the win rate counts head-to-head matches only.
+        Ranked by average finish across {view.kind === 'personal' ? `your ${runsLabel({ runs: runs.length, atLeast: false })}` : everyoneRuns},
+        {' '}eased towards the middle for entries seen in only a few runs. Entries knocked out in the same round score
+        {' '}the same; the win rate counts head-to-head matches only.
       </p>
     );
     rankingBody = rows.length === 0 ? (
@@ -173,7 +174,7 @@ const ResultsPage: React.FC = () => {
       <>
         {note}
         <ol className="divide-y divide-[color:var(--border-primary)]">
-          {rows.map(({ item, stats }, index) => <RankingRow key={item.id} item={item} stats={stats} index={index} />)}
+          {rows.map((row, index) => <RankingRow key={row.item.id} {...row} index={index} />)}
         </ol>
       </>
     );
@@ -314,8 +315,34 @@ const ResultsPage: React.FC = () => {
   );
 };
 
-const RankingRow: React.FC<{ item: Item; stats?: ItemRanking; index: number }> = ({ item, stats, index }) => {
+/** A leaderboard row (stats), or an entry's place in one run (place). */
+interface Row {
+  item: Item;
+  stats?: ItemRanking;
+  place?: { from: number; to: number };
+}
+
+/** One run's entries with their places: tied entries share one ("5th–8th"), as they did equally well. */
+function runRows(run: Run | undefined, itemsById: Map<number, Item>): Row[] {
+  if (!run) return [];
+  const scored = scoreStoredRun(run);
+  return scored.ranking.flatMap(itemId => {
+    const item = itemsById.get(itemId);
+    const standing = scored.standings.get(itemId)!;
+    return item ? [{ item, place: { from: standing.placeFrom, to: standing.placeTo } }] : [];
+  });
+}
+
+function placeNote({ from, to }: { from: number; to: number }): string {
+  if (from === 1 && to === 1) return 'Champion';
+  if (from === 2 && to === 2) return 'Runner-up';
+  return from === to ? placeLabel(from, to) : `Joint ${placeLabel(from, to)}`;
+}
+
+const RankingRow: React.FC<Row & { index: number }> = ({ item, stats, place, index }) => {
   const isTop = index === 0;
+  const rank = place ? (place.from === place.to ? `${place.from}` : `${place.from}–${place.to}`) : `${index + 1}`;
+  const tied = place !== undefined && place.from !== place.to;
   return (
     <li className="relative flex items-center gap-3 py-3 pl-2 sm:gap-4">
       {isTop && (
@@ -323,11 +350,12 @@ const RankingRow: React.FC<{ item: Item; stats?: ItemRanking; index: number }> =
       )}
       <span
         className={`w-10 shrink-0 text-right font-display font-black leading-none tabular sm:w-12 ${
-          isTop ? 'text-[2.6rem]' : index < 3 ? 'text-[2.1rem] text-themed-primary' : 'text-[1.75rem] text-themed-tertiary'
+          isTop ? 'text-[2.6rem]' : tied ? 'text-[1.1rem] text-themed-tertiary'
+            : index < 3 ? 'text-[2.1rem] text-themed-primary' : 'text-[1.75rem] text-themed-tertiary'
         }`}
         style={isTop ? { color: 'var(--accent-ink)' } : undefined}
       >
-        {index + 1}
+        {rank}
       </span>
       <div className="h-14 w-24 shrink-0 overflow-hidden rounded-md bg-themed-tertiary">
         <MediaPreview item={item} size="thumbnail" className="h-full w-full" />
@@ -340,14 +368,16 @@ const RankingRow: React.FC<{ item: Item; stats?: ItemRanking; index: number }> =
             <div className="h-1.5 min-w-[4rem] max-w-[14rem] flex-1 overflow-hidden rounded-full bg-themed-tertiary" aria-hidden="true">
               <div
                 className="h-full rounded-full"
-                style={{ width: `${Math.max(0, Math.min(100, displayScore(stats.averageScore)))}%`, backgroundColor: isTop ? 'var(--accent-primary)' : 'var(--text-tertiary)' }}
+                style={{ width: `${Math.max(0, Math.min(100, displayScore(stats.score)))}%`, backgroundColor: isTop ? 'var(--accent-primary)' : 'var(--text-tertiary)' }}
               />
             </div>
             <span className="min-w-0 text-sm text-themed-secondary tabular">
-              <span className="font-semibold text-themed-primary">Score {displayScore(stats.averageScore)}</span>
+              <span className="font-semibold text-themed-primary">Score {displayScore(stats.score)}</span>
               {' · '}{stats.winPercentage}% of {stats.totalMatches} {stats.totalMatches === 1 ? 'match' : 'matches'} won
             </span>
           </div>
+        ) : place ? (
+          <p className="text-sm text-themed-tertiary">{placeNote(place)}</p>
         ) : (
           <p className="text-sm capitalize text-themed-tertiary">{item.mediaType}</p>
         )}

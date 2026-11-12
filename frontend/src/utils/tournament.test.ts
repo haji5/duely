@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Item } from '@/types';
 import {
-  bracketSizeOptions, createTournament, defaultBracketSize, currentMatch, finalRanking, pick, playedMatches, progress,
-  realMatchCount, roundName, shuffle, TournamentState,
+  bracketSizeOptions, champion, createTournament, defaultBracketSize, currentMatch, finalRanking, layoutTournament, pick,
+  playedMatches, progress, realMatchCount, roundName, shuffle, TournamentState,
 } from './tournament';
+import { scoreRun } from './rankings';
+import { readSharedFixture } from './sharedFixtures';
 
 const makeItems = (n: number): Item[] =>
   Array.from({ length: n }, (_, i) => ({ id: i + 1, bracketId: 1, title: `Item ${i + 1}`, mediaUrl: 'https://x.test', mediaType: 'image' }));
@@ -33,6 +35,11 @@ function playOut(state: TournamentState, random: () => number) {
 }
 
 describe('bracketSizeOptions', () => {
+  it('matches the sizes the server accepts (shared/bracket-sizes.json)', () => {
+    const { cases } = readSharedFixture<{ cases: { count: number; options: number[] }[] }>('bracket-sizes.json');
+    for (const { count, options } of cases) expect(bracketSizeOptions(count)).toEqual(options);
+  });
+
   it('offers the next power of two first when byes are needed', () => {
     expect(bracketSizeOptions(5)).toEqual([8, 4, 2]);
     expect(bracketSizeOptions(8)).toEqual([8, 4, 2]);
@@ -101,11 +108,10 @@ describe('createTournament / pick / finalRanking', () => {
         expect(losers.size).toBe(entrants - 1);
         expect(losers.has(ranking[0].id)).toBe(false);
 
-        // The server rejects runs where a winner is ranked below the item it beat.
-        const position = new Map(ranking.map((item, i) => [item.id, i]));
-        for (const m of matches) {
-          expect(position.get(m.winnerId)!).toBeLessThan(position.get(m.loserId)!);
-        }
+        // Every honestly played run passes the server's validation, and the ranking the server
+        // derives from the matches is the one shown here.
+        expect(scoreRun(matches).ranking).toEqual(ranking.map(i => i.id));
+        expect(champion(state)).toBe(final.winner);
 
         // No entry gets more than one free round: reaching round r takes at least r - 1 wins.
         const wins = new Map<number, number>();
@@ -190,6 +196,23 @@ describe('createTournament / pick / finalRanking', () => {
     const { state, picks } = playOut(createTournament(makeItems(3), 4, seeded(11)), seeded(12));
     expect(picks).toBe(2);
     expect(finalRanking(state)).toHaveLength(3);
+  });
+
+  it('lays out the server’s entrants in their seeding order', () => {
+    const items = makeItems(8);
+    const seeded = [items[5], items[2], items[7], items[0], items[1]];
+    const state = layoutTournament(seeded, 8);
+    expect(state.entrantCount).toBe(5);
+    expect(state.rounds[0].map(m => [m.a?.id ?? null, m.b?.id ?? null])).toEqual([[6, 3], [8, null], [1, null], [2, null]]);
+  });
+
+  it('refuses entrant lists that cannot fill the bracket', () => {
+    const items = makeItems(8);
+    expect(() => layoutTournament(items.slice(0, 2), 8)).toThrow(); // bye against bye
+    expect(() => layoutTournament(items.slice(0, 1), 2)).toThrow();
+    expect(() => layoutTournament(items, 4)).toThrow();
+    expect(() => layoutTournament([items[0], items[0]], 2)).toThrow();
+    expect(() => layoutTournament(items.slice(0, 3), 3)).toThrow();
   });
 
   it('rejects impossible sizes', () => {

@@ -23,11 +23,21 @@ export interface MatchOutcome {
   loserId: number;
 }
 
-/** A finished run. Only the signed-in owner ever receives these (from /me/results). */
+/** An entry's place in one run; tied entries share a range (5th to 8th). */
+export interface Place {
+  itemId: number;
+  from: number;
+  to: number;
+}
+
+/** A finished run. Only its submitter ever receives these (the save response, /me/results). */
 export interface Result {
   id: number;
   bracketId: number;
+  /** Derived by the server from the matches: champion first. */
   ranking: number[];
+  /** Parallel to ranking. */
+  places?: Place[];
   /** The run's real matches; null for runs saved before matches were recorded. */
   matches?: MatchOutcome[] | null;
   createdAt: string;
@@ -55,9 +65,19 @@ export interface ItemRanking {
   totalMatches: number;
   /** Share of real head-to-head matches won, 0-100. */
   winPercentage: number;
-  /** Mean normalised finishing position, 0..1 (1 = champion every time). */
+  /** What the leaderboard shows and sorts by: the mean run score adjusted for sample size. */
+  score: number;
+  /** Raw mean run score, 0..1 (1 = champion every time). */
   averageScore: number;
   timesRanked: number;
+}
+
+/** A run the server started: its signed ticket and the entrants it picked, in seeding order. */
+export interface RunTicket {
+  ticket: string;
+  entrantIds: number[];
+  /** Bracket slots; size - entrantIds.length are byes. */
+  size: number;
 }
 
 /** A guest's run, kept in sessionStorage for the current tab. */
