@@ -10,24 +10,29 @@ import java.util.List;
 @Repository
 public interface BracketRepository extends JpaRepository<Bracket, Long> {
 
-    /** Playable brackets (at least two items), newest first. Hides legacy empty brackets. */
+    /** Public, playable brackets (at least two items), newest first. Hides legacy empty brackets. */
     @Query(value = """
             SELECT b.* FROM brackets b
-            WHERE (SELECT COUNT(*) FROM items i WHERE i.bracket_id = b.id) >= 2
+            WHERE b.hidden_at IS NULL
+              AND (SELECT COUNT(*) FROM items i WHERE i.bracket_id = b.id) >= 2
             ORDER BY b.created_at DESC, b.id DESC
             """, nativeQuery = true)
     List<Bracket> findPlayable();
 
-    /** Playable brackets ordered by how many runs they have, most played first. */
+    /** Public, playable brackets ordered by how many runs they have, most played first. */
     @Query(value = """
             SELECT b.* FROM brackets b
-            WHERE (SELECT COUNT(*) FROM items i WHERE i.bracket_id = b.id) >= 2
+            WHERE b.hidden_at IS NULL
+              AND (SELECT COUNT(*) FROM items i WHERE i.bracket_id = b.id) >= 2
             ORDER BY (SELECT COUNT(*) FROM results r WHERE r.bracket_id = b.id) DESC,
                      b.created_at DESC, b.id DESC
             """, nativeQuery = true)
     List<Bracket> findPopular();
 
     List<Bracket> findByCreatedByOrderByCreatedAtDescIdDesc(String createdBy);
+
+    /** The owner check. Reads the table: cached brackets carry no owner. */
+    boolean existsByIdAndCreatedBy(Long id, String createdBy);
 
     @Query("SELECT b.id FROM Bracket b ORDER BY b.id")
     List<Long> findAllIds();

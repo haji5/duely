@@ -47,7 +47,7 @@ public class CacheConfig implements CachingConfigurer {
             "spotifyPlaylist", Duration.ofHours(1));
 
     // Bump when the cached JSON shape changes, so old entries are ignored instead of failing to parse.
-    private static final String KEY_PREFIX = "duely:v5:";
+    private static final String KEY_PREFIX = "duely:v6:";
 
     private final RedisCacheErrorHandler redisCacheErrorHandler;
 

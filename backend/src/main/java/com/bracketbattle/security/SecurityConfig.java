@@ -53,8 +53,8 @@ public class SecurityConfig {
                 // HEAD too, since link checkers and crawlers use it on page URLs.
                 .requestMatchers(HttpMethod.GET, PAGE_PATHS).permitAll()
                 .requestMatchers(HttpMethod.HEAD, PAGE_PATHS).permitAll()
-                // Guests may start and submit runs (rate limited per IP)
-                .requestMatchers(HttpMethod.POST, "/brackets/*/runs", "/brackets/*/results").permitAll()
+                // Guests may start and submit runs and report things (rate limited per IP)
+                .requestMatchers(HttpMethod.POST, "/brackets/*/runs", "/brackets/*/results", "/reports").permitAll()
                 // /admin/** additionally needs ROLE_ADMIN via @PreAuthorize
                 .anyRequest().authenticated()
             )
@@ -72,7 +72,7 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(allowedOrigins);
-        configuration.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setAllowCredentials(false);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
