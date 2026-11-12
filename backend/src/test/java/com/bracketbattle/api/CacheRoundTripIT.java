@@ -94,6 +94,21 @@ class CacheRoundTripIT extends IntegrationTest {
         assertThat(service.getBracketRankings(id).get(0).getWins()).isEqualTo(rankings.get(0).getWins());
     }
 
+    /**
+     * A cached read is in Valkey when the call returns, so an eviction right after it can't be
+     * overtaken by the read's own put (which once left hidden brackets public for half an hour).
+     */
+    @Test
+    void cacheWritesHaveLandedWhenTheReadReturns() throws Exception {
+        for (int i = 0; i < 20; i++) {
+            long id = createBracket(USER_A, "Written " + i, 2).get("id").asLong();
+            service.getBracketById(id);
+            assertThat(redis.hasKey("duely:v8:bracket::" + id)).as("bracket " + id).isTrue();
+            cacheManager.getCache("bracket").evict(id);
+            assertThat(redis.hasKey("duely:v8:bracket::" + id)).as("bracket " + id + " evicted").isFalse();
+        }
+    }
+
     private <T> T get(String cacheName, Object key, Class<T> type) {
         Cache cache = cacheManager.getCache(cacheName);
         assertThat(cache).isNotNull();
