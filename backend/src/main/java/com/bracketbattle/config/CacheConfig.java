@@ -77,9 +77,13 @@ public class CacheConfig implements CachingConfigurer {
         Map<String, RedisCacheConfiguration> configurations = new HashMap<>();
         CACHES.forEach((name, ttl) -> configurations.put(name, defaults.entryTtl(ttl)));
 
-        // SCAN instead of KEYS when a whole cache is cleared, so Valkey is never blocked.
-        RedisCacheWriter writer = RedisCacheWriter.nonLockingRedisCacheWriter(
-                redisConnectionFactory, BatchStrategies.scan(1000));
+        // SCAN instead of KEYS when a whole cache is cleared, so Valkey is never blocked. Writes
+        // are immediate: with Lettuce the default is fire-and-forget, so a read's put could land
+        // after the eviction that follows it and keep a stale value (a hidden bracket still
+        // public, an old leaderboard) for the whole TTL.
+        RedisCacheWriter writer = RedisCacheWriter.create(redisConnectionFactory, config -> config
+                .batchStrategy(BatchStrategies.scan(1000))
+                .immediateWrites());
         return RedisCacheManager.builder(writer)
                 .cacheDefaults(defaults)
                 .withInitialCacheConfigurations(configurations)
