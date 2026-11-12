@@ -79,7 +79,7 @@ public class PageController {
     }
 
     private ResponseEntity<String> notFound() {
-        return html(HttpStatus.NOT_FOUND, PageHeads.notFound(spaShell.get()));
+        return html(HttpStatus.NOT_FOUND, pageHeads.notFound(spaShell.get()));
     }
 
     private static ResponseEntity<String> html(HttpStatus status, Document page) {

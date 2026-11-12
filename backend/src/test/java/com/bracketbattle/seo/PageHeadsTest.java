@@ -22,7 +22,7 @@ class PageHeadsTest {
 
     private static final String HOSTILE = "</script><b>\"x\"";
 
-    private final PageHeads heads = new PageHeads("https://duely.example/");
+    private final PageHeads heads = new PageHeads("https://duely.example/", true);
 
     @Test
     void hostileBracketTextComesOutInert() throws IOException {
@@ -119,7 +119,36 @@ class PageHeadsTest {
 
     @Test
     void rejectsARelativeBaseUrl() {
-        assertThatThrownBy(() -> new PageHeads("duely.example")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new PageHeads("duely.example", false)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void aPublicOriginMustBeHttpsOnAHostOthersCanReach() {
+        for (String origin : List.of("http://duely.example", "https://localhost", "https://localhost:3000",
+                "https://app.localhost", "https://LOCALHOST.", "https://127.0.0.1", "https://127.1.2.3:8443",
+                "https://0.0.0.0", "https://[::1]", "https://[::]", "https://[::ffff:127.0.0.1]", "https://10.0.0.5",
+                "https://192.168.1.20:3000", "https://172.29.53.1", "https://169.254.1.1", "https://[fd00::1]",
+                "https://[fe80::1]")) {
+            assertThatThrownBy(() -> new PageHeads(origin, true)).as(origin)
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("PUBLIC_BASE_URL");
+        }
+        for (String origin : List.of("https://duely.example", "https://example.test/", "https://play.duely.example:8443",
+                "https://203.0.113.7", "https://[2001:db8::1]")) {
+            assertThat(new PageHeads(origin, true).origin()).as(origin).isEqualTo(origin.replaceAll("/$", ""));
+        }
+        // Development keeps working on localhost.
+        assertThat(new PageHeads("http://localhost:3000", false).origin()).isEqualTo("http://localhost:3000");
+    }
+
+    @Test
+    void everyPageHandsTheOriginToTheApp() throws IOException {
+        Bracket bracket = bracket("Best songs", "");
+        List<Item> items = List.of(item(1, "First", "https://youtu.be/dQw4w9WgXcQ"), item(2, "Second", "https://youtu.be/aaaaaaaaaaa"));
+        for (Document page : List.of(heads.home(shell()), heads.bracket(shell(), bracket, items),
+                heads.results(shell(), bracket, items, List.of()), heads.notFound(shell()))) {
+            assertThat(page.select("meta[name=public-origin]")).hasSize(1);
+            assertThat(page.select("meta[name=public-origin]").attr("content")).isEqualTo("https://duely.example");
+        }
     }
 
     // ---- helpers ---------------------------------------------------------------------------

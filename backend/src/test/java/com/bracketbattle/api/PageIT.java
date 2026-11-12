@@ -8,6 +8,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 
 import java.util.List;
+import java.util.regex.MatchResult;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -92,4 +94,39 @@ class PageIT extends IntegrationTest {
         assertThat(locs).doesNotContain("https://duely.example/results/" + unplayed);
         assertThat(xml).doesNotContain("localhost");
     }
+
+    @Test
+    void robotsTxtPointsAtTheSitemapOnTheConfiguredOrigin() throws Exception {
+        MvcResult result = perform(get("/robots.txt"));
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(result.getResponse().getContentType()).startsWith("text/plain");
+        String robots = result.getResponse().getContentAsString();
+        assertThat(robots).startsWith("User-agent: *\n").contains("Disallow: /create\n", "Disallow: /admin\n")
+                .endsWith("Sitemap: https://duely.example/sitemap.xml\n");
+        assertThat(perform(head("/robots.txt")).getResponse().getStatus()).isEqualTo(200);
+    }
+
+    /** What crawlers and unfurlers read names no origin but the configured one (and third-party media). */
+    @Test
+    void crawlerFacingResponsesUseOnlyTheConfiguredOrigin() throws Exception {
+        long id = createBracket(USER_A, "Origin bracket", 4).get("id").asLong();
+        perform(postJson("/brackets/" + id + "/results", runPayload(itemIds(id), null, null)));
+
+        for (String path : List.of("/pages/home", "/pages/bracket/" + id, "/pages/results/" + id, "/pages/bracket/99999999",
+                "/sitemap.xml", "/robots.txt")) {
+            String body = perform(get(path)).getResponse().getContentAsString();
+            List<String> origins = ORIGIN.matcher(body).results().map(MatchResult::group).distinct().toList();
+            assertThat(origins).as(path).contains("https://duely.example")
+                    .allMatch(o -> o.equals("https://duely.example") || THIRD_PARTY.contains(o));
+        }
+        Document home = Jsoup.parse(perform(get("/pages/home")).getResponse().getContentAsString());
+        assertThat(home.select("meta[name=public-origin]").attr("content")).isEqualTo("https://duely.example");
+    }
+
+    private static final Pattern ORIGIN = Pattern.compile("https?://[^/\"'<>\\s]+");
+    /** Origins the pages may link besides their own: schema.org vocabulary, the repository, entry media. */
+    private static final List<String> THIRD_PARTY = List.of("https://schema.org", "https://github.com",
+            "https://images.example.com", "https://i.ytimg.com", "https://fonts.googleapis.com", "https://fonts.gstatic.com",
+            "http://www.sitemaps.org");
 }

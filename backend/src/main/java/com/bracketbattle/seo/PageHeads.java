@@ -10,10 +10,13 @@ import org.jsoup.nodes.Element;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -24,6 +27,9 @@ import java.util.Map;
  * <p>User text is stored as typed, markup included (see Sanitizer), so it only ever goes in
  * through jsoup's text and attribute setters, which escape it, or through {@link JsonLd}. Never as
  * HTML. Titles and descriptions mirror frontend/src/components/PageMeta.tsx and the pages that use it.
+ *
+ * <p>Every page also carries the origin as {@code <meta name="public-origin">}, so the app's own
+ * canonicals and share links use it too instead of whatever host the page was loaded from.
  */
 @Component
 public class PageHeads {
@@ -38,14 +44,62 @@ public class PageHeads {
     static final int SUMMARY_ENTRIES = 100;
     static final int SUMMARY_RANKINGS = 10;
 
+    /** The meta tag that hands the origin to the SPA (read by publicOrigin in PageMeta.tsx). */
+    static final String ORIGIN_META = "public-origin";
+
     private final String origin;
 
-    public PageHeads(@Value("${app.public-base-url}") String publicBaseUrl) {
+    /**
+     * With {@code app.require-public-origin} (set in production) the backend refuses to start
+     * unless the origin is https on a host other people can reach: canonicals, the sitemap and
+     * shared links would otherwise point every visitor at their own machine.
+     */
+    public PageHeads(@Value("${app.public-base-url}") String publicBaseUrl,
+                     @Value("${app.require-public-origin:false}") boolean requirePublicOrigin) {
         URI uri = URI.create(publicBaseUrl.trim());
         if (uri.getHost() == null || !("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))) {
             throw new IllegalArgumentException("app.public-base-url must be an absolute http(s) URL: " + publicBaseUrl);
         }
+        if (requirePublicOrigin) {
+            String reason = notPublicBecause(uri);
+            if (reason != null) {
+                throw new IllegalStateException("app.public-base-url (PUBLIC_BASE_URL) must be the public https origin, "
+                        + "but " + publicBaseUrl + " " + reason);
+            }
+        }
         this.origin = publicBaseUrl.trim().replaceAll("/+$", "");
+    }
+
+    /** Why {@code uri} can't be the public origin, or null if it can. Never resolves a host name. */
+    static String notPublicBecause(URI uri) {
+        if (!"https".equals(uri.getScheme())) {
+            return "is not https";
+        }
+        String host = uri.getHost().toLowerCase(Locale.ROOT).replaceAll("\\.$", "");
+        if (host.startsWith("[") && host.endsWith("]")) {
+            host = host.substring(1, host.length() - 1);
+        }
+        if (host.equals("localhost") || host.endsWith(".localhost")) {
+            return "is localhost";
+        }
+        // URI only reports a host for a valid IPv4 literal, so getByName never looks anything up.
+        if (host.contains(":") || host.matches("\\d{1,3}(\\.\\d{1,3}){3}")) {
+            InetAddress address;
+            try {
+                address = InetAddress.getByName(host);
+            } catch (UnknownHostException e) {
+                return "is not a valid address";
+            }
+            byte[] bytes = address.getAddress();
+            boolean uniqueLocal = bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc;
+            if (address.isLoopbackAddress() || address.isAnyLocalAddress()) {
+                return "is a loopback or unspecified address";
+            }
+            if (address.isSiteLocalAddress() || address.isLinkLocalAddress() || uniqueLocal) {
+                return "is a private address";
+            }
+        }
+        return null;
     }
 
     /** The public origin without a trailing slash, e.g. https://duely.example. */
@@ -190,9 +244,10 @@ public class PageHeads {
         return shell;
     }
 
-    /** The untouched shell, marked noindex, for a 404 (React then renders its not-found page). */
-    public static Document notFound(Document shell) {
+    /** The shell, marked noindex, for a 404 (React then renders its not-found page). */
+    public Document notFound(Document shell) {
         meta(shell, "name", "robots", "noindex");
+        meta(shell, "name", ORIGIN_META, origin);
         return shell;
     }
 
@@ -234,6 +289,7 @@ public class PageHeads {
         meta(shell, "property", "og:title", title);
         meta(shell, "property", "og:description", shortDescription);
         meta(shell, "name", "twitter:card", "summary_large_image");
+        meta(shell, "name", ORIGIN_META, origin);
     }
 
     /** The entry's YouTube thumbnail (always 480x360 at hqdefault), else the site image. */
