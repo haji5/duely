@@ -40,6 +40,20 @@ public class Bracket {
     @Column(name = "hidden_at")
     private Instant hiddenAt;
 
+    // Counters for lists and sorting. Set at creation, then changed only by SQL in the
+    // transactions that change what they count (a counted run, a rebuild), never by saving the
+    // entity, so a stale copy can't write an old count back.
+    @Column(name = "item_count", nullable = false, updatable = false)
+    private int itemCount;
+
+    @Column(name = "run_count", nullable = false, updatable = false)
+    private long runCount;
+
+    // Only the sitemap needs it, and it reads the table.
+    @JsonIgnore
+    @Column(name = "last_run_at", insertable = false, updatable = false)
+    private Instant lastRunAt;
+
     public Bracket() {}
 
     public Bracket(String name, String description, String type, String category, String createdBy) {
@@ -82,4 +96,17 @@ public class Bracket {
 
     public Instant getHiddenAt() { return hiddenAt; }
     public void setHiddenAt(Instant hiddenAt) { this.hiddenAt = hiddenAt; }
+
+    /** Entries in the bracket; it is playable from two. */
+    public int getItemCount() { return itemCount; }
+    public void setItemCount(int itemCount) { this.itemCount = itemCount; }
+
+    /** Runs that count toward the leaderboard, guests' included. */
+    public long getRunCount() { return runCount; }
+    public void setRunCount(long runCount) { this.runCount = runCount; }
+
+    @JsonIgnore
+    public Instant getLastRunAt() { return lastRunAt; }
+    @JsonIgnore
+    public void setLastRunAt(Instant lastRunAt) { this.lastRunAt = lastRunAt; }
 }

@@ -1,8 +1,11 @@
 package com.bracketbattle.controller;
 
+import com.bracketbattle.dto.BracketListQuery;
+import com.bracketbattle.dto.BracketPageDto;
 import com.bracketbattle.dto.BracketStatsDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
+import com.bracketbattle.dto.HomeDto;
 import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.dto.ReportRequest;
 import com.bracketbattle.dto.RunTicketDto;
@@ -55,14 +58,21 @@ public class BracketController {
         this.rateLimiter = rateLimiter;
     }
 
+    /**
+     * A page of the public brackets: playable (two entries or more) and not hidden. See
+     * BracketListQuery for the parameters.
+     */
     @GetMapping("/brackets")
-    public List<Bracket> getAllBrackets() {
-        return bracketService.getAllBrackets();
+    public BracketPageDto listBrackets(@RequestParam(required = false) String sort, @RequestParam(required = false) String type,
+                                       @RequestParam(required = false) String category, @RequestParam(required = false) String q,
+                                       @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
+        return bracketService.listBrackets(BracketListQuery.parse(sort, type, category, q, page, size));
     }
 
-    @GetMapping("/brackets/popular")
-    public List<Bracket> getPopularBrackets() {
-        return bracketService.getPopularBrackets();
+    /** Everything the home page lists, in one cached response. */
+    @GetMapping("/home")
+    public HomeDto home() {
+        return bracketService.getHome();
     }
 
     /** Hidden brackets are a 404 here and below for everyone but their owner and admins. */
@@ -93,8 +103,8 @@ public class BracketController {
 
     @GetMapping("/brackets/{id}/stats")
     public BracketStatsDto getBracketStats(@PathVariable Long id, Authentication authentication) {
-        bracketAccess.requireVisible(id, authentication);
-        return bracketService.getBracketStats(id);
+        // The counter on the bracket, whose cached copy every counted run evicts.
+        return new BracketStatsDto(bracketAccess.requireVisible(id, authentication).getRunCount());
     }
 
     @GetMapping("/brackets/{id}/comments")
@@ -138,13 +148,19 @@ public class BracketController {
         return bracketService.createBracket(payload, userId);
     }
 
+    /** A page of the caller's brackets, hidden and unplayable ones included; parameters as for /brackets. */
     @GetMapping("/me/brackets")
-    public List<Bracket> getMyBrackets(Authentication authentication) {
-        return bracketService.getBracketsByCreator(CurrentUser.uidOrNull(authentication));
+    public BracketPageDto getMyBrackets(@RequestParam(required = false) String sort, @RequestParam(required = false) String type,
+                                        @RequestParam(required = false) String category, @RequestParam(required = false) String q,
+                                        @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size,
+                                        Authentication authentication) {
+        return bracketService.getBracketsByCreator(CurrentUser.uidOrNull(authentication),
+                BracketListQuery.parse(sort, type, category, q, page, size));
     }
 
+    /** The caller's latest runs of one bracket, oldest first. */
     @GetMapping("/me/results")
-    public List<Result> getMyResults(@RequestParam(required = false) Long bracketId, Authentication authentication) {
+    public List<Result> getMyResults(@RequestParam long bracketId, Authentication authentication) {
         return bracketService.getUserResults(CurrentUser.uidOrNull(authentication), bracketId);
     }
 

@@ -1,6 +1,7 @@
 package com.bracketbattle.service;
 
 import com.bracketbattle.advice.InvalidRequestException;
+import com.bracketbattle.config.CacheEvictor;
 import com.bracketbattle.dto.RunTicketDto;
 import com.bracketbattle.dto.SaveResultRequest;
 import com.bracketbattle.model.Item;
@@ -16,8 +17,6 @@ import com.bracketbattle.util.Sanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -55,13 +54,14 @@ public class RunService {
     private final RunTickets tickets;
     private final RateLimiter rateLimiter;
     private final TransactionTemplate transactionTemplate;
+    private final CacheEvictor caches;
     private final long minMillisPerMatch;
     private final Clock clock = Clock.systemUTC();
     private final SecureRandom random = new SecureRandom();
 
     public RunService(BracketService bracketService, BracketRepository bracketRepository,
                       ResultRepository resultRepository, ItemStatsRepository itemStatsRepository,
-                      RunTickets tickets, RateLimiter rateLimiter, TransactionTemplate transactionTemplate,
+                      RunTickets tickets, RateLimiter rateLimiter, TransactionTemplate transactionTemplate, CacheEvictor caches,
                       @Value("${app.runs.min-ms-per-match:400}") long minMillisPerMatch) {
         this.bracketService = bracketService;
         this.bracketRepository = bracketRepository;
@@ -70,6 +70,7 @@ public class RunService {
         this.tickets = tickets;
         this.rateLimiter = rateLimiter;
         this.transactionTemplate = transactionTemplate;
+        this.caches = caches;
         this.minMillisPerMatch = minMillisPerMatch;
     }
 
@@ -97,13 +98,6 @@ public class RunService {
      *
      * @param guestSubject the limiter subject for a guest (their network); unused when signed in
      */
-    @Caching(evict = {
-            @CacheEvict(value = "bracketRankings", key = "#bracketId"),
-            @CacheEvict(value = "bracketStats", key = "#bracketId"),
-            @CacheEvict(value = "bracketComments", key = "#bracketId"),
-            @CacheEvict(value = "userResults", key = "#userId + ':all'", condition = "#userId != null"),
-            @CacheEvict(value = "userResults", key = "#userId + ':' + #bracketId", condition = "#userId != null")
-    })
     public Result saveRun(Long bracketId, String userId, String guestSubject, SaveResultRequest request) {
         if (!bracketRepository.existsById(bracketId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found");
@@ -133,12 +127,18 @@ public class RunService {
         result.setComment(blankToNull(Sanitizer.stripToPlain(request.comment(), 500)));
 
         try {
-            return transactionTemplate.execute(status -> {
+            Result saved = transactionTemplate.execute(status -> {
                 if (counted) {
                     itemStatsRepository.applyRun(bracketId, ItemStatsRepository.deltas(scored, matches));
                 }
-                return resultRepository.save(result);
+                Result inserted = resultRepository.save(result);
+                if (counted) {
+                    bracketRepository.addCountedRun(bracketId, inserted.getId());
+                }
+                return inserted;
             });
+            evictAfterRun(bracketId, userId, result);
+            return saved;
         } catch (DataIntegrityViolationException e) {
             // A concurrent request with the same ticket won the insert. The failed transaction is
             // rolled back by now, so this lookup runs in a fresh one and can see the winner's row.
@@ -166,6 +166,25 @@ public class RunService {
             log.info("Run on bracket {} not counted: daily quota used", bracketId);
         }
         return withinQuota;
+    }
+
+    /**
+     * Exactly what a new run made stale, once it has committed. An uncounted run changes only its
+     * player's history; a counted one the leaderboard and the bracket's run count; the comments
+     * only when it has one. The paged lists show run counts too, but evicting them on every run
+     * would make them uncacheable on a busy site: their short TTL bounds how stale they get.
+     */
+    private void evictAfterRun(long bracketId, String userId, Result run) {
+        if (run.isCounted()) {
+            caches.evict("bracketRankings", bracketId);
+            caches.evict("bracket", bracketId);
+            if (run.getComment() != null) {
+                caches.evict("bracketComments", bracketId);
+            }
+        }
+        if (userId != null) {
+            caches.evict("userResults", userId + ":" + bracketId);
+        }
     }
 
     private static Result requireSameSubmitter(Result existing, Long bracketId, String userId) {

@@ -73,7 +73,7 @@ class ModerationIT extends IntegrationTest {
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE bracket_id = ?", Long.class, id))
                     .as(table).isZero();
         }
-        for (String cache : List.of("bracket", "bracketItems", "bracketRankings", "bracketStats", "bracketComments")) {
+        for (String cache : List.of("bracket", "bracketItems", "bracketRankings", "bracketComments")) {
             assertThat(redis.hasKey(key(cache, id))).as(cache).isFalse();
         }
         assertThat(redis.hasKey(key("userResults", "uid-b:" + id))).isFalse();
@@ -108,12 +108,14 @@ class ModerationIT extends IntegrationTest {
         warmCaches(id, USER_B);
         assertThat(publicIds()).contains(id);
         assertThat(perform(get("/sitemap.xml")).getResponse().getContentAsString()).contains("/bracket/" + id + "<");
+        assertThat(perform(get("/home")).getResponse().getContentAsString()).contains("Hidden gem");
 
         assertThat(status(post("/admin/brackets/" + id + "/hide"), ADMIN)).isEqualTo(204);
 
         assertThat(redis.hasKey(key("bracket", id))).isFalse();
         assertThat(publicIds()).doesNotContain(id);
-        assertThat(idsOf(body(perform(get("/brackets/popular"))))).doesNotContain(id);
+        assertThat(idsOf(body(perform(get("/brackets").param("sort", "popular").param("q", "Hidden gem"))).get("items"))).isEmpty();
+        assertThat(perform(get("/home")).getResponse().getContentAsString()).doesNotContain("Hidden gem");
         String sitemap = perform(get("/sitemap.xml")).getResponse().getContentAsString();
         assertThat(sitemap).doesNotContain("/bracket/" + id + "<").doesNotContain("/results/" + id + "<");
         for (String token : new String[]{null, USER_B}) {
@@ -139,7 +141,7 @@ class ModerationIT extends IntegrationTest {
             assertThat(body(own).get("hiddenAt").isNull()).isFalse();
             assertThat(status(get("/brackets/" + id + "/rankings"), token)).isEqualTo(200);
         }
-        JsonNode mine = body(perform(as(USER_A, get("/me/brackets"))));
+        JsonNode mine = body(perform(as(USER_A, get("/me/brackets")))).get("items");
         assertThat(mine).anySatisfy(b -> {
             assertThat(b.get("id").asLong()).isEqualTo(id);
             assertThat(b.get("hiddenAt").isNull()).isFalse();
@@ -296,8 +298,7 @@ class ModerationIT extends IntegrationTest {
         assertThat(itemStats.findTotals(elsewhere)).isEqualTo(leaderboard);
         assertThat(body(perform(get("/brackets/" + elsewhere + "/comments")))).isEmpty();
         assertThat(body(perform(as(USER_C, get("/me/results").param("bracketId", Long.toString(elsewhere)))))).isEmpty();
-        assertThat(body(perform(as(USER_C, get("/me/results"))))).isEmpty();
-        assertThat(body(perform(as(USER_C, get("/me/brackets"))))).isEmpty();
+        assertThat(body(perform(as(USER_C, get("/me/brackets")))).get("total").asLong()).isZero();
         assertThat(resolvedAt(aboutMyComment)).isNotNull();
         // Twice is fine.
         assertThat(status(delete("/me"), USER_C)).isEqualTo(204);
@@ -334,15 +335,16 @@ class ModerationIT extends IntegrationTest {
             perform(get("/brackets/" + bracketId + path));
         }
         perform(get("/brackets"));
+        perform(get("/home"));
         perform(as(player, get("/me/results").param("bracketId", Long.toString(bracketId))));
     }
 
     private static String key(String cache, Object key) {
-        return "duely:v6:" + cache + "::" + key;
+        return "duely:v7:" + cache + "::" + key;
     }
 
     private List<Long> publicIds() throws Exception {
-        return idsOf(body(perform(get("/brackets"))));
+        return idsOf(body(perform(get("/brackets").param("size", "50"))).get("items"));
     }
 
     /** The reports in a queue that concern one bracket or the comments on it, in queue order. */

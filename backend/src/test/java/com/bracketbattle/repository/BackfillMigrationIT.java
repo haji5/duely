@@ -57,6 +57,39 @@ class BackfillMigrationIT extends IntegrationTest {
         }
     }
 
+    @Test
+    void counterBackfillEqualsTheCountersTheApplicationKeeps() throws Exception {
+        long played = createBracket(USER_A, "Counted runs", 3).get("id").asLong();
+        long unplayed = createBracket(USER_A, "No runs", 2).get("id").asLong();
+        for (int i = 0; i < 3; i++) {
+            perform(postJson("/brackets/" + played + "/results", runPayload(itemIds(played), null, null)));
+        }
+        // An uncounted run counts for neither.
+        jdbc.update("""
+                INSERT INTO results (bracket_id, ranking, submission_token, counted, created_at)
+                VALUES (?, ?, gen_random_uuid()::text, false, now() + interval '1 hour')
+                """, played, json.writeValueAsString(itemIds(played)));
+        List<Map<String, Object>> live = counters(played, unplayed);
+
+        jdbc.update("UPDATE brackets SET item_count = 0, run_count = 0, last_run_at = NULL WHERE id IN (?, ?)", played, unplayed);
+        // Scoped to these two: other tests write rows straight to the table with counters but no
+        // entries, and the database is shared.
+        String backfill = new ClassPathResource("db/changelog/sql/backfill-bracket-counters.sql")
+                .getContentAsString(StandardCharsets.UTF_8).strip();
+        assertThat(backfill).endsWith(";");
+        jdbc.update(backfill.substring(0, backfill.length() - 1) + " WHERE b.id IN (?, ?)", played, unplayed);
+
+        assertThat(counters(played, unplayed)).isEqualTo(live);
+        assertThat(live.get(0)).containsEntry("item_count", 3).containsEntry("run_count", 3L);
+        assertThat(live.get(1)).containsEntry("item_count", 2).containsEntry("run_count", 0L).containsEntry("last_run_at", null);
+    }
+
+    private List<Map<String, Object>> counters(long... ids) {
+        return java.util.Arrays.stream(ids)
+                .mapToObj(id -> jdbc.queryForMap("SELECT item_count, run_count, last_run_at FROM brackets WHERE id = ?", id))
+                .toList();
+    }
+
     private List<Map<String, Object>> snapshot(long bracketId) {
         return jdbc.queryForList("""
                 SELECT item_id, times_ranked, score_sum, wins, matches

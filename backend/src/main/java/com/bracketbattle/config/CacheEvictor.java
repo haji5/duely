@@ -38,7 +38,7 @@ public class CacheEvictor {
         keys.forEach(key -> evict(cacheName, key));
     }
 
-    /** Drops every entry of a cache, for the list caches whose one key is the whole list. */
+    /** Drops every entry of a cache. */
     public void clear(String cacheName) {
         Cache cache = cache(cacheName);
         try {
@@ -50,17 +50,21 @@ public class CacheEvictor {
 
     /** Everything cached about one bracket, for when it changes visibility or is deleted. */
     public void evictBracket(long bracketId) {
-        clear("brackets");
-        clear("popularBrackets");
-        for (String name : new String[]{"bracket", "bracketItems", "bracketRankings", "bracketStats", "bracketComments"}) {
+        clearLists();
+        for (String name : new String[]{"bracket", "bracketItems", "bracketRankings", "bracketComments"}) {
             evict(name, bracketId);
         }
     }
 
-    /** A user's cached run history: all of it, and for each of these brackets. */
+    /** A user's cached run history on each of these brackets. */
     public void evictUserResults(String userId, Collection<Long> bracketIds) {
-        evict("userResults", userId + ":all");
         bracketIds.forEach(bracketId -> evict("userResults", userId + ":" + bracketId));
+    }
+
+    /** The cached list pages and the home page, which any bracket appearing or going can change. */
+    public void clearLists() {
+        clear("bracketPages");
+        clear("home");
     }
 
     private Cache cache(String name) {

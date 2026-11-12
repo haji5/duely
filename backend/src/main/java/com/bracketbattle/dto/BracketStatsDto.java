@@ -13,7 +13,7 @@ public class BracketStatsDto {
         this.runCount = runCount;
     }
 
-    /** Completed runs saved for the bracket, guests' included. */
+    /** Runs that count toward the leaderboard, guests' included (the bracket's run_count). */
     public long getRunCount() { return runCount; }
     public void setRunCount(long runCount) { this.runCount = runCount; }
 }

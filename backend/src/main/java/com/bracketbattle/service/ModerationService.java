@@ -109,8 +109,7 @@ public class ModerationService {
         });
         if (changed == null || changed == 0) return false;
         // Visibility is checked against the cached bracket, so its items and rankings can stay.
-        caches.clear("brackets");
-        caches.clear("popularBrackets");
+        caches.clearLists();
         caches.evict("bracket", bracketId);
         log.info("Bracket {} {}", bracketId, hidden ? "hidden" : "shown again");
         return true;
