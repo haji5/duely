@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 // Title lookups that resolve only when the test says so.
 const pending = new Map<string, (title: string | null) => void>();
@@ -20,6 +20,12 @@ vi.mock('../../contexts/AuthContext', () => ({
 
 import CustomBracketPage from '../CustomBracketPage';
 import { bracketApi } from '../../services/api';
+
+// Unmounting saves the draft, so unmount first, then forget it.
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 const URL_1 = 'https://youtu.be/AAAAAAAAAAA';
 const URL_2 = 'https://youtu.be/BBBBBBBBBBB';
@@ -99,5 +105,56 @@ describe('CustomBracketPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
 
     await waitFor(() => expect(screen.getByLabelText('Category')).toHaveValue('Music'));
+  });
+
+  it('keeps the form as a draft until the bracket is made, and can start over', () => {
+    const first = render(<MemoryRouter><CustomBracketPage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Half done' } });
+    fireEvent.change(screen.getAllByLabelText('Title')[0], { target: { value: 'Kept entry' } });
+    first.unmount();
+
+    render(<MemoryRouter><CustomBracketPage /></MemoryRouter>);
+    expect(screen.getByText('Your draft is back')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toHaveValue('Half done');
+    expect(screen.getAllByLabelText('Title')[0]).toHaveValue('Kept entry');
+    expect(screen.getAllByLabelText('Title')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start over' }));
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+    expect(screen.queryByText('Your draft is back')).not.toBeInTheDocument();
+    expect(window.localStorage.getItem('duely:create-draft')).toBeNull();
+  });
+
+  it('asks before leaving with unsaved work, and forgets the draft once created', async () => {
+    vi.mocked(bracketApi.createBracket).mockResolvedValue({ id: 5 } as Awaited<ReturnType<typeof bracketApi.createBracket>>);
+    render(
+      <MemoryRouter initialEntries={['/create']}>
+        <Routes>
+          <Route path="/create" element={<CustomBracketPage />} />
+          <Route path="/bracket/:id" element={<p>Bracket page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const leave = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(leave()).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ready' } });
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Music' } });
+    const [url1, url2] = screen.getAllByLabelText(/YouTube link/);
+    const [title1, title2] = screen.getAllByLabelText('Title');
+    fireEvent.change(url1, { target: { value: 'https://youtu.be/GGGGGGGGGGG' } });
+    fireEvent.change(url2, { target: { value: 'https://youtu.be/HHHHHHHHHHH' } });
+    fireEvent.change(title1, { target: { value: 'One' } });
+    fireEvent.change(title2, { target: { value: 'Two' } });
+    expect(leave()).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create bracket' }));
+    expect(await screen.findByText('Bracket page')).toBeInTheDocument();
+    expect(window.localStorage.getItem('duely:create-draft')).toBeNull();
+    expect(leave()).toBe(false);
   });
 });

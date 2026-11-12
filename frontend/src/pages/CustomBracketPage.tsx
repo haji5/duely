@@ -8,6 +8,7 @@ import PageMeta from '../components/PageMeta';
 import type { BracketType } from '@/types';
 import { randomId } from '@/utils/ids';
 import { useLatest } from '@/utils/useLatest';
+import { clearDraft, isBlankDraft, loadDraft, saveDraft, type CreateDraft } from '@/utils/createDraft';
 import { CATEGORIES } from '@/utils/categories';
 import {
   getSpotifyEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl, isYouTubeUrl, MAX_MEDIA_HOSTS, mediaUrlProblem,
@@ -26,6 +27,7 @@ export interface Entry {
 
 const LIMITS = { name: 100, description: 2000, title: 150, minEntries: 2, maxEntries: 500 };
 const TITLE_LOOKUP_DELAY_MS = 400;
+const DRAFT_SAVE_DELAY_MS = 400;
 const YOUTUBE_LOOKUP_CONCURRENCY = 4;
 
 const CATEGORY_MISSING = 'Pick a category';
@@ -35,17 +37,27 @@ const newEntry = (fields: Partial<Entry> = {}): Entry =>
 
 const isEmpty = (e: Entry) => !e.title.trim() && !e.mediaUrl.trim() && e.status === 'idle';
 
+/** At least the minimum number of rows, restored from a draft or fresh. */
+const initialEntries = (draft: CreateDraft | null): Entry[] => {
+  const restored = (draft?.entries ?? []).map(e => newEntry({ title: e.title, mediaUrl: e.mediaUrl, titleSource: e.titleSource }));
+  while (restored.length < LIMITS.minEntries) restored.push(newEntry());
+  return restored;
+};
+
 const typeLabel = (type: BracketType) => (type === 'video' ? 'Videos' : type === 'song' ? 'Songs' : 'Images');
 
 const CustomBracketPage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, signInWithGoogle } = useAuth();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [type, setType] = useState<BracketType>('video');
+  // What was typed last time and not created yet comes back (see utils/createDraft).
+  const [draft] = useState(loadDraft);
+  const [restoredAt, setRestoredAt] = useState<number | null>(draft?.savedAt ?? null);
+  const [name, setName] = useState(draft?.name ?? '');
+  const [description, setDescription] = useState(draft?.description ?? '');
+  const [type, setType] = useState<BracketType>(draft?.type ?? 'video');
   // No default: an unchosen category used to be saved as "General", even for music brackets.
-  const [category, setCategory] = useState('');
-  const [entries, setEntries] = useState<Entry[]>(() => [newEntry(), newEntry()]);
+  const [category, setCategory] = useState(draft?.category ?? '');
+  const [entries, setEntries] = useState<Entry[]>(() => initialEntries(draft));
   // Latest entries for async work (playlist import) that outlives the render it started in.
   const entriesRef = useLatest(entries);
   const [entryErrors, setEntryErrors] = useState<Record<string, string>>({});
@@ -66,6 +78,48 @@ const CustomBracketPage: React.FC = () => {
       timers.forEach(({ timer, abort }) => { clearTimeout(timer); abort.abort(); });
     };
   }, []);
+
+  // ---- Draft -------------------------------------------------------------------------------
+
+  const formDraft = React.useMemo(() => ({
+    name, description, type, category,
+    entries: entries.map(e => ({ title: e.title, mediaUrl: e.mediaUrl, titleSource: e.titleSource })),
+  }), [name, description, type, category, entries]);
+  const latestDraft = useLatest(formDraft);
+  // Set once the bracket exists, so nothing writes the draft back afterwards.
+  const created = useRef(false);
+
+  useEffect(() => {
+    if (created.current) return;
+    const timer = setTimeout(() => saveDraft(formDraft), DRAFT_SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [formDraft]);
+  // Leaving within the delay still keeps the last keystrokes.
+  useEffect(() => () => { if (!created.current) saveDraft(latestDraft.current); }, [latestDraft]);
+
+  // The draft survives a reload, but a closed tab on another device or a cleared browser doesn't.
+  const unsaved = !isBlankDraft(formDraft) && !submitting;
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved]);
+
+  const startOver = () => {
+    titleTimers.current.forEach(({ timer, abort }) => { clearTimeout(timer); abort.abort(); });
+    titleTimers.current.clear();
+    setName('');
+    setDescription('');
+    setType('video');
+    setCategory('');
+    setEntries(initialEntries(null));
+    setEntryErrors({});
+    setFormError(null);
+    setImportMessage(null);
+    setRestoredAt(null);
+    clearDraft();
+  };
 
   /** Songs and Spotify imports are music, unless the user already picked a category. */
   const inferMusic = () => setCategory(c => c || 'Music');
@@ -251,6 +305,8 @@ const CustomBracketPage: React.FC = () => {
         category,
         items: filled.map(entry => ({ title: entry.title.trim(), mediaUrl: entry.mediaUrl.trim() })),
       });
+      created.current = true;
+      clearDraft();
       void navigate(`/bracket/${bracket.id}`);
     } catch (error) {
       if (!mounted.current) return;
@@ -292,6 +348,17 @@ const CustomBracketPage: React.FC = () => {
           Add at least two entries. Players see them two at a time and pick a winner until one is left.
         </p>
       </header>
+
+      {restoredAt !== null && (
+        <div className="notice notice-info mb-8" role="status">
+          <p className="font-semibold text-themed-primary">Your draft is back</p>
+          <p className="mt-0.5">
+            This is what you were making on {new Date(restoredAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}.
+            It stays in this browser until you create the bracket.
+          </p>
+          <button type="button" onClick={startOver} className="btn btn-secondary mt-3">Start over</button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-8" noValidate>
         <div>
