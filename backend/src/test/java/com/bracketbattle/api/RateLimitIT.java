@@ -4,6 +4,7 @@ import com.bracketbattle.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,22 @@ class RateLimitIT extends IntegrationTest {
     }
 
     @Test
+    void ipv6ClientsCountPerSlash64AndMappedAddressesAsIpv4() throws Exception {
+        // Rotating the address inside one /64 does not reset the limit.
+        for (String address : List.of("2001:db8:42:1::1", "2001:db8:42:1::2", "2001:db8:42:1:abcd::3")) {
+            assertThat(perform(get("/brackets").with(remoteAddr(address))).getResponse().getStatus()).isEqualTo(200);
+        }
+        assertThat(perform(get("/brackets").with(remoteAddr("2001:db8:42:1:ffff:ffff:ffff:ffff"))).getResponse().getStatus())
+                .isEqualTo(429);
+        assertThat(perform(get("/brackets").with(remoteAddr("2001:db8:42:2::1"))).getResponse().getStatus()).isEqualTo(200);
+
+        for (int i = 0; i < 3; i++) {
+            assertThat(perform(get("/brackets").with(remoteAddr("198.51.100.20"))).getResponse().getStatus()).isEqualTo(200);
+        }
+        assertThat(perform(get("/brackets").with(remoteAddr("::ffff:198.51.100.20"))).getResponse().getStatus()).isEqualTo(429);
+    }
+
+    @Test
     void guestSubmissionsAndCreationAreLimited() throws Exception {
         long id = createBracket(USER_A, "Limited", 2).get("id").asLong();
         MvcResult secondCreate = perform(as(USER_A, postJson("/brackets", bracketPayload("Again", "image", 2))));
@@ -64,5 +81,12 @@ class RateLimitIT extends IntegrationTest {
         assertThat(body(limited).get("message").asString()).contains("the limit is 2 per hour");
         // A signed-in reporter has their own bucket.
         assertThat(perform(as(USER_B, postJson("/reports", report))).getResponse().getStatus()).isEqualTo(204);
+    }
+
+    private static RequestPostProcessor remoteAddr(String address) {
+        return request -> {
+            request.setRemoteAddr(address);
+            return request;
+        };
     }
 }
