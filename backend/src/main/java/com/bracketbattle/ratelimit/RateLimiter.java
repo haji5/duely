@@ -11,19 +11,24 @@ import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Fixed-window rate limiter backed by Valkey, so limits are shared by every backend instance and
- * memory stays bounded (each window's counter expires with the window). If Valkey is unreachable
- * the limiter fails open: it logs a throttled warning and lets the request through, because a
- * cache outage should not take the game down.
+ * memory stays bounded (each window's counter expires with the window). If Valkey is unreachable,
+ * reads fail open, because a cache outage should not take the game down; every other bucket keeps
+ * its limit in a bounded in-process map (per instance), so a Valkey restart does not lift the
+ * limits on writes and upstream lookups. Either way it logs a throttled warning.
  */
 @Component
 public class RateLimiter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimiter.class);
     private static final long WARN_INTERVAL_MS = 60_000;
+    private static final Set<String> FAIL_OPEN_BUCKETS = Set.of("read");
+    // Per bucket. Ten thousand live subjects in one window is far beyond this game's traffic.
+    private static final int LOCAL_MAX_SUBJECTS = 10_000;
 
     // KEYS[1] = counter key for the current window, ARGV[1] = window length in seconds
     private static final RedisScript<Long> INCREMENT = new DefaultRedisScript<>(
@@ -35,6 +40,7 @@ public class RateLimiter {
     private final RateLimitProperties properties;
     private final Clock clock;
     private final AtomicLong lastWarning = new AtomicLong();
+    private final LocalWindowCounter local = new LocalWindowCounter(LOCAL_MAX_SUBJECTS);
 
     @Autowired
     public RateLimiter(StringRedisTemplate redis, RateLimitProperties properties) {
@@ -48,7 +54,7 @@ public class RateLimiter {
     }
 
     /**
-     * Counts one request for {@code subject} (a uid or client IP) in {@code bucket}.
+     * Counts one request for {@code subject} (a uid, or a client address from ClientSubject) in {@code bucket}.
      *
      * @throws RateLimitExceededException when the bucket's limit for the current window is used up
      */
@@ -75,18 +81,27 @@ public class RateLimiter {
         return count == null || count <= limit.limit();
     }
 
-    /** The window's new count, or null when Valkey is unreachable (fail open). */
+    /**
+     * The window's new count. While Valkey is unreachable: null (fail open) for reads, the count
+     * kept in this process for everything else.
+     */
     private Long increment(String bucket, String subject, long now, long period) {
+        Long count;
         try {
-            return redis.execute(INCREMENT, List.of(windowKey(bucket, subject, now, period)), Long.toString(period));
+            count = redis.execute(INCREMENT, List.of(windowKey(bucket, subject, now, period)), Long.toString(period));
         } catch (DataAccessException e) {
             long nowMs = clock.millis();
             long last = lastWarning.get();
             if (nowMs - last > WARN_INTERVAL_MS && lastWarning.compareAndSet(last, nowMs)) {
-                log.warn("Rate limiting is disabled while Valkey is unreachable: {}", e.getMessage());
+                log.warn("Valkey is unreachable: reads are not rate limited and other limits count on this instance only: {}",
+                        e.getMessage());
             }
-            return null;
+            return FAIL_OPEN_BUCKETS.contains(bucket) ? null : local.increment(bucket, String.valueOf(subject), now, period);
         }
+        if (!local.isEmpty()) {
+            local.clear(); // Valkey counts again; the local windows would only go stale
+        }
+        return count;
     }
 
     static String windowKey(String bucket, String subject, long epochSecond, long periodSeconds) {
