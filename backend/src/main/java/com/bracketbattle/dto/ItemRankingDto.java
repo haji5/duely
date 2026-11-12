@@ -1,13 +1,11 @@
 package com.bracketbattle.dto;
 
-import com.bracketbattle.model.Item;
-
 /**
  * One leaderboard row. A plain class rather than a record: the Valkey cache serialiser only
  * writes type information for non-final classes.
  */
 public class ItemRankingDto {
-    private Item item;
+    private ItemDto item;
     private long wins;
     private long totalMatches;
     private int winPercentage;
@@ -17,7 +15,7 @@ public class ItemRankingDto {
 
     public ItemRankingDto() {}
 
-    public ItemRankingDto(Item item, long wins, long totalMatches, int winPercentage, double score,
+    public ItemRankingDto(ItemDto item, long wins, long totalMatches, int winPercentage, double score,
                           double averageScore, int timesRanked) {
         this.item = item;
         this.wins = wins;
@@ -28,8 +26,8 @@ public class ItemRankingDto {
         this.timesRanked = timesRanked;
     }
 
-    public Item getItem() { return item; }
-    public void setItem(Item item) { this.item = item; }
+    public ItemDto getItem() { return item; }
+    public void setItem(ItemDto item) { this.item = item; }
 
     public long getWins() { return wins; }
     public void setWins(long wins) { this.wins = wins; }

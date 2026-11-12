@@ -1,7 +1,7 @@
 package com.bracketbattle.repository;
 
+import com.bracketbattle.dto.ItemDto;
 import com.bracketbattle.dto.ItemRankingDto;
-import com.bracketbattle.model.Item;
 import com.bracketbattle.model.MatchOutcome;
 import com.bracketbattle.scoring.Leaderboard;
 import com.bracketbattle.scoring.RunScoring;
@@ -137,9 +137,8 @@ public class ItemStatsRepository {
                 FROM item_stats s JOIN items i ON i.id = s.item_id
                 WHERE s.bracket_id = ? AND s.times_ranked > 0
                 """, (rs, rowNum) -> {
-            Item item = new Item(rs.getLong("bracket_id"), rs.getString("title"),
+            ItemDto item = new ItemDto(rs.getLong("id"), rs.getLong("bracket_id"), rs.getString("title"),
                     rs.getString("media_url"), rs.getString("media_type"));
-            item.setId(rs.getLong("id"));
             int timesRanked = rs.getInt("times_ranked");
             double scoreSum = rs.getDouble("score_sum");
             long wins = rs.getLong("wins");

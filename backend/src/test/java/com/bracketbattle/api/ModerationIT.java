@@ -340,7 +340,7 @@ class ModerationIT extends IntegrationTest {
     }
 
     private static String key(String cache, Object key) {
-        return "duely:v7:" + cache + "::" + key;
+        return "duely:v8:" + cache + "::" + key;
     }
 
     private List<Long> publicIds() throws Exception {

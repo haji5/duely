@@ -4,7 +4,7 @@ import com.bracketbattle.advice.InvalidRequestException;
 import com.bracketbattle.config.CacheEvictor;
 import com.bracketbattle.dto.RunTicketDto;
 import com.bracketbattle.dto.SaveResultRequest;
-import com.bracketbattle.model.Item;
+import com.bracketbattle.dto.ItemDto;
 import com.bracketbattle.model.MatchOutcome;
 import com.bracketbattle.model.Result;
 import com.bracketbattle.ratelimit.RateLimiter;
@@ -79,7 +79,7 @@ public class RunService {
         if (bracketService.getBracketById(bracketId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found");
         }
-        List<Long> ids = new ArrayList<>(bracketService.getBracketItems(bracketId).stream().map(Item::getId).toList());
+        List<Long> ids = new ArrayList<>(bracketService.getBracketItems(bracketId).stream().map(ItemDto::getId).toList());
         List<Integer> options = BracketSizes.options(ids.size());
         if (!options.contains(size)) {
             String message = options.isEmpty()

@@ -1,13 +1,13 @@
 package com.bracketbattle.api;
 
+import com.bracketbattle.dto.BracketDto;
 import com.bracketbattle.dto.BracketListQuery;
 import com.bracketbattle.dto.BracketPageDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.HomeDto;
+import com.bracketbattle.dto.ItemDto;
 import com.bracketbattle.dto.ItemRankingDto;
-import com.bracketbattle.model.Bracket;
-import com.bracketbattle.model.Item;
-import com.bracketbattle.model.Result;
+import com.bracketbattle.dto.ResultDto;
 import com.bracketbattle.service.BracketService;
 import com.bracketbattle.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
@@ -35,31 +35,31 @@ class CacheRoundTripIT extends IntegrationTest {
         List<Long> ranking = itemIds(id);
         perform(as(USER_A, postJson("/brackets/" + id + "/results", runPayload(ranking, null, "nice"))));
 
-        Optional<Bracket> bracket = service.getBracketById(id);
-        List<Item> items = service.getBracketItems(id);
+        Optional<BracketDto> bracket = service.getBracketById(id);
+        List<ItemDto> items = service.getBracketItems(id);
         List<ItemRankingDto> rankings = service.getBracketRankings(id);
         List<CommentDto> comments = service.getBracketComments(id);
-        List<Result> results = service.getUserResults("uid-a", id);
+        List<ResultDto> results = service.getUserResults("uid-a", id);
         BracketListQuery firstPage = BracketListQuery.parse(null, null, null, null, null, null);
         BracketPageDto page = service.listBrackets(firstPage);
         HomeDto home = service.getHome();
 
         // Raw cache entries exist in Valkey under the versioned prefix...
-        assertThat(redis.hasKey("duely:v7:bracket::" + id)).isTrue();
-        assertThat(redis.hasKey("duely:v7:bracketRankings::" + id)).isTrue();
-        assertThat(redis.hasKey("duely:v7:bracketPages::newest:24")).isTrue();
-        assertThat(redis.hasKey("duely:v7:home::SimpleKey []")).isTrue();
+        assertThat(redis.hasKey("duely:v8:bracket::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v8:bracketRankings::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v8:bracketPages::newest:24")).isTrue();
+        assertThat(redis.hasKey("duely:v8:home::SimpleKey []")).isTrue();
 
         // ...and deserialize into the original types with the same content.
-        Bracket cachedBracket = get("bracket", id, Bracket.class);
+        BracketDto cachedBracket = get("bracket", id, BracketDto.class);
         assertThat(cachedBracket.getName()).isEqualTo(bracket.orElseThrow().getName());
         assertThat(cachedBracket.getCreatedAt()).isEqualTo(bracket.get().getCreatedAt());
         assertThat(cachedBracket.getItemCount()).isEqualTo(2);
         assertThat(cachedBracket.getRunCount()).isEqualTo(1);
 
         List<?> cachedItems = get("bracketItems", id, List.class);
-        assertThat(cachedItems).hasSize(2).allMatch(Item.class::isInstance);
-        assertThat(((Item) cachedItems.get(0)).getMediaUrl()).isEqualTo(items.get(0).getMediaUrl());
+        assertThat(cachedItems).hasSize(2).allMatch(ItemDto.class::isInstance);
+        assertThat(((ItemDto) cachedItems.get(0)).getMediaUrl()).isEqualTo(items.get(0).getMediaUrl());
 
         List<?> cachedRankings = get("bracketRankings", id, List.class);
         assertThat(cachedRankings).hasSize(2).allMatch(ItemRankingDto.class::isInstance);
@@ -73,23 +73,22 @@ class CacheRoundTripIT extends IntegrationTest {
         assertThat(((CommentDto) cachedComments.get(0)).getComment()).isEqualTo(comments.get(0).getComment());
 
         List<?> cachedResults = get("userResults", "uid-a:" + id, List.class);
-        assertThat(cachedResults).hasSize(1).allMatch(Result.class::isInstance);
-        assertThat(((Result) cachedResults.get(0)).getRanking()).isEqualTo(results.get(0).getRanking());
-        assertThat(((Result) cachedResults.get(0)).getMatches()).isEqualTo(results.get(0).getMatches()).hasSize(1);
-        // places is computed, not stored: it comes back from the cached matches.
-        assertThat(((Result) cachedResults.get(0)).getPlaces()).isEqualTo(results.get(0).getPlaces()).hasSize(2);
+        assertThat(cachedResults).hasSize(1).allMatch(ResultDto.class::isInstance);
+        assertThat(((ResultDto) cachedResults.get(0)).getRanking()).isEqualTo(results.get(0).getRanking());
+        assertThat(((ResultDto) cachedResults.get(0)).getMatches()).isEqualTo(results.get(0).getMatches()).hasSize(1);
+        assertThat(((ResultDto) cachedResults.get(0)).getPlaces()).isEqualTo(results.get(0).getPlaces()).hasSize(2);
 
         BracketPageDto cachedPage = get("bracketPages", firstPage.cacheKey(), BracketPageDto.class);
         assertThat(cachedPage.getTotal()).isEqualTo(page.getTotal()).isPositive();
-        assertThat(cachedPage.getItems()).hasSameSizeAs(page.getItems()).allMatch(Bracket.class::isInstance);
+        assertThat(cachedPage.getItems()).hasSameSizeAs(page.getItems()).allMatch(BracketDto.class::isInstance);
         assertThat(cachedPage.getItems().get(0).getId()).isEqualTo(id);
         assertThat(cachedPage.getItems().get(0).getRunCount()).isEqualTo(1);
 
         HomeDto cachedHome = get("home", org.springframework.cache.interceptor.SimpleKey.EMPTY, HomeDto.class);
-        assertThat(cachedHome.getRecent()).hasSameSizeAs(home.getRecent()).allMatch(Bracket.class::isInstance);
+        assertThat(cachedHome.getRecent()).hasSameSizeAs(home.getRecent()).allMatch(BracketDto.class::isInstance);
         assertThat(cachedHome.getCategories()).hasSameSizeAs(home.getCategories())
                 .allMatch(HomeDto.CategorySection.class::isInstance);
-        assertThat(cachedHome.getCategories().get(0).getBrackets()).allMatch(Bracket.class::isInstance);
+        assertThat(cachedHome.getCategories().get(0).getBrackets()).allMatch(BracketDto.class::isInstance);
 
         // A second call is served from the cache and equals the first
         assertThat(service.getBracketRankings(id).get(0).getWins()).isEqualTo(rankings.get(0).getWins());

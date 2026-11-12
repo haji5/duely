@@ -2,6 +2,7 @@ package com.bracketbattle.model;
 
 import jakarta.persistence.*;
 
+/** Persistence only: the API and the cache use ItemDto. */
 @Entity
 @Table(name = "items")
 public class Item {
