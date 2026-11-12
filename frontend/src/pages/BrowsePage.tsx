@@ -5,100 +5,100 @@ import { ErrorState } from '../components/PageStates';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PageMeta, { pageTitle } from '../components/PageMeta';
 import { bracketApi, errorMessage } from '../services/api';
-import type { Bracket } from '@/types';
+import type { Bracket, BracketPage, BracketSort, BracketType } from '@/types';
+import { CATEGORIES } from '@/utils/categories';
 import { useDebounce } from '@/utils/debounce';
 import { useAuth } from '../contexts/AuthContext';
 
-const SORT_OPTIONS = [
+const SORT_OPTIONS: { value: BracketSort; label: string }[] = [
   { value: 'newest', label: 'Newest first' },
   { value: 'oldest', label: 'Oldest first' },
-  { value: 'name-asc', label: 'Name A–Z' },
-  { value: 'name-desc', label: 'Name Z–A' },
-  { value: 'type', label: 'Type' },
   { value: 'popular', label: 'Most popular' },
-] as const;
-type Sort = typeof SORT_OPTIONS[number]['value'];
+  { value: 'name', label: 'Name A–Z' },
+];
+const TYPES: BracketType[] = ['video', 'song', 'image'];
+const PAGE_SIZE = 24;
+/** The server refuses longer searches. */
+const MAX_SEARCH_LENGTH = 100;
 
-const time = (b: Bracket) => new Date(b.createdAt).getTime();
-
-function sortBrackets(brackets: Bracket[], sort: Sort, popularRank: Map<number, number>): Bracket[] {
-  const sorted = [...brackets];
-  switch (sort) {
-    case 'oldest': return sorted.sort((a, b) => time(a) - time(b));
-    case 'name-asc': return sorted.sort((a, b) => a.name.localeCompare(b.name));
-    case 'name-desc': return sorted.sort((a, b) => b.name.localeCompare(a.name));
-    case 'type': return sorted.sort((a, b) => a.type.localeCompare(b.type) || time(b) - time(a));
-    case 'popular': {
-      const rank = (b: Bracket) => popularRank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-      return sorted.sort((a, b) => rank(a) - rank(b) || time(b) - time(a));
-    }
-    default: return sorted.sort((a, b) => time(b) - time(a));
-  }
+/** Sort values from older links, when the browser sorted the list itself, map to the nearest one. */
+function parseSort(value: string | null): BracketSort {
+  if (value === 'name-asc') return 'name';
+  return SORT_OPTIONS.some(o => o.value === value) ? (value as BracketSort) : 'newest';
 }
 
 type Data =
-  | { status: 'loading' }
+  | { status: 'loading'; previous: BracketPage | null }
   | { status: 'error'; message: string }
-  | { status: 'ready'; brackets: Bracket[]; popularRank: Map<number, number> };
+  | { status: 'ready'; page: BracketPage };
 
 /**
- * All filters live in the URL (?q=&type=&category=&sort=&mine=1), so links, reloads and
- * back/forward reproduce the view and the navbar's plain /browse resets it.
+ * All filters live in the URL (?q=&type=&category=&sort=&page=&mine=1), so links, reloads and
+ * back/forward reproduce the view and the navbar's plain /browse resets it. The server filters,
+ * sorts and pages; ?page is 1-based.
  */
 const BrowsePage: React.FC = () => {
   const { currentUser } = useAuth();
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
-  const type = params.get('type') ?? 'all';
+  const typeParam = params.get('type');
+  const type = TYPES.includes(typeParam as BracketType) ? (typeParam as BracketType) : 'all';
   const category = params.get('category') ?? 'all';
-  const sortParam = params.get('sort');
-  const sort: Sort = SORT_OPTIONS.some(o => o.value === sortParam) ? (sortParam as Sort) : 'newest';
+  const sort = parseSort(params.get('sort'));
+  const pageNumber = Math.max(1, Math.floor(Number(params.get('page'))) || 1);
   const mine = params.get('mine') === '1';
-  const debouncedQ = useDebounce(q, 300);
+  const debouncedQ = useDebounce(q.trim(), 300);
 
-  const [data, setData] = React.useState<Data>({ status: 'loading' });
+  const [data, setData] = React.useState<Data>({ status: 'loading', previous: null });
   const [reloadKey, setReloadKey] = React.useState(0);
-  const needsPopular = sort === 'popular';
   const signedOutMine = mine && !currentUser;
 
   React.useEffect(() => {
     if (signedOutMine) return;
     let cancelled = false; // a slower, older request must not overwrite a newer one
-    setData({ status: 'loading' });
-    const list = mine ? bracketApi.getMyBrackets() : bracketApi.getAllBrackets();
-    const popular = needsPopular ? bracketApi.getPopularBrackets() : Promise.resolve([] as Bracket[]);
-    Promise.all([list, popular])
-      .then(([brackets, popularList]) => {
-        if (!cancelled) {
-          setData({ status: 'ready', brackets, popularRank: new Map(popularList.map((b, i) => [b.id, i])) });
-        }
-      })
+    // Keep showing the last page while the next one loads, so the grid doesn't flash empty.
+    setData(d => ({ status: 'loading', previous: d.status === 'ready' ? d.page : d.status === 'loading' ? d.previous : null }));
+    const query = {
+      sort,
+      type: type === 'all' ? undefined : type,
+      category: category === 'all' ? undefined : category,
+      q: debouncedQ || undefined,
+      page: pageNumber - 1,
+      size: PAGE_SIZE,
+    };
+    (mine ? bracketApi.getMyBrackets(query) : bracketApi.listBrackets(query))
+      .then(page => { if (!cancelled) setData({ status: 'ready', page }); })
       .catch(error => { if (!cancelled) setData({ status: 'error', message: errorMessage(error) }); });
     return () => { cancelled = true; };
-  }, [mine, needsPopular, signedOutMine, currentUser?.uid, reloadKey]);
+  }, [mine, signedOutMine, sort, type, category, debouncedQ, pageNumber, currentUser?.uid, reloadKey]);
 
+  /** Changing a filter starts again from the first page. */
   const setParam = (key: string, value: string, defaultValue: string) => {
     setParams(prev => {
       const next = new URLSearchParams(prev);
       if (!value || value === defaultValue) next.delete(key);
       else next.set(key, value);
+      next.delete('page');
       return next;
     }, { replace: true });
   };
 
-  const brackets = data.status === 'ready' ? data.brackets : [];
-  const filtered = React.useMemo(() => {
-    if (data.status !== 'ready') return [];
-    const needle = debouncedQ.trim().toLowerCase();
-    return sortBrackets(data.brackets.filter(b =>
-      (!needle || b.name.toLowerCase().includes(needle) || (b.description ?? '').toLowerCase().includes(needle))
-      && (type === 'all' || b.type === type)
-      && (category === 'all' || b.category === category)), sort, data.popularRank);
-  }, [data, debouncedQ, type, category, sort]);
+  const goToPage = (n: number) => {
+    setParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (n <= 1) next.delete('page');
+      else next.set('page', String(n));
+      return next;
+    });
+    window.scrollTo(0, 0);
+  };
 
-  const types = Array.from(new Set(brackets.map(b => b.type)));
-  const categories = Array.from(new Set(brackets.map(b => b.category).filter(Boolean)));
+  const shown = data.status === 'ready' ? data.page : data.status === 'loading' ? data.previous : null;
   const hasFilters = Boolean(q) || type !== 'all' || category !== 'all';
+  // A category from an older link that is not on the fixed list still shows as selected.
+  const categories: string[] = category !== 'all' && !(CATEGORIES as readonly string[]).includes(category)
+    ? [...CATEGORIES, category]
+    : [...CATEGORIES];
 
   return (
     <div className="page pb-24 pt-10 sm:pt-14">
@@ -138,13 +138,14 @@ const BrowsePage: React.FC = () => {
                 type="search"
                 placeholder="Search by name or description"
                 className="field pl-11"
+                maxLength={MAX_SEARCH_LENGTH}
                 value={q}
                 onChange={(e) => setParam('q', e.target.value, '')}
               />
             </div>
             <select aria-label="Filter by type" className="field" value={type} onChange={(e) => setParam('type', e.target.value, 'all')}>
               <option value="all">All types</option>
-              {types.map(t => <option key={t} value={t}>{typeLabel(t)}</option>)}
+              {TYPES.map(t => <option key={t} value={t}>{typeLabel(t)}</option>)}
             </select>
             <select aria-label="Filter by category" className="field" value={category} onChange={(e) => setParam('category', e.target.value, 'all')}>
               <option value="all">All categories</option>
@@ -155,62 +156,109 @@ const BrowsePage: React.FC = () => {
             </select>
           </div>
 
-          {data.status === 'loading' && <PageLoader label="Loading brackets" />}
-
           {data.status === 'error' && (
             <ErrorState title="Brackets couldn’t be loaded" message={data.message} onRetry={() => setReloadKey(k => k + 1)} />
           )}
 
-          {data.status === 'ready' && (
-            <>
-              <p className="mb-6 text-sm text-themed-tertiary" aria-live="polite">
-                Showing {filtered.length} of {brackets.length} brackets
-                {q && <span> matching “{q}”</span>}
-                {type !== 'all' && <span> in {typeLabel(type).toLowerCase()}</span>}
-                {category !== 'all' && <span> in {category}</span>}
-              </p>
+          {data.status !== 'error' && !shown && <PageLoader label="Loading brackets" />}
 
-              {filtered.length === 0 ? (
-                <div className="card flex flex-col items-center px-6 py-16 text-center">
-                  <h2 className="font-display text-3xl font-extrabold">
-                    {hasFilters ? 'Nothing matches those filters' : mine ? 'You haven’t made a bracket yet' : 'No brackets yet'}
-                  </h2>
-                  <p className="mt-2 max-w-md text-themed-secondary">
-                    {hasFilters
-                      ? 'Try a different search, or clear the filters to see everything.'
-                      : 'Add a few videos, songs or images and let people pick a winner.'}
-                  </p>
-                  {hasFilters ? (
-                    <button
-                      onClick={() => setParams(prev => {
-                        const next = new URLSearchParams(prev);
-                        ['q', 'type', 'category'].forEach(k => next.delete(k));
-                        return next;
-                      }, { replace: true })}
-                      className="btn btn-secondary mt-6"
-                    >
-                      Clear filters
-                    </button>
-                  ) : (
-                    <Link to="/create" className="btn btn-primary mt-6">Create a bracket</Link>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {filtered.map(bracket => (mine ? (
-                    <OwnBracket
-                      key={bracket.id}
-                      bracket={bracket}
-                      onDeleted={() => setData(d => (d.status === 'ready'
-                        ? { ...d, brackets: d.brackets.filter(b => b.id !== bracket.id) }
-                        : d))}
-                    />
-                  ) : <BracketCard key={bracket.id} bracket={bracket} />))}
-                </div>
-              )}
-            </>
+          {data.status !== 'error' && shown && (
+            <Results
+              page={shown}
+              loading={data.status === 'loading'}
+              mine={mine}
+              summary={{ q: debouncedQ, type, category }}
+              hasFilters={hasFilters}
+              onClearFilters={() => setParams(prev => {
+                const next = new URLSearchParams(prev);
+                ['q', 'type', 'category', 'page'].forEach(k => next.delete(k));
+                return next;
+              }, { replace: true })}
+              onPage={goToPage}
+              onDeleted={(id) => setData(d => (d.status === 'ready'
+                ? { ...d, page: { ...d.page, items: d.page.items.filter(b => b.id !== id), total: d.page.total - 1 } }
+                : d))}
+            />
           )}
         </>
+      )}
+    </div>
+  );
+};
+
+/** One page of brackets with its count line, empty states and page controls. */
+const Results: React.FC<{
+  page: BracketPage;
+  loading: boolean;
+  mine: boolean;
+  summary: { q: string; type: string; category: string };
+  hasFilters: boolean;
+  onClearFilters: () => void;
+  onPage: (n: number) => void;
+  onDeleted: (id: number) => void;
+}> = ({ page, loading, mine, summary, hasFilters, onClearFilters, onPage, onDeleted }) => {
+  const pages = Math.max(1, Math.ceil(page.total / page.size));
+  const current = page.page + 1;
+  const first = page.page * page.size + 1;
+  const last = page.page * page.size + page.items.length;
+  const pastTheEnd = page.items.length === 0 && page.total > 0;
+  const n = (value: number) => value.toLocaleString();
+
+  return (
+    <div aria-busy={loading}>
+      <p className="mb-6 text-sm text-themed-tertiary" aria-live="polite">
+        {loading ? 'Loading…' : (
+          <>
+            {pastTheEnd || page.total === 0
+              ? `${n(page.total)} ${page.total === 1 ? 'bracket' : 'brackets'}`
+              : `Showing ${n(first)}–${n(last)} of ${n(page.total)} ${page.total === 1 ? 'bracket' : 'brackets'}`}
+            {summary.q && <span> matching “{summary.q}”</span>}
+            {summary.type !== 'all' && <span> in {typeLabel(summary.type).toLowerCase()}</span>}
+            {summary.category !== 'all' && <span> in {summary.category}</span>}
+          </>
+        )}
+      </p>
+
+      {pastTheEnd ? (
+        <div className="card flex flex-col items-center px-6 py-16 text-center">
+          <h2 className="font-display text-3xl font-extrabold">This page is past the end</h2>
+          <p className="mt-2 max-w-md text-themed-secondary">There are fewer brackets than that now.</p>
+          <button type="button" onClick={() => onPage(1)} className="btn btn-secondary mt-6">Go to the first page</button>
+        </div>
+      ) : page.items.length === 0 ? (
+        <div className="card flex flex-col items-center px-6 py-16 text-center">
+          <h2 className="font-display text-3xl font-extrabold">
+            {hasFilters ? 'Nothing matches those filters' : mine ? 'You haven’t made a bracket yet' : 'No brackets yet'}
+          </h2>
+          <p className="mt-2 max-w-md text-themed-secondary">
+            {hasFilters
+              ? 'Try a different search, or clear the filters to see everything.'
+              : 'Add a few videos, songs or images and let people pick a winner.'}
+          </p>
+          {hasFilters ? (
+            <button type="button" onClick={onClearFilters} className="btn btn-secondary mt-6">Clear filters</button>
+          ) : (
+            <Link to="/create" className="btn btn-primary mt-6">Create a bracket</Link>
+          )}
+        </div>
+      ) : (
+        <div className={`grid grid-cols-1 gap-4 transition-opacity sm:grid-cols-2 lg:grid-cols-3 ${loading ? 'opacity-60' : ''}`}>
+          {page.items.map(bracket => (mine
+            ? <OwnBracket key={bracket.id} bracket={bracket} onDeleted={() => onDeleted(bracket.id)} />
+            : <BracketCard key={bracket.id} bracket={bracket} />))}
+        </div>
+      )}
+
+      {pages > 1 && !pastTheEnd && (
+        <nav className="mt-10 flex items-center justify-center gap-3" aria-label="Pages">
+          <button type="button" className="btn btn-secondary" disabled={loading || current <= 1} onClick={() => onPage(current - 1)}>
+            Previous
+          </button>
+          <span className="tabular text-sm text-themed-secondary">Page {current} of {pages}</span>
+          <button type="button" className="btn btn-secondary" disabled={loading || current >= pages} onClick={() => onPage(current + 1)}>
+            Next
+          </button>
+        </nav>
       )}
     </div>
   );

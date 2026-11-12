@@ -46,6 +46,10 @@ export const formatDate = (value: string) => {
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+/** "1 run", "1,204 runs". */
+export const countLabel = (count: number, one: string, many: string) =>
+  `${(count ?? 0).toLocaleString()} ${count === 1 ? one : many}`;
+
 const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
   // The card's accessible name (and anchor text) is just the bracket name, not every line inside it.
   // useId: the home page can show the same bracket in more than one section.
@@ -79,8 +83,14 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
         <p className="mt-2 text-sm text-themed-secondary line-clamp-2">{bracket.description}</p>
       )}
 
-      <div className="mt-auto flex items-center justify-between pt-5 text-sm">
-        <span className="text-themed-tertiary">{formatDate(bracket.createdAt)}</span>
+      <div className="mt-auto flex items-end justify-between gap-3 pt-5 text-sm">
+        <span className="flex flex-wrap gap-x-1.5 text-themed-tertiary">
+          <span className="tabular">{countLabel(bracket.itemCount, 'entry', 'entries')}</span>
+          <span aria-hidden="true">·</span>
+          <span className="tabular">{countLabel(bracket.runCount, 'run', 'runs')}</span>
+          <span aria-hidden="true">·</span>
+          <span>{formatDate(bracket.createdAt)}</span>
+        </span>
         <span className="inline-flex items-center gap-1.5 font-semibold text-accent">
           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path d="M6.3 3.7A1 1 0 004.8 4.6v10.8a1 1 0 001.5.9l8.6-5.4a1 1 0 000-1.8L6.3 3.7z" />

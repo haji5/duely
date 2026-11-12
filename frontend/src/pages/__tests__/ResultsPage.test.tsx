@@ -5,6 +5,7 @@ import type { Bracket, Item, ItemRanking } from '@/types';
 
 const bracket: Bracket = {
   id: 3, name: 'Bun Zone', description: null, type: 'song', category: 'Music', createdAt: '2026-10-01T12:00:00Z',
+  itemCount: 3, runCount: 0,
 };
 const item = (id: number, title: string): Item => ({ id, bracketId: 3, title, mediaUrl: 'https://x.test/a.mp3', mediaType: 'song' });
 const items = [item(1, 'Alpha'), item(2, 'Bravo'), item(3, 'Charlie')];

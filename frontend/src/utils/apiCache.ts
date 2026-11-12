@@ -49,6 +49,12 @@ class ApiCache {
     });
   }
 
+  /** invalidate() for every key starting with {@code prefix}, cached or loading. */
+  invalidatePrefix(prefix: string): void {
+    const matching = new Set([...this.entries.keys(), ...this.inFlight.keys()].filter(key => key.startsWith(prefix)));
+    this.invalidate(...matching);
+  }
+
   clear(): void {
     this.entries.clear();
     this.inFlight.clear();
