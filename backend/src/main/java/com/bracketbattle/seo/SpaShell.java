@@ -18,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * The built SPA shell (index.html), fetched from the frontend container and kept in memory for a
@@ -38,6 +39,9 @@ public class SpaShell {
     private final ResourceLoader resourceLoader;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
     private volatile Cached cached;
+    // A lock rather than synchronized: callers that find it taken return the stale copy instead
+    // of waiting, and it doesn't pin a virtual thread to its carrier during the fetch.
+    private final ReentrantLock refreshLock = new ReentrantLock();
 
     public SpaShell(@Value("${app.spa-index-url}") String location,
                     @Value("${app.spa-index-ttl:30s}") Duration ttl,
@@ -47,37 +51,56 @@ public class SpaShell {
         this.resourceLoader = resourceLoader;
     }
 
-    /** A fresh copy of the shell to edit. */
+    /**
+     * A fresh copy of the shell to edit. One caller refreshes an expired copy while everyone else
+     * keeps getting the stale one, so page requests never queue behind the fetch. Only the very
+     * first requests, before any copy exists, wait for it.
+     */
     public Document get() {
         Cached current = cached;
         if (current != null && isFresh(current)) {
             return current.document().clone();
         }
-        synchronized (this) {
+        if (current != null) {
+            if (!refreshLock.tryLock()) {
+                return current.document().clone();
+            }
+        } else {
+            refreshLock.lock();
+        }
+        try {
             current = cached;
             if (current != null && isFresh(current)) {
                 return current.document().clone();
             }
-            try {
-                Document document = Jsoup.parse(fetch());
-                if (document.getElementById("root") == null) {
-                    throw new IOException("no #root element");
-                }
-                document.outputSettings().prettyPrint(false);
-                cached = new Cached(document, Instant.now());
-                return document.clone();
-            } catch (IOException e) {
-                if (current == null) {
-                    log.warn("SPA shell unavailable from {}: {}", location, e.getMessage());
-                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Page shell unavailable");
-                }
-                log.warn("SPA shell refresh from {} failed, serving the previous copy: {}", location, e.getMessage());
-                cached = new Cached(current.document(), Instant.now());
-                return current.document().clone();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            return refresh(current).clone();
+        } finally {
+            refreshLock.unlock();
+        }
+    }
+
+    /** Fetches the shell; on failure keeps {@code previous} (if any) for another TTL. */
+    private Document refresh(Cached previous) {
+        try {
+            Document document = Jsoup.parse(fetch());
+            if (document.getElementById("root") == null) {
+                throw new IOException("no #root element");
+            }
+            document.outputSettings().prettyPrint(false);
+            cached = new Cached(document, Instant.now());
+            return document;
+        } catch (IOException e) {
+            if (previous == null) {
+                log.warn("SPA shell unavailable from {}: {}", location, e.getMessage());
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Page shell unavailable");
             }
+            log.warn("SPA shell refresh from {} failed, serving the previous copy: {}", location, e.getMessage());
+            cached = new Cached(previous.document(), Instant.now());
+            return previous.document();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (previous != null) return previous.document();
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Page shell unavailable");
         }
     }
 
