@@ -44,9 +44,19 @@ COPY --from=build /app/build /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY security-headers.conf /etc/nginx/security-headers.conf
 COPY page-proxy.conf /etc/nginx/page-proxy.conf
+# Writes /etc/nginx/runtime/*.conf from these variables at each start (see the script). The image
+# stays the same for every deployment; Compose sets them.
+COPY runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
+ENV TRUSTED_PROXIES="" \
+    REAL_IP_HEADER="X-Forwarded-For" \
+    PUBLIC_BASE_URL=""
 
-# Ensure nginx user can read/write necessary dirs and drop privileges
-RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/run /var/log/nginx
+# Ensure nginx user can read/write necessary dirs and drop privileges. The sed guards against a
+# checkout that turned the script's line endings into CRLF.
+RUN sed -i 's/\r$//' /docker-entrypoint.d/40-runtime-config.sh \
+    && chmod 755 /docker-entrypoint.d/40-runtime-config.sh \
+    && mkdir -p /etc/nginx/runtime \
+    && chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/run /var/log/nginx /etc/nginx/runtime
 USER nginx
 
 EXPOSE 3000

@@ -1,7 +1,0 @@
-# TODO: replace example.com with the real public domain once the named tunnel is set up.
-User-agent: *
-Disallow: /create
-Disallow: /admin
-Disallow: /api/
-
-Sitemap: https://example.com/sitemap.xml

@@ -22,8 +22,30 @@ export const pageTitle = (main: string, detail = '', shortDetail = '') => {
 export const bracketKind = (type: string, category?: string | null) =>
   type === 'video' && category === 'Music' ? 'song' : type;
 
+const isLoopback = (host: string) =>
+  host === 'localhost' || host.endsWith('.localhost') || host.startsWith('127.') || host === '[::1]' || host === '0.0.0.0';
+
+/**
+ * The site's public origin (PUBLIC_BASE_URL), which nginx and the backend put in
+ * <meta name="public-origin">, so a page loaded through localhost or the LAN still hands out links
+ * to the real domain. Without the tag, or when it names a loopback host (development, where a
+ * localhost link is no use to anyone else), it's the page's own origin.
+ */
+export const publicOrigin = () => {
+  const configured = document.querySelector<HTMLMetaElement>('meta[name="public-origin"]')?.content.trim();
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if ((url.protocol === 'https:' || url.protocol === 'http:') && !isLoopback(url.hostname)) return url.origin;
+    } catch {
+      // Malformed: fall back to this page's origin.
+    }
+  }
+  return window.location.origin;
+};
+
 /** The canonical URL of a path: what PageMeta links as canonical, and what Share hands out. */
-export const canonicalUrl = (path: string) => `${window.location.origin}${path}`;
+export const canonicalUrl = (path: string) => `${publicOrigin()}${path}`;
 
 /**
  * Per-route <title>, description, canonical and robots. React 19 hoists these into <head>.

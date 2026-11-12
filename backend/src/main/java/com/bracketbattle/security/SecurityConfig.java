@@ -31,7 +31,7 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private static final String[] PAGE_PATHS = {"/pages/home", "/pages/bracket/*", "/pages/results/*", "/sitemap.xml", "/sitemap-*.xml"};
+    private static final String[] PAGE_PATHS = {"/pages/home", "/pages/bracket/*", "/pages/results/*", "/sitemap.xml", "/sitemap-*.xml", "/robots.txt"};
 
     @Value("${app.cors.allowed-origins}")
     private List<String> allowedOrigins;
@@ -49,7 +49,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/brackets", "/home", "/brackets/*",
                         "/brackets/*/items", "/brackets/*/rankings", "/brackets/*/stats", "/brackets/*/comments",
                         "/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
-                // Pages with per-route head tags, and the sitemap (PageController, SitemapController).
+                // Pages with per-route head tags, the sitemap and robots.txt (PageController, SitemapController).
                 // HEAD too, since link checkers and crawlers use it on page URLs.
                 .requestMatchers(HttpMethod.GET, PAGE_PATHS).permitAll()
                 .requestMatchers(HttpMethod.HEAD, PAGE_PATHS).permitAll()

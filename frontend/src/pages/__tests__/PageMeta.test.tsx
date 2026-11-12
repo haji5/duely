@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { Bracket, Item } from '@/types';
-import { pageTitle } from '../../components/PageMeta';
+import { canonicalUrl, pageTitle, publicOrigin } from '../../components/PageMeta';
 
 const bracket: Bracket = {
   id: 3, name: 'THE BUN ZONE BRACKET', description: null, type: 'video', category: 'Music',
@@ -122,5 +122,37 @@ describe('pageTitle', () => {
     expect(pageTitle(long, ' — 8-entry song bracket')).toHaveLength(60);
     expect(pageTitle(long, ' results: everyone’s ranking', ' results')).toMatch(/A… results \| Duely$/);
     expect(pageTitle('Short', ' — 8-entry song bracket')).toBe('Short — 8-entry song bracket | Duely');
+  });
+});
+
+describe('public origin', () => {
+  const setOrigin = (content: string) => {
+    const meta = document.createElement('meta');
+    meta.name = 'public-origin';
+    meta.content = content;
+    document.head.append(meta);
+    return meta;
+  };
+  let meta: HTMLMetaElement | undefined;
+  afterEach(() => meta?.remove());
+
+  it('canonicals and share links use the configured origin, whatever host the page came from', async () => {
+    meta = setOrigin('https://duely.example');
+    expect(publicOrigin()).toBe('https://duely.example');
+    expect(canonicalUrl('/bracket/3')).toBe('https://duely.example/bracket/3');
+    renderAt('/results/3?fromBattle=true');
+    await screen.findByRole('heading', { level: 1, name: 'THE BUN ZONE BRACKET' });
+    expect(canonical()).toBe('https://duely.example/results/3');
+  });
+
+  it("falls back to the page's own origin when the tag is empty, malformed or names a loopback host", () => {
+    for (const content of ['', 'not a url', 'ftp://duely.example', 'http://localhost:3000', 'https://127.0.0.1',
+      'http://[::1]:3000', 'https://app.localhost']) {
+      meta?.remove();
+      meta = setOrigin(content);
+      expect(publicOrigin(), content).toBe(window.location.origin);
+    }
+    meta?.remove();
+    expect(publicOrigin()).toBe(window.location.origin);
   });
 });

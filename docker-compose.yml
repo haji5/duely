@@ -25,9 +25,8 @@ services:
     ports:
       # Bound to localhost only: Valkey has no password and holds deserialized cache data
       - "127.0.0.1:6379:6379"
-    volumes:
-      - valkey_data:/data
-    command: valkey-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    # A cache and rate-limit counters, disposable by design: nothing is written to disk.
+    command: ["valkey-server", "--appendonly", "no", "--save", "", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     networks:
       - bracket-battle-network
     healthcheck:
@@ -89,6 +88,12 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      # Only this address may report the client address in X-Forwarded-For: the quick tunnel in
+      # docker-compose.local.yml. Set TRUSTED_PROXIES (comma-separated) for another proxy.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.29.53.250}
+      # Left empty unless set, so shared links use whatever host the page was loaded from.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
     depends_on:
       backend:
         condition: service_healthy
@@ -97,13 +102,12 @@ services:
 
 volumes:
   postgres_data:
-  valkey_data:
 
 networks:
   bracket-battle-network:
     driver: bridge
     # A fixed subnet so the Cloudflare tunnel container (docker-compose.local.yml) gets a fixed
-    # address, the only proxy nginx trusts to report the real client IP.
+    # address, the proxy nginx trusts to report the real client IP (TRUSTED_PROXIES).
     ipam:
       config:
         - subnet: 172.29.53.0/24

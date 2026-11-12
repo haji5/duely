@@ -1,0 +1,135 @@
+# docker-compose.prod.yml: the public deployment, from the images CI publishes to GHCR.
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# It serves plain HTTP on port 3000 and expects a proxy in front that terminates TLS: the
+# Cloudflare tunnel (add -f docker-compose.tunnel.yml) or a provider's load balancer. Set
+# TRUSTED_PROXIES to that proxy's address so rate limits see real client addresses. See "Running
+# it publicly" in the README for the settings, backups and updates.
+#
+# Same project name, network and database volume as docker-compose.yml, so switching from the
+# development stack keeps its data. Run one or the other, not both.
+
+name: duely
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bracket_battle
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bracket-battle-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d bracket_battle"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    # A cache and rate-limit counters, disposable by design: nothing is written to disk.
+    command: ["valkey-server", "--appendonly", "no", "--save", "", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    networks:
+      - bracket-battle-network
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  backend:
+    # A release tag such as 1.2.0 (or a commit sha); see .github/workflows/docker-image.yml.
+    image: ghcr.io/${IMAGE_REPOSITORY:-haji5/duely}-backend:${DUELY_TAG:?Set DUELY_TAG to the image tag to run}
+    restart: unless-stopped
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./backend/.env
+        required: false
+    environment:
+      SERVER_PORT: 8080
+      DB_URL: jdbc:postgresql://postgres:5432/bracket_battle
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
+      # Pages are same-origin through nginx; this only matters for other sites calling the API.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-${PUBLIC_BASE_URL}}
+      # The origin in canonicals, og:url, JSON-LD, the sitemap and robots.txt. The backend refuses
+      # to start unless it's https on a public host.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the public origin, e.g. https://duely.example}
+      REQUIRE_PUBLIC_ORIGIN: "true"
+    mem_limit: 1g
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    networks:
+      - bracket-battle-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+
+  frontend:
+    image: ghcr.io/${IMAGE_REPOSITORY:-haji5/duely}-frontend:${DUELY_TAG:?Set DUELY_TAG to the image tag to run}
+    restart: unless-stopped
+    ports:
+      # Loopback by default, for a proxy on this machine (and for you). Set HTTP_BIND=0.0.0.0 when
+      # the proxy is elsewhere, and firewall the port to it.
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-3000}:3000"
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      # The proxy's address or CIDRs (comma-separated), trusted to report the client address in
+      # REAL_IP_HEADER. A proxy on this host connects from the network's gateway, 172.29.53.1.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      REAL_IP_HEADER: ${REAL_IP_HEADER:-X-Forwarded-For}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - bracket-battle-network
+
+  # pg_dump -Fc every night into BACKUP_DIR on the host, 14 days kept (deploy/backup.sh).
+  backup:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${DB_USERNAME:-postgres}
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: bracket_battle
+      TZ: ${TZ:-UTC}
+      BACKUP_TIME: ${BACKUP_TIME:-03:30}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_HOOK: ${BACKUP_HOOK:-}
+    volumes:
+      - ./deploy/backup.sh:/backup.sh:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bracket-battle-network
+
+volumes:
+  postgres_data:
+
+networks:
+  bracket-battle-network:
+    driver: bridge
+    # As in docker-compose.yml; the tunnel overlay pins its container to an address in it.
+    ipam:
+      config:
+        - subnet: 172.29.53.0/24

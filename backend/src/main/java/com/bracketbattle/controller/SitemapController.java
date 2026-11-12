@@ -24,11 +24,23 @@ import java.util.List;
  * {@link #bracketsPerFile} brackets each, in id order (a file's brackets only change when one
  * goes). URLs use app.public-base-url, never the Host header. Not cached in Valkey: crawlers ask
  * rarely, and nginx lets them cache it for an hour.
+ *
+ * <p>/robots.txt lives here too, so its {@code Sitemap:} line names the same origin.
  */
 @RestController
 public class SitemapController {
 
     private static final MediaType XML = new MediaType(MediaType.APPLICATION_XML, StandardCharsets.UTF_8);
+    private static final MediaType TEXT = new MediaType(MediaType.TEXT_PLAIN, StandardCharsets.UTF_8);
+    /** Pages that are no use in search results; keep in step with the routes in App.tsx. */
+    private static final String ROBOTS = """
+            User-agent: *
+            Disallow: /create
+            Disallow: /admin
+            Disallow: /api/
+
+            Sitemap: %s/sitemap.xml
+            """;
     private static final String[] STATIC_PAGES = {"/", "/browse", "/about"};
 
     private final BracketListRepository brackets;
@@ -41,6 +53,11 @@ public class SitemapController {
         this.pageHeads = pageHeads;
         // The static pages go in the first file, alongside its brackets.
         this.bracketsPerFile = (maxUrlsPerFile - STATIC_PAGES.length) / 2;
+    }
+
+    @GetMapping("/robots.txt")
+    public ResponseEntity<String> robots() {
+        return ResponseEntity.ok().contentType(TEXT).body(ROBOTS.formatted(pageHeads.origin()));
     }
 
     @GetMapping("/sitemap.xml")

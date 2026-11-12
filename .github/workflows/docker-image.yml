@@ -3,6 +3,8 @@ name: CI & Docker Images
 on:
   push:
     branches: ["master"]
+    # A release: v1.2.0 publishes images tagged 1.2.0 and 1.2, which docker-compose.prod.yml runs.
+    tags: ["v*"]
   pull_request:
     branches: ["master"]
 
@@ -82,6 +84,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
           tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
             type=ref,event=branch
             type=raw,value=latest,enable={{is_default_branch}}
