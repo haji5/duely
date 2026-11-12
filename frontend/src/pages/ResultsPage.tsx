@@ -10,6 +10,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
 import { computeRankings, displayScore, placeLabel, rankingRunCount, runsLabel, scoreStoredRun } from '@/utils/rankings';
 import ShareButton from '../components/ShareButton';
+import ReportButton from '../components/ReportButton';
+import HiddenNotice from '../components/HiddenNotice';
 
 /** One of the viewer's own runs: from the server when signed in, from this tab when a guest. */
 interface Run {
@@ -191,6 +193,7 @@ const ResultsPage: React.FC = () => {
           + (leader ? ` In the lead: ${leader}.` : ' Play it and add your own run.')}
         path={path}
       />
+      {bracket.hiddenAt && <HiddenNotice bracketId={bracketId} onShown={() => setReloadKey(k => k + 1)} />}
       <header className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-themed-secondary">
@@ -296,14 +299,22 @@ const ResultsPage: React.FC = () => {
                       <span className="shrink-0 text-[0.8125rem] text-themed-tertiary">{formatDate(c.createdAt)}</span>
                     </div>
                     <p className="whitespace-pre-line leading-relaxed text-themed-secondary">{c.comment}</p>
-                    {champion && (
-                      <p className="mt-3 flex items-center gap-1.5 text-sm text-themed-tertiary">
-                        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="var(--accent-primary)" aria-hidden="true">
-                          <path d="M6 1h12v4h4v2a5 5 0 01-5 5h-.4A6 6 0 0113 15.9V19h4v3H7v-3h4v-3.1A6 6 0 017.4 12H7a5 5 0 01-5-5V5h4V1zm0 6H4a3 3 0 002.3 2.9A6 6 0 016 8V7zm12 0v1a6 6 0 01-.3 1.9A3 3 0 0020 7h-2z" />
-                        </svg>
-                        <span className="truncate">Crowned <span className="font-semibold text-themed-secondary">{champion.title}</span></span>
-                      </p>
-                    )}
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      {champion ? (
+                        <p className="flex min-w-0 items-center gap-1.5 text-sm text-themed-tertiary">
+                          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="var(--accent-primary)" aria-hidden="true">
+                            <path d="M6 1h12v4h4v2a5 5 0 01-5 5h-.4A6 6 0 0113 15.9V19h4v3H7v-3h4v-3.1A6 6 0 017.4 12H7a5 5 0 01-5-5V5h4V1zm0 6H4a3 3 0 002.3 2.9A6 6 0 016 8V7zm12 0v1a6 6 0 01-.3 1.9A3 3 0 0020 7h-2z" />
+                          </svg>
+                          <span className="truncate">Crowned <span className="font-semibold text-themed-secondary">{champion.title}</span></span>
+                        </p>
+                      ) : <span />}
+                      <ReportButton
+                        targetType="comment"
+                        targetId={c.id}
+                        label={`Report the comment by ${c.displayName || 'Anonymous'}`}
+                        className="shrink-0"
+                      />
+                    </div>
                   </li>
                 );
               })}

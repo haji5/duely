@@ -1,7 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
-  Bracket, BracketStats, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Result,
-  RunTicket,
+  Bracket, BracketStats, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Report,
+  ReportTargetType, Result, RunTicket,
 } from '@/types';
 import { currentFirebaseUser } from '@/config/firebase';
 import { apiCache } from '@/utils/apiCache';
@@ -78,6 +78,11 @@ export function errorStatus(error: unknown): number | undefined {
 
 const MINUTE = 60_000;
 
+/** Drops what is cached about a bracket whose visibility or existence changed. */
+function forgetBracket(id: number): void {
+  apiCache.invalidate(keys.brackets, keys.popular, keys.bracket(id), keys.items(id));
+}
+
 const keys = {
   brackets: '/brackets',
   popular: '/brackets/popular',
@@ -144,6 +149,28 @@ export const bracketApi = {
     return response.data;
   },
 
+  /** Deletes one of the signed-in user's brackets (admins: any), with its runs and rankings. */
+  deleteBracket: async (id: number): Promise<void> => {
+    await api.delete(`/brackets/${id}`);
+    forgetBracket(id);
+    const uid = currentFirebaseUser()?.uid;
+    if (uid) apiCache.invalidate(keys.myResults(uid), keys.myResults(uid, id));
+  },
+
+  /** Reports a bracket or a comment to the moderators. Open to guests. */
+  report: async (report: { targetType: ReportTargetType; targetId: number; reason: string; details?: string }): Promise<void> => {
+    await api.post('/reports', report);
+  },
+
+  /**
+   * Deletes what Duely keeps about the signed-in user: brackets nobody else has played, and the
+   * name and comment on their runs, which stay on the leaderboards anonymously.
+   */
+  deleteMyData: async (): Promise<void> => {
+    await api.delete('/me');
+    apiCache.clear();
+  },
+
   /** The signed-in user's brackets, newest first. Not cached, so new brackets show at once. */
   getMyBrackets: (): Promise<Bracket[]> => get<Bracket[]>('/me/brackets'),
 
@@ -168,4 +195,34 @@ export const bracketApi = {
 
   getSpotifyPlaylist: (url: string): Promise<PlaylistTrack[]> =>
     get<PlaylistTrack[]>('/metadata/spotify/playlist', { url }, SLOW_REQUEST_TIMEOUT_MS),
+};
+
+/** Moderation. The server checks the admin claim on every call; the UI only hides the controls. */
+export const adminApi = {
+  /** Newest first; open ones only unless `open` is false. */
+  getReports: (open = true): Promise<Report[]> => get<Report[]>('/admin/reports', { open }),
+
+  resolveReport: async (id: number): Promise<void> => {
+    await api.post(`/admin/reports/${id}/resolve`);
+  },
+
+  hideBracket: async (id: number): Promise<void> => {
+    await api.post(`/admin/brackets/${id}/hide`);
+    forgetBracket(id);
+  },
+
+  unhideBracket: async (id: number): Promise<void> => {
+    await api.post(`/admin/brackets/${id}/unhide`);
+    forgetBracket(id);
+  },
+
+  /** Clears a comment and its display name; the run stays. */
+  clearComment: async (resultId: number): Promise<void> => {
+    await api.delete(`/admin/results/${resultId}/comment`);
+  },
+
+  /** Deletes a run; the server rebuilds the bracket's leaderboard without it. */
+  deleteResult: async (resultId: number): Promise<void> => {
+    await api.delete(`/admin/results/${resultId}`);
+  },
 };

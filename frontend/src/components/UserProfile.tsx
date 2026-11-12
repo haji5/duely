@@ -1,13 +1,19 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
+import { bracketApi } from '../services/api';
+import ConfirmDialog from './ConfirmDialog';
+
+const MENU_ITEM = 'flex w-full items-center gap-3 px-4 py-2.5 text-left text-[0.95rem] text-themed-secondary transition-colors hover:bg-themed-tertiary hover:text-themed-primary';
 
 const UserProfile: React.FC = () => {
   const { currentUser, logout } = useAuth();
   const { clearSessionBattles } = useSessionBattles();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const navigate = useNavigate();
 
   // Extract first name only
   const getFirstName = (displayName: string | null | undefined): string => {
@@ -29,6 +35,15 @@ const UserProfile: React.FC = () => {
     } finally {
       setIsLoggingOut(false);
     }
+  };
+
+  const deleteMyData = async () => {
+    await bracketApi.deleteMyData();
+    // Leave before signing out: this menu unmounts once the user is gone.
+    setConfirmingDelete(false);
+    navigate('/');
+    clearSessionBattles();
+    await logout();
   };
 
   React.useEffect(() => {
@@ -103,6 +118,14 @@ const UserProfile: React.FC = () => {
             </svg>
             <span>My brackets</span>
           </Link>
+          {currentUser.isAdmin && (
+            <Link to="/admin" role="menuitem" className={MENU_ITEM} onClick={() => setShowDropdown(false)}>
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 21V4m0 0h11l-1.5 4L15 12H4" />
+              </svg>
+              <span>Reports</span>
+            </Link>
+          )}
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
@@ -114,6 +137,17 @@ const UserProfile: React.FC = () => {
             </svg>
             <span>{isLoggingOut ? 'Signing out…' : 'Sign out'}</span>
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { setShowDropdown(false); setConfirmingDelete(true); }}
+            className={`${MENU_ITEM} border-t border-themed-primary`}
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M9 7V4h6v3" />
+            </svg>
+            <span>Delete my data</span>
+          </button>
         </div>
       )}
 
@@ -122,6 +156,24 @@ const UserProfile: React.FC = () => {
           className="fixed inset-0 z-40"
           onClick={() => setShowDropdown(false)}
         />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete your data?"
+          confirmLabel="Delete my data"
+          busyLabel="Deleting…"
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={deleteMyData}
+        >
+          <p>Duely will forget you:</p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>Brackets you made that nobody else has played are deleted.</li>
+            <li>Brackets other people have played stay up, no longer linked to you.</li>
+            <li>Your runs stay in everyone’s rankings, but anonymously: your history, names and comments go.</li>
+          </ul>
+          <p>You’ll be signed out. This can’t be undone. Your Google account itself isn’t touched.</p>
+        </ConfirmDialog>
       )}
     </div>
   );

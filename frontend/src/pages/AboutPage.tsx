@@ -87,6 +87,10 @@ const AboutPage: React.FC = () => (
             and disappears when the tab closes. Your theme and sign-in session are kept in local browser storage.
           </li>
           <li>Your IP address is used briefly to rate-limit requests. There are no ads and no analytics.</li>
+          <li>
+            Signed in, you can delete your data from the account menu. Brackets nobody else has played are deleted;
+            your runs stay in the rankings anonymously, without your name or comments.
+          </li>
         </ul>
       </Section>
 
@@ -96,8 +100,13 @@ const AboutPage: React.FC = () => (
           people’s personal details or anything illegal. Comments and brackets that break these rules can be removed.
         </p>
         <p>
-          To report a comment, a bracket or a bug, <a href={ISSUES_URL} className={linkClass}>open an issue on
-          GitHub</a> with a link to the page.
+          To report a bracket, use <span className="font-semibold text-themed-primary">Report</span> below its
+          description; to report a comment, use <span className="font-semibold text-themed-primary">Report</span> next
+          to it. You don’t need an account. A moderator looks at every report. People who made a bracket can delete it
+          from <span className="font-semibold text-themed-primary">My brackets</span>.
+        </p>
+        <p>
+          Found a bug? <a href={ISSUES_URL} className={linkClass}>Open an issue on GitHub</a>.
         </p>
       </Section>
 

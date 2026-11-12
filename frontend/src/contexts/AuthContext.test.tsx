@@ -31,7 +31,7 @@ function fakeFirebase(initialUser: User | null, signInError?: unknown) {
 let auth: ReturnType<typeof useAuth>;
 const Probe = () => {
   auth = useAuth();
-  return <p>{auth.currentUser?.displayName ?? 'guest'}</p>;
+  return <p>{auth.currentUser?.displayName ?? 'guest'}{auth.currentUser?.isAdmin ? ' (admin)' : ''}</p>;
 };
 const renderApp = () => render(<AuthProvider><Probe /></AuthProvider>);
 
@@ -51,6 +51,13 @@ describe('AuthContext', () => {
     renderApp();
     expect(screen.queryByText('guest')).not.toBeInTheDocument();
     expect(await screen.findByText('Ann')).toBeInTheDocument();
+  });
+
+  it('marks users whose token carries the admin claim', async () => {
+    window.localStorage.setItem(SESSION_HINT_KEY, '1');
+    fakeFirebase({ ...user, getIdTokenResult: async () => ({ claims: { admin: true } }) } as unknown as User);
+    renderApp();
+    expect(await screen.findByText('Ann (admin)')).toBeInTheDocument();
   });
 
   it('remembers that a stored session has ended', async () => {

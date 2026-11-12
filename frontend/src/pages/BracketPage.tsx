@@ -6,6 +6,8 @@ import type { Bracket, Item, ItemRanking } from '@/types';
 import MediaPreview from '../components/MediaPreview';
 import { PageLoader, TypeIcon, formatDate, typeLabel } from '../components/BracketCard';
 import ShareButton from '../components/ShareButton';
+import ReportButton from '../components/ReportButton';
+import HiddenNotice from '../components/HiddenNotice';
 import PageMeta, { bracketKind, pageTitle } from '../components/PageMeta';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
@@ -179,6 +181,7 @@ const BracketPage: React.FC = () => {
     return (
       <div className="page max-w-3xl pb-24 pt-10 sm:pt-16">
         {meta}
+        {bracket.hiddenAt && <HiddenNotice bracketId={bracketId} onShown={() => setReloadKey(k => k + 1)} />}
         <p className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-themed-secondary">
           <TypeIcon type={bracket.type} />
           {items.length} entries in this bracket
@@ -278,10 +281,13 @@ const BracketPage: React.FC = () => {
           </Link>
         </section>
 
-        <p className="mt-4 text-sm text-themed-tertiary">
-          {typeLabel(bracket.type)} bracket in {bracket.category || 'General'}
-          {formatDate(bracket.createdAt) && <>, created {formatDate(bracket.createdAt)}</>}
-        </p>
+        <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p className="text-sm text-themed-tertiary">
+            {typeLabel(bracket.type)} bracket in {bracket.category || 'General'}
+            {formatDate(bracket.createdAt) && <>, created {formatDate(bracket.createdAt)}</>}
+          </p>
+          <ReportButton targetType="bracket" targetId={bracketId} label="Report this bracket" />
+        </div>
 
         <section className="mt-12" aria-labelledby="entries-title">
           <h2 id="entries-title" className="font-display text-2xl font-extrabold text-themed-primary">

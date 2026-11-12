@@ -50,6 +50,7 @@ const renderBracket = () => render(tree());
 afterEach(() => {
   Object.values(api).forEach(fn => fn.mockReset());
   auth.currentUser = null;
+  bracket.hiddenAt = undefined;
   vi.useRealTimers();
 });
 
@@ -149,5 +150,24 @@ describe('BracketPage runs', () => {
     });
     expect(api.addSessionBattle).toHaveBeenCalledWith(expect.objectContaining({ ranking: [6, 3] }));
     expect(await screen.findByText('Results page')).toBeInTheDocument();
+  });
+});
+
+describe('BracketPage moderation', () => {
+  it('lets anyone report the bracket', async () => {
+    api.getBracketRankings.mockResolvedValue([]);
+    renderBracket();
+    expect(await screen.findByRole('button', { name: 'Report this bracket' })).toBeInTheDocument();
+    expect(screen.queryByText('Hidden by a moderator')).not.toBeInTheDocument();
+  });
+
+  it('tells the owner of a hidden bracket that nobody else can see it', async () => {
+    api.getBracketRankings.mockResolvedValue([]);
+    bracket.hiddenAt = '2026-11-01T00:00:00Z';
+    auth.currentUser = { uid: 'owner', displayName: 'Owner' };
+    renderBracket();
+    expect(await screen.findByText('Hidden by a moderator')).toBeInTheDocument();
+    expect(screen.getByText(/You still see it because you made it/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show it to everyone again' })).not.toBeInTheDocument();
   });
 });

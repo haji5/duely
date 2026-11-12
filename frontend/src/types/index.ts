@@ -7,6 +7,8 @@ export interface Bracket {
   type: BracketType;
   category: string;
   createdAt: string;
+  /** Set when a moderator hid it. Only its owner and admins are ever sent a hidden bracket. */
+  hiddenAt?: string | null;
 }
 
 export interface Item {
@@ -103,6 +105,25 @@ export interface CreateBracketPayload {
   type: BracketType;
   category: string;
   items: NewItem[];
+}
+
+export type ReportTargetType = 'bracket' | 'comment';
+
+/** A report in the moderation queue, with what it is about (null fields: the target is gone). */
+export interface Report {
+  id: number;
+  targetType: ReportTargetType;
+  /** The bracket id, or for a comment the id of the run it was left with (Comment.id). */
+  targetId: number;
+  reason: string;
+  details: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  bracketId: number | null;
+  bracketName: string | null;
+  bracketHidden: boolean;
+  comment: string | null;
+  displayName: string | null;
 }
 
 export interface PlaylistTrack {
