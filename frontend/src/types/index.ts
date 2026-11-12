@@ -7,8 +7,43 @@ export interface Bracket {
   type: BracketType;
   category: string;
   createdAt: string;
+  /** Entries in the bracket; playable from two. */
+  itemCount: number;
+  /** Runs that count toward its leaderboard. Lists may lag a couple of minutes behind. */
+  runCount: number;
   /** Set when a moderator hid it. Only its owner and admins are ever sent a hidden bracket. */
   hiddenAt?: string | null;
+}
+
+export type BracketSort = 'newest' | 'oldest' | 'popular' | 'name';
+
+/** Filters for a bracket list; unset ones mean "any". */
+export interface BracketQuery {
+  sort?: BracketSort;
+  type?: BracketType;
+  category?: string;
+  q?: string;
+  /** Zero-based. */
+  page?: number;
+  size?: number;
+}
+
+/** One page of a bracket list. */
+export interface BracketPage {
+  items: Bracket[];
+  page: number;
+  size: number;
+  /** Matches on every page together. */
+  total: number;
+}
+
+/** The home page's lists, in one response. */
+export interface HomeLists {
+  /** Most played first; only brackets that have been played. */
+  popular: Bracket[];
+  recent: Bracket[];
+  /** Categories whose best bracket is most played first, a few brackets each. */
+  categories: { category: string; brackets: Bracket[] }[];
 }
 
 export interface Item {
@@ -57,7 +92,7 @@ export interface Comment {
 
 /** Bracket-wide numbers the per-item rankings can't give. */
 export interface BracketStats {
-  /** Completed runs saved for the bracket, guests' included. */
+  /** Runs that count toward the leaderboard, guests' included. */
   runCount: number;
 }
 

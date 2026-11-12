@@ -35,19 +35,21 @@ public class CacheConfig implements CachingConfigurer {
 
     /** Every cache and its TTL. Unknown cache names fail fast instead of being created on demand. */
     public static final Map<String, Duration> CACHES = Map.of(
-            "brackets", Duration.ofMinutes(5),
-            "popularBrackets", Duration.ofMinutes(10), // not evicted per run; the TTL bounds staleness
-            "bracket", Duration.ofMinutes(30),
+            // First pages of the unfiltered lists, and the home page. Evicted when a bracket is
+            // added, hidden or deleted; not per run, so the TTL bounds how stale run counts and
+            // the popular order get.
+            "bracketPages", Duration.ofMinutes(2),
+            "home", Duration.ofMinutes(2),
+            "bracket", Duration.ofMinutes(30),         // evicted on every counted run (its run count)
             "bracketItems", Duration.ofMinutes(30),
-            "bracketRankings", Duration.ofMinutes(10), // evicted on every run
-            "bracketStats", Duration.ofMinutes(10),    // evicted on every run
-            "bracketComments", Duration.ofMinutes(5),  // evicted on every run
+            "bracketRankings", Duration.ofMinutes(10), // evicted on every counted run
+            "bracketComments", Duration.ofMinutes(5),  // evicted on every counted run with a comment
             "userResults", Duration.ofMinutes(10),     // evicted on every run by that user
             "youtubeSearch", Duration.ofHours(24),
             "spotifyPlaylist", Duration.ofHours(1));
 
     // Bump when the cached JSON shape changes, so old entries are ignored instead of failing to parse.
-    private static final String KEY_PREFIX = "duely:v6:";
+    private static final String KEY_PREFIX = "duely:v7:";
 
     private final RedisCacheErrorHandler redisCacheErrorHandler;
 

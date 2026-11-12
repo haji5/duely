@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -21,8 +22,9 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Rebuilds item_stats from the counted results with the same Java scoring as live submissions:
- * on demand (admin endpoint, and after a run is removed) and on startup whenever
+ * Rebuilds item_stats and the bracket's run counters from the counted results, with the same Java
+ * scoring as live submissions: on demand (admin endpoint, and after a run is removed) and on
+ * startup whenever
  * {@link #STATS_VERSION} is newer than the version recorded in app_meta, so a scoring change
  * reaches history on deploy.
  */
@@ -55,7 +57,7 @@ public class StatsService implements ApplicationRunner {
         this.caches = caches;
     }
 
-    /** Recomputes one bracket's rows in one transaction, then drops its cached leaderboard. */
+    /** Recomputes one bracket's rows and run count in one transaction, then drops what is cached of them. */
     public void rebuild(long bracketId) {
         rebuild(bracketId, () -> {});
     }
@@ -71,19 +73,25 @@ public class StatsService implements ApplicationRunner {
             change.run();
             Set<Long> items = new HashSet<>(itemRepository.findIdsByBracketId(bracketId));
             Map<Long, ItemStatsRepository.Totals> totals = new TreeMap<>();
+            List<Result> runs = resultRepository.findByBracketIdAndCountedTrueOrderByIdAsc(bracketId);
+            Instant lastRun = null;
             // Oldest first: the order the incremental upserts added them in, so the floating-point
             // sums come out identical.
-            for (Result run : resultRepository.findByBracketIdAndCountedTrueOrderByIdAsc(bracketId)) {
+            for (Result run : runs) {
                 ItemStatsRepository.deltas(run.scored(), run.getMatches()).forEach((itemId, delta) -> {
                     if (items.contains(itemId)) {
                         totals.put(itemId, totals.getOrDefault(itemId, ItemStatsRepository.Totals.EMPTY).plus(delta));
                     }
                 });
+                if (run.getCreatedAt() != null && (lastRun == null || run.getCreatedAt().isAfter(lastRun))) {
+                    lastRun = run.getCreatedAt();
+                }
             }
             itemStatsRepository.replaceAll(bracketId, totals);
+            bracketRepository.setRunCounters(bracketId, runs.size(), lastRun);
         });
         caches.evict("bracketRankings", bracketId);
-        caches.evict("bracketStats", bracketId);
+        caches.evict("bracket", bracketId);
     }
 
     /** Applies a new scoring version to every bracket. Each bracket is its own transaction. */

@@ -120,4 +120,19 @@ describe('apiCache', () => {
     expect(await pending).toBe('before the write');
     expect(apiCache.get('k')).toBe('after the write');
   });
+
+  it('invalidatePrefix() drops every matching key, loading ones included, and nothing else', async () => {
+    await apiCache.getOrLoad('/brackets?page=1', 1000, async () => 'page 1');
+    await apiCache.getOrLoad('/brackets/7', 1000, async () => 'bracket 7');
+    const slow = deferred<string>();
+    const pending = apiCache.getOrLoad('/brackets?q=x', 1000, () => slow.promise);
+
+    apiCache.invalidatePrefix('/brackets?');
+    slow.resolve('stale search');
+    await pending;
+
+    expect(apiCache.get('/brackets?page=1')).toBeUndefined();
+    expect(apiCache.get('/brackets?q=x')).toBeUndefined();
+    expect(apiCache.get('/brackets/7')).toBe('bracket 7');
+  });
 });

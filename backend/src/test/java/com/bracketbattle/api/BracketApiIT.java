@@ -147,33 +147,41 @@ class BracketApiIT extends IntegrationTest {
 
     @Test
     void listsHideBracketsWithFewerThanTwoItems() throws Exception {
-        long legacyId = jdbc.queryForObject(
-                "INSERT INTO brackets (name, type, category, created_by) VALUES ('Legacy', 'image', 'General', 'uid-a') RETURNING id",
-                Long.class);
+        long legacyId = jdbc.queryForObject("""
+                INSERT INTO brackets (name, type, category, created_by, item_count)
+                VALUES ('Legacy listless', 'image', 'General', 'uid-a', 1) RETURNING id
+                """, Long.class);
         jdbc.update("INSERT INTO items (bracket_id, title, media_url, media_type) VALUES (?, 'Only', 'https://x.example/1.png', 'image')", legacyId);
-        long playable = createBracket(USER_A, "Playable", 2).get("id").asLong();
+        long playable = createBracket(USER_A, "Playable listless", 2).get("id").asLong();
 
-        List<Long> all = ids(body(perform(get("/brackets"))));
-        List<Long> popular = ids(body(perform(get("/brackets/popular"))));
-        List<Long> mine = ids(body(perform(as(USER_A, get("/me/brackets")))));
+        List<Long> newest = ids(body(perform(get("/brackets"))).get("items"));
+        List<Long> found = ids(body(perform(get("/brackets").param("q", "listless"))).get("items"));
+        List<Long> popular = ids(body(perform(get("/brackets").param("q", "listless").param("sort", "popular"))).get("items"));
+        List<Long> mine = ids(body(perform(as(USER_A, get("/me/brackets").param("q", "listless")))).get("items"));
 
-        assertThat(all).contains(playable).doesNotContain(legacyId);
-        assertThat(popular).contains(playable).doesNotContain(legacyId);
-        assertThat(mine).contains(playable, legacyId);
-        assertThat(all.indexOf(playable)).isZero(); // newest first
+        assertThat(found).containsExactly(playable);
+        assertThat(popular).containsExactly(playable);
+        assertThat(mine).containsExactlyInAnyOrder(playable, legacyId);
+        assertThat(newest.get(0)).isEqualTo(playable); // newest first
+        assertThat(body(perform(get("/brackets/" + playable))).get("itemCount").asInt()).isEqualTo(2);
     }
 
     @Test
     void popularOrdersByRunCount() throws Exception {
-        long quiet = createBracket(USER_A, "Quiet", 2).get("id").asLong();
-        long busy = createBracket(USER_A, "Busy", 2).get("id").asLong();
-        List<Long> busyItems = itemIds(busy);
+        long quiet = createBracket(USER_A, "Quiet popcount", 2).get("id").asLong();
+        long busy = createBracket(USER_A, "Busy popcount", 2).get("id").asLong();
+        long busier = createBracket(USER_A, "Busier popcount", 2).get("id").asLong();
         for (int i = 0; i < 2; i++) {
-            perform(postJson("/brackets/" + busy + "/results", runPayload(busyItems, null, null)));
+            perform(postJson("/brackets/" + busy + "/results", runPayload(itemIds(busy), null, null)));
+        }
+        for (int i = 0; i < 3; i++) {
+            perform(postJson("/brackets/" + busier + "/results", runPayload(itemIds(busier), null, null)));
         }
 
-        List<Long> popular = ids(body(perform(get("/brackets/popular"))));
-        assertThat(popular.indexOf(busy)).isLessThan(popular.indexOf(quiet));
+        JsonNode popular = body(perform(get("/brackets").param("q", "popcount").param("sort", "popular"))).get("items");
+        assertThat(ids(popular)).containsExactly(busier, busy, quiet);
+        assertThat(popular.get(0).get("runCount").asLong()).isEqualTo(3);
+        assertThat(popular.get(2).get("runCount").asLong()).isZero();
     }
 
     // ---- results -------------------------------------------------------------------------------
@@ -362,21 +370,21 @@ class BracketApiIT extends IntegrationTest {
         perform(as(USER_B, postJson("/brackets/" + id + "/results", runPayload(ranking, null, null))));
         perform(as(USER_C, postJson("/brackets/" + other + "/results", runPayload(itemIds(other), null, null))));
 
-        List<Long> myBrackets = ids(body(perform(as(USER_C, get("/me/brackets")))));
+        List<Long> myBrackets = ids(body(perform(as(USER_C, get("/me/brackets")))).get("items"));
         assertThat(myBrackets).contains(id).doesNotContain(other);
 
-        JsonNode allMine = body(perform(as(USER_C, get("/me/results"))));
-        assertThat(allMine).hasSize(2);
         JsonNode mineHere = body(perform(as(USER_C, get("/me/results").param("bracketId", Long.toString(id)))));
         assertThat(mineHere).hasSize(1);
         assertThat(mineHere.get(0).get("id").asLong()).isEqualTo(first.get("id").asLong());
+        assertThat(body(perform(as(USER_C, get("/me/results").param("bracketId", Long.toString(other)))))).hasSize(1);
 
         // Cached history is refreshed by the next submission
         perform(as(USER_C, postJson("/brackets/" + id + "/results", runPayload(ranking, null, null))));
         assertThat(body(perform(as(USER_C, get("/me/results").param("bracketId", Long.toString(id)))))).hasSize(2);
-        assertThat(body(perform(as(USER_C, get("/me/results"))))).hasSize(3);
 
-        assertThat(perform(get("/me/results")).getResponse().getStatus()).isEqualTo(401);
+        // Every run of a user at once is unbounded, so it isn't offered.
+        assertThat(perform(as(USER_C, get("/me/results"))).getResponse().getStatus()).isEqualTo(400);
+        assertThat(perform(get("/me/results").param("bracketId", Long.toString(id))).getResponse().getStatus()).isEqualTo(401);
         assertThat(perform(get("/me/brackets")).getResponse().getStatus()).isEqualTo(401);
     }
 
@@ -413,7 +421,7 @@ class BracketApiIT extends IntegrationTest {
         assertThat(body(forbidden).get("status").asInt()).isEqualTo(403);
 
         assertThat(perform(as(ADMIN, post("/admin/cache/clear"))).getResponse().getStatus()).isEqualTo(204);
-        assertThat(perform(as(ADMIN, post("/admin/cache/clear/brackets"))).getResponse().getStatus()).isEqualTo(204);
+        assertThat(perform(as(ADMIN, post("/admin/cache/clear/bracketPages"))).getResponse().getStatus()).isEqualTo(204);
         assertThat(perform(as(ADMIN, post("/admin/cache/clear/typo"))).getResponse().getStatus()).isEqualTo(404);
     }
 
@@ -428,7 +436,7 @@ class BracketApiIT extends IntegrationTest {
     @Test
     void publicResponsesAreNotBrowserCached() throws Exception {
         long id = createBracket(USER_A, "Fresh", 2).get("id").asLong();
-        for (String path : List.of("/brackets", "/brackets/popular", "/brackets/" + id, "/brackets/" + id + "/rankings")) {
+        for (String path : List.of("/brackets", "/home", "/brackets/" + id, "/brackets/" + id + "/rankings")) {
             MvcResult result = perform(get(path));
             assertThat(result.getResponse().getHeader("Cache-Control")).as(path).contains("no-store");
         }

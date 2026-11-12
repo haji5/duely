@@ -1,7 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
-  Bracket, BracketStats, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Report,
-  ReportTargetType, Result, RunTicket,
+  Bracket, BracketPage, BracketQuery, BracketStats, Comment, CreateBracketPayload, HomeLists, Item, ItemRanking,
+  MatchOutcome, PlaylistTrack, Report, ReportTargetType, Result, RunTicket,
 } from '@/types';
 import { currentFirebaseUser } from '@/config/firebase';
 import { apiCache } from '@/utils/apiCache';
@@ -78,21 +78,42 @@ export function errorStatus(error: unknown): number | undefined {
 
 const MINUTE = 60_000;
 
+/** Drops cached lists, which any bracket appearing or going changes. */
+function forgetLists(): void {
+  apiCache.invalidatePrefix(keys.listPrefix);
+  apiCache.invalidate(keys.home);
+}
+
 /** Drops what is cached about a bracket whose visibility or existence changed. */
 function forgetBracket(id: number): void {
-  apiCache.invalidate(keys.brackets, keys.popular, keys.bracket(id), keys.items(id));
+  forgetLists();
+  apiCache.invalidate(keys.bracket(id), keys.items(id));
+}
+
+/** The query string for a bracket list, with unset values left out so equal queries share a key. */
+function listParams(query: BracketQuery): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (query.sort && query.sort !== 'newest') params.sort = query.sort;
+  if (query.type) params.type = query.type;
+  if (query.category) params.category = query.category;
+  const q = query.q?.trim();
+  if (q) params.q = q;
+  if (query.page) params.page = String(query.page);
+  if (query.size) params.size = String(query.size);
+  return params;
 }
 
 const keys = {
-  brackets: '/brackets',
-  popular: '/brackets/popular',
+  listPrefix: '/brackets?',
+  list: (params: Record<string, string>) => `/brackets?${new URLSearchParams(Object.entries(params).sort()).toString()}`,
+  home: '/home',
   bracket: (id: number) => `/brackets/${id}`,
   items: (id: number) => `/brackets/${id}/items`,
   rankings: (id: number) => `/brackets/${id}/rankings`,
   comments: (id: number) => `/brackets/${id}/comments`,
   // Per-user keys include the uid so a response that lands after a sign-out can't be shown
   // to the next user.
-  myResults: (uid: string, bracketId?: number) => `/me/results:${uid}:${bracketId ?? 'all'}`,
+  myResults: (uid: string, bracketId: number) => `/me/results:${uid}:${bracketId}`,
 };
 
 async function get<T>(path: string, params?: Record<string, unknown>, timeout?: number): Promise<T> {
@@ -101,11 +122,15 @@ async function get<T>(path: string, params?: Record<string, unknown>, timeout?: 
 }
 
 export const bracketApi = {
-  getAllBrackets: (): Promise<Bracket[]> =>
-    apiCache.getOrLoad(keys.brackets, 2 * MINUTE, () => get<Bracket[]>('/brackets')),
+  /** A page of the public brackets, filtered and sorted by the server. */
+  listBrackets: (query: BracketQuery = {}): Promise<BracketPage> => {
+    const params = listParams(query);
+    return apiCache.getOrLoad(keys.list(params), MINUTE, () => get<BracketPage>('/brackets', params));
+  },
 
-  getPopularBrackets: (): Promise<Bracket[]> =>
-    apiCache.getOrLoad(keys.popular, 5 * MINUTE, () => get<Bracket[]>('/brackets/popular')),
+  /** The home page's lists in one request. */
+  getHome: (): Promise<HomeLists> =>
+    apiCache.getOrLoad(keys.home, 2 * MINUTE, () => get<HomeLists>('/home')),
 
   getBracket: (id: number): Promise<Bracket> =>
     apiCache.getOrLoad(keys.bracket(id), 15 * MINUTE, () => get<Bracket>(`/brackets/${id}`)),
@@ -137,7 +162,7 @@ export const bracketApi = {
     const response = await api.post<Result>(`/brackets/${bracketId}/results`, run);
     const uid = currentFirebaseUser()?.uid;
     if (uid) {
-      apiCache.invalidate(keys.myResults(uid), keys.myResults(uid, bracketId));
+      apiCache.invalidate(keys.myResults(uid, bracketId));
     }
     return response.data;
   },
@@ -145,7 +170,7 @@ export const bracketApi = {
   /** Creates the bracket and all of its entries in one request. */
   createBracket: async (payload: CreateBracketPayload): Promise<Bracket> => {
     const response = await api.post<Bracket>('/brackets', payload, { timeout: SLOW_REQUEST_TIMEOUT_MS });
-    apiCache.invalidate(keys.brackets, keys.popular);
+    forgetLists();
     return response.data;
   },
 
@@ -154,7 +179,7 @@ export const bracketApi = {
     await api.delete(`/brackets/${id}`);
     forgetBracket(id);
     const uid = currentFirebaseUser()?.uid;
-    if (uid) apiCache.invalidate(keys.myResults(uid), keys.myResults(uid, id));
+    if (uid) apiCache.invalidate(keys.myResults(uid, id));
   },
 
   /** Reports a bracket or a comment to the moderators. Open to guests. */
@@ -171,15 +196,14 @@ export const bracketApi = {
     apiCache.clear();
   },
 
-  /** The signed-in user's brackets, newest first. Not cached, so new brackets show at once. */
-  getMyBrackets: (): Promise<Bracket[]> => get<Bracket[]>('/me/brackets'),
+  /** A page of the signed-in user's brackets, hidden and unplayable ones included. Not cached, so new brackets show at once. */
+  getMyBrackets: (query: BracketQuery = {}): Promise<BracketPage> => get<BracketPage>('/me/brackets', listParams(query)),
 
-  /** The signed-in user's runs (optionally for one bracket), oldest first. */
-  getMyResults: (bracketId?: number): Promise<Result[]> => {
+  /** The signed-in user's latest runs (at most 100) of one bracket, oldest first. */
+  getMyResults: (bracketId: number): Promise<Result[]> => {
     const uid = currentFirebaseUser()?.uid;
     if (!uid) return Promise.resolve([]);
-    return apiCache.getOrLoad(keys.myResults(uid, bracketId), 5 * MINUTE,
-      () => get<Result[]>('/me/results', bracketId === undefined ? undefined : { bracketId }));
+    return apiCache.getOrLoad(keys.myResults(uid, bracketId), 5 * MINUTE, () => get<Result[]>('/me/results', { bracketId }));
   },
 
   /** The first embeddable YouTube video for a search, or null if none was found. */

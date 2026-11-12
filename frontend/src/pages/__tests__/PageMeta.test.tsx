@@ -6,7 +6,7 @@ import { pageTitle } from '../../components/PageMeta';
 
 const bracket: Bracket = {
   id: 3, name: 'THE BUN ZONE BRACKET', description: null, type: 'video', category: 'Music',
-  createdAt: '2026-06-18T12:00:00Z',
+  createdAt: '2026-06-18T12:00:00Z', itemCount: 3, runCount: 0,
 };
 const items: Item[] = [1, 2, 3].map(id => ({
   id, bracketId: 3, title: `Entry ${id}`, mediaUrl: `https://example.com/${id}.png`, mediaType: 'video',
@@ -15,8 +15,7 @@ const notFound = Object.assign(new Error('not found'), { status: 404 });
 
 vi.mock('../../services/api', () => ({
   bracketApi: {
-    getAllBrackets: vi.fn(async () => [bracket]),
-    getPopularBrackets: vi.fn(async () => [bracket]),
+    getHome: vi.fn(async () => ({ popular: [bracket], recent: [bracket], categories: [{ category: 'Music', brackets: [bracket] }] })),
     getBracket: vi.fn(async (id: number) => { if (id !== 3) throw notFound; return bracket; }),
     getBracketItems: vi.fn(async (id: number) => { if (id !== 3) throw notFound; return items; }),
     getBracketRankings: vi.fn(async () => []),

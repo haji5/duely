@@ -1,15 +1,18 @@
 package com.bracketbattle.service;
 
 import com.bracketbattle.advice.InvalidRequestException;
-import com.bracketbattle.dto.BracketStatsDto;
+import com.bracketbattle.dto.BracketListQuery;
+import com.bracketbattle.dto.BracketPageDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
+import com.bracketbattle.dto.HomeDto;
 import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.media.MediaUrlValidator;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Categories;
 import com.bracketbattle.model.Item;
 import com.bracketbattle.model.Result;
+import com.bracketbattle.repository.BracketListRepository;
 import com.bracketbattle.repository.BracketRepository;
 import com.bracketbattle.repository.ItemRepository;
 import com.bracketbattle.repository.ItemStatsRepository;
@@ -23,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,18 +37,25 @@ public class BracketService {
 
     public static final int MAX_ITEMS = 500;
     public static final int MAX_COMMENTS = 50;
+    public static final int MAX_USER_RESULTS = 100;
+    static final int HOME_LIST_SIZE = 6;
+    static final int HOME_PER_CATEGORY = 3;
+    static final int HOME_MAX_CATEGORIES = 12;
 
     private final BracketRepository bracketRepository;
+    private final BracketListRepository bracketListRepository;
     private final ItemRepository itemRepository;
     private final ResultRepository resultRepository;
     private final ItemStatsRepository itemStatsRepository;
     private final MediaUrlValidator mediaUrlValidator;
     private final TransactionTemplate transactionTemplate;
 
-    public BracketService(BracketRepository bracketRepository, ItemRepository itemRepository,
-                          ResultRepository resultRepository, ItemStatsRepository itemStatsRepository,
+    public BracketService(BracketRepository bracketRepository, BracketListRepository bracketListRepository,
+                          ItemRepository itemRepository, ResultRepository resultRepository,
+                          ItemStatsRepository itemStatsRepository,
                           MediaUrlValidator mediaUrlValidator, TransactionTemplate transactionTemplate) {
         this.bracketRepository = bracketRepository;
+        this.bracketListRepository = bracketListRepository;
         this.itemRepository = itemRepository;
         this.resultRepository = resultRepository;
         this.itemStatsRepository = itemStatsRepository;
@@ -54,14 +65,19 @@ public class BracketService {
 
     // ---- Reads -------------------------------------------------------------------------------
 
-    @Cacheable("brackets")
-    public List<Bracket> getAllBrackets() {
-        return bracketRepository.findPlayable();
+    /** A page of the public list. Unfiltered first pages are cached (see BracketListQuery#cacheable). */
+    @Cacheable(value = "bracketPages", key = "#query.cacheKey()", condition = "#query.cacheable()")
+    public BracketPageDto listBrackets(BracketListQuery query) {
+        return bracketListRepository.listPublic(query);
     }
 
-    @Cacheable("popularBrackets")
-    public List<Bracket> getPopularBrackets() {
-        return bracketRepository.findPopular();
+    /** The home page's lists: the most played, the newest, and the best of each category. */
+    @Cacheable("home")
+    public HomeDto getHome() {
+        return new HomeDto(
+                bracketListRepository.top(BracketListQuery.Sort.POPULAR, HOME_LIST_SIZE, true),
+                bracketListRepository.top(BracketListQuery.Sort.NEWEST, HOME_LIST_SIZE, false),
+                bracketListRepository.topPerCategory(HOME_PER_CATEGORY, HOME_MAX_CATEGORIES));
     }
 
     @Cacheable(value = "bracket", key = "#id", unless = "#result == null")
@@ -79,11 +95,6 @@ public class BracketService {
         return itemStatsRepository.findRankings(bracketId);
     }
 
-    @Cacheable(value = "bracketStats", key = "#bracketId")
-    public BracketStatsDto getBracketStats(Long bracketId) {
-        return new BracketStatsDto(resultRepository.countByBracketIdAndCountedTrue(bracketId));
-    }
-
     @Cacheable(value = "bracketComments", key = "#bracketId")
     public List<CommentDto> getBracketComments(Long bracketId) {
         return new ArrayList<>(resultRepository.findLatestComments(bracketId, Limit.of(MAX_COMMENTS)).stream()
@@ -91,16 +102,18 @@ public class BracketService {
                 .toList());
     }
 
-    /** Brackets created by a user, newest first, including unplayable ones. Not cached. */
-    public List<Bracket> getBracketsByCreator(String userId) {
-        return bracketRepository.findByCreatedByOrderByCreatedAtDescIdDesc(userId);
+    /** A page of a user's own brackets, including hidden and unplayable ones. Not cached. */
+    public BracketPageDto getBracketsByCreator(String userId, BracketListQuery query) {
+        return bracketListRepository.listByCreator(userId, query);
     }
 
-    @Cacheable(value = "userResults", key = "#userId + ':' + (#bracketId ?: 'all')")
-    public List<Result> getUserResults(String userId, Long bracketId) {
-        return bracketId == null
-                ? resultRepository.findByUserIdOrderByCreatedAtAscIdAsc(userId)
-                : resultRepository.findByBracketIdAndUserIdOrderByCreatedAtAscIdAsc(bracketId, userId);
+    /** A user's latest {@link #MAX_USER_RESULTS} runs of a bracket, oldest first. */
+    @Cacheable(value = "userResults", key = "#userId + ':' + #bracketId")
+    public List<Result> getUserResults(String userId, long bracketId) {
+        List<Result> latest = new ArrayList<>(resultRepository.findByBracketIdAndUserIdOrderByCreatedAtDescIdDesc(
+                bracketId, userId, Limit.of(MAX_USER_RESULTS)));
+        Collections.reverse(latest);
+        return latest;
     }
 
     // ---- Bracket creation --------------------------------------------------------------------
@@ -111,8 +124,8 @@ public class BracketService {
      * opens, so no database connection is held during lookups.
      */
     @Caching(evict = {
-            @CacheEvict(value = "brackets", allEntries = true),
-            @CacheEvict(value = "popularBrackets", allEntries = true)
+            @CacheEvict(value = "bracketPages", allEntries = true),
+            @CacheEvict(value = "home", allEntries = true)
     })
     public Bracket createBracket(CreateBracketRequest request, String createdBy) {
         String name = Sanitizer.stripToPlain(request.name(), 100);
@@ -159,6 +172,7 @@ public class BracketService {
         }
 
         Bracket bracket = new Bracket(name, description, type, category, createdBy);
+        bracket.setItemCount(items.size());
         return transactionTemplate.execute(status -> {
             Bracket saved = bracketRepository.save(bracket);
             items.forEach(item -> item.setBracketId(saved.getId()));

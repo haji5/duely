@@ -281,10 +281,14 @@ class BracketEdgeCasesIT extends IntegrationTest {
     @Test
     void newBracketsAppearInCachedListsAtOnce() throws Exception {
         perform(get("/brackets"));
-        perform(get("/brackets/popular"));
+        perform(get("/brackets").param("sort", "oldest").param("size", "1"));
+        perform(get("/home"));
         long id = createBracket(USER_A, "Fresh in lists", 2).get("id").asLong();
-        assertThat(body(perform(get("/brackets"))).get(0).get("id").asLong()).isEqualTo(id);
-        assertThat(body(perform(get("/brackets/popular"))).toString()).contains("\"id\":" + id);
+        assertThat(body(perform(get("/brackets"))).get("items").get(0).get("id").asLong()).isEqualTo(id);
+        assertThat(body(perform(get("/home"))).get("recent").get(0).get("id").asLong()).isEqualTo(id);
+        // Every cached page goes, not just the one asked for last: the total changed on all of them.
+        long total = body(perform(get("/brackets"))).get("total").asLong();
+        assertThat(body(perform(get("/brackets").param("sort", "oldest").param("size", "1"))).get("total").asLong()).isEqualTo(total);
     }
 
     // ---- reads and errors ----------------------------------------------------------------------

@@ -6,6 +6,7 @@ import type { Bracket, Item } from '@/types';
 
 const bracket: Bracket = {
   id: 3, name: 'Bun Zone', description: 'Songs from the zone.', type: 'image', category: 'Music', createdAt: '2026-10-01T12:00:00Z',
+  itemCount: 12, runCount: 0,
 };
 const items: Item[] = Array.from({ length: 12 }, (_, i) => ({
   id: i + 1, bracketId: 3, title: `Entry ${i + 1}`, mediaUrl: `https://x.test/${i + 1}.png`, mediaType: 'image',

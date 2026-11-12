@@ -289,4 +289,39 @@
         </createIndex>
     </changeSet>
 
+    <!-- Read scalability. Lists, sorting and the sitemap read counters on the bracket instead of
+         counting items and results per row: item_count is set when the bracket is created (entries
+         are never added later), run_count and last_run_at with every counted run and by a rebuild.
+         "Playable" is item_count >= 2; the partial indexes repeat that predicate literally so the
+         planner can match them. Comments are read newest first from their own partial index, so a
+         bracket whose runs rarely carry one no longer walks every run to find fifty. Runs store a
+         blank comment as null; the update clears any older blanks, so "comment IS NOT NULL" alone
+         means there is one. -->
+    <changeSet id="15" author="bracket-battle">
+        <addColumn tableName="brackets">
+            <column name="item_count" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="run_count" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_run_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+        <sqlFile path="sql/backfill-bracket-counters.sql" relativeToChangelogFile="true"/>
+        <sql>
+            UPDATE results SET comment = NULL WHERE comment IS NOT NULL AND btrim(comment) = '';
+
+            CREATE INDEX idx_brackets_listed_newest ON brackets (created_at DESC, id DESC)
+                WHERE hidden_at IS NULL AND item_count >= 2;
+            CREATE INDEX idx_brackets_listed_popular ON brackets (run_count DESC, created_at DESC, id DESC)
+                WHERE hidden_at IS NULL AND item_count >= 2;
+            CREATE INDEX idx_results_comments ON results (bracket_id, created_at DESC, id DESC)
+                WHERE comment IS NOT NULL AND counted;
+            CREATE INDEX idx_results_user_bracket_created ON results (user_id, bracket_id, created_at DESC, id DESC)
+                WHERE user_id IS NOT NULL;
+        </sql>
+    </changeSet>
+
 </databaseChangeLog>
