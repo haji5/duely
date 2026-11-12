@@ -19,11 +19,20 @@ public interface ResultRepository extends JpaRepository<Result, Long> {
 
     Optional<Result> findBySubmissionToken(String submissionToken);
 
-    long countByBracketId(Long bracketId);
+    /** Runs that count toward the leaderboard: the bracket's public run count. */
+    long countByBracketIdAndCountedTrue(Long bracketId);
 
+    /** The bracket's counted runs, oldest first, for rebuilding its leaderboard. */
+    List<Result> findByBracketIdAndCountedTrueOrderByIdAsc(Long bracketId);
+
+    /**
+     * Latest public comments. Only counted runs: a run past its daily quota is still the player's
+     * own, but it doesn't get to flood the comments either.
+     */
     @Query("""
             SELECT r FROM Result r
-            WHERE r.bracketId = :bracketId AND r.comment IS NOT NULL AND TRIM(r.comment) <> ''
+            WHERE r.bracketId = :bracketId AND r.counted = true
+              AND r.comment IS NOT NULL AND TRIM(r.comment) <> ''
             ORDER BY r.createdAt DESC, r.id DESC
             """)
     List<Result> findLatestComments(Long bracketId, Limit limit);

@@ -81,7 +81,7 @@ class PageHeadsTest {
         for (int i = 0; i < 12; i++) {
             Item item = item(i + 1, "Entry " + i, "https://images.example.com/" + i + ".png");
             items.add(item);
-            rankings.add(new ItemRankingDto(item, 12 - i, i == 0 ? 1 : 20, 95 - i, 1.0, 5));
+            rankings.add(new ItemRankingDto(item, 12 - i, i == 0 ? 1 : 20, 95 - i, 0.9, 1.0, 5));
         }
 
         Document page = heads.results(shell(), bracket("Best", "x"), items, rankings);

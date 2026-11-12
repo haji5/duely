@@ -1,5 +1,6 @@
 package com.bracketbattle.repository;
 
+import com.bracketbattle.service.StatsService;
 import com.bracketbattle.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,14 +14,14 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-/** The Liquibase backfill must produce exactly what applyRun produces for legacy (match-less) runs. */
+/** The Liquibase backfill must produce exactly what a rebuild produces for legacy (match-less) runs. */
 class BackfillMigrationIT extends IntegrationTest {
 
     @Autowired
     JdbcTemplate jdbc;
 
     @Autowired
-    ItemStatsRepository itemStats;
+    StatsService statsService;
 
     @Test
     void backfillEqualsIncrementalAggregatesForLegacyRuns() throws Exception {
@@ -36,8 +37,7 @@ class BackfillMigrationIT extends IntegrationTest {
                     bracketId, json.writeValueAsString(run));
         }
 
-        jdbc.update("DELETE FROM item_stats WHERE bracket_id = ?", bracketId);
-        runs.forEach(run -> itemStats.applyRun(bracketId, run, null));
+        statsService.rebuild(bracketId);
         List<Map<String, Object>> incremental = snapshot(bracketId);
 
         jdbc.update("TRUNCATE item_stats");

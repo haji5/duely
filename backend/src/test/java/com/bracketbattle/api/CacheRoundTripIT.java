@@ -42,9 +42,9 @@ class CacheRoundTripIT extends IntegrationTest {
         List<Bracket> all = service.getAllBrackets();
 
         // Raw cache entries exist in Valkey under the versioned prefix...
-        assertThat(redis.hasKey("duely:v4:bracket::" + id)).isTrue();
-        assertThat(redis.hasKey("duely:v4:bracketRankings::" + id)).isTrue();
-        assertThat(redis.hasKey("duely:v4:bracketStats::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v5:bracket::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v5:bracketRankings::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v5:bracketStats::" + id)).isTrue();
         assertThat(get("bracketStats", id, BracketStatsDto.class).getRunCount()).isEqualTo(stats.getRunCount()).isEqualTo(1);
 
         // ...and deserialize into the original types with the same content.
@@ -61,6 +61,7 @@ class CacheRoundTripIT extends IntegrationTest {
         ItemRankingDto top = (ItemRankingDto) cachedRankings.get(0);
         assertThat(top.getItem().getId()).isEqualTo(rankings.get(0).getItem().getId());
         assertThat(top.getAverageScore()).isEqualTo(1.0);
+        assertThat(top.getScore()).isEqualTo(rankings.get(0).getScore()).isEqualTo((1.0 + 2.5) / 6);
 
         List<?> cachedComments = get("bracketComments", id, List.class);
         assertThat(cachedComments).hasSize(1).allMatch(CommentDto.class::isInstance);
@@ -70,6 +71,8 @@ class CacheRoundTripIT extends IntegrationTest {
         assertThat(cachedResults).hasSize(1).allMatch(Result.class::isInstance);
         assertThat(((Result) cachedResults.get(0)).getRanking()).isEqualTo(results.get(0).getRanking());
         assertThat(((Result) cachedResults.get(0)).getMatches()).isEqualTo(results.get(0).getMatches()).hasSize(1);
+        // places is computed, not stored: it comes back from the cached matches.
+        assertThat(((Result) cachedResults.get(0)).getPlaces()).isEqualTo(results.get(0).getPlaces()).hasSize(2);
 
         assertThat(get("brackets", org.springframework.cache.interceptor.SimpleKey.EMPTY, List.class)).hasSameSizeAs(all);
 

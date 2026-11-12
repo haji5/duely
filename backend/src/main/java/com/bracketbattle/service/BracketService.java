@@ -5,12 +5,10 @@ import com.bracketbattle.dto.BracketStatsDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.ItemRankingDto;
-import com.bracketbattle.dto.SaveResultRequest;
 import com.bracketbattle.media.MediaUrlValidator;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Categories;
 import com.bracketbattle.model.Item;
-import com.bracketbattle.model.MatchOutcome;
 import com.bracketbattle.model.Result;
 import com.bracketbattle.repository.BracketRepository;
 import com.bracketbattle.repository.ItemRepository;
@@ -20,22 +18,15 @@ import com.bracketbattle.util.Sanitizer;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Limit;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 public class BracketService {
@@ -90,7 +81,7 @@ public class BracketService {
 
     @Cacheable(value = "bracketStats", key = "#bracketId")
     public BracketStatsDto getBracketStats(Long bracketId) {
-        return new BracketStatsDto(resultRepository.countByBracketId(bracketId));
+        return new BracketStatsDto(resultRepository.countByBracketIdAndCountedTrue(bracketId));
     }
 
     @Cacheable(value = "bracketComments", key = "#bracketId")
@@ -174,124 +165,5 @@ public class BracketService {
             itemRepository.saveAll(items);
             return saved;
         });
-    }
-
-    // ---- Result submission -------------------------------------------------------------------
-
-    /**
-     * Saves a finished run and adds it to the leaderboard aggregates. Idempotent on the submission
-     * token: a retry by the same submitter returns the original result, while a token reused by
-     * someone else (or for another bracket) is a 409.
-     */
-    @Caching(evict = {
-            @CacheEvict(value = "bracketRankings", key = "#bracketId"),
-            @CacheEvict(value = "bracketStats", key = "#bracketId"),
-            @CacheEvict(value = "bracketComments", key = "#bracketId"),
-            @CacheEvict(value = "userResults", key = "#userId + ':all'", condition = "#userId != null"),
-            @CacheEvict(value = "userResults", key = "#userId + ':' + #bracketId", condition = "#userId != null")
-    })
-    public Result saveBracketResult(Long bracketId, String userId, SaveResultRequest request) {
-        if (!bracketRepository.existsById(bracketId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found");
-        }
-        List<Long> ranking = request.ranking();
-        List<MatchOutcome> matches = request.matches();
-        validateRun(ranking, matches, new HashSet<>(itemRepository.findIdsByBracketId(bracketId)));
-
-        Optional<Result> existing = resultRepository.findBySubmissionToken(request.submissionToken());
-        if (existing.isPresent()) {
-            return requireSameSubmitter(existing.get(), bracketId, userId);
-        }
-
-        Result result = new Result(bracketId, userId, ranking, matches, request.submissionToken());
-        result.setDisplayName(blankToNull(Sanitizer.stripToPlain(request.displayName(), 100)));
-        result.setComment(blankToNull(Sanitizer.stripToPlain(request.comment(), 500)));
-
-        try {
-            return transactionTemplate.execute(status -> {
-                Result saved = resultRepository.save(result);
-                itemStatsRepository.applyRun(bracketId, ranking, matches);
-                return saved;
-            });
-        } catch (DataIntegrityViolationException e) {
-            // A concurrent request with the same token won the insert. The failed transaction is
-            // rolled back by now, so this lookup runs in a fresh one and can see the winner's row.
-            return resultRepository.findBySubmissionToken(request.submissionToken())
-                    .map(winner -> requireSameSubmitter(winner, bracketId, userId))
-                    .orElseThrow(() -> e);
-        }
-    }
-
-    /**
-     * A run must rank 2..500 distinct items of the bracket, and its matches must be the real games
-     * of a single-elimination tournament: n-1 matches between ranked items, no self-matches or
-     * repeated pairs, every item except the champion losing exactly once and the champion never,
-     * and every winner ranked above the item it beat (a knockout eliminates the loser first).
-     */
-    static void validateRun(List<Long> ranking, List<MatchOutcome> matches, Set<Long> bracketItemIds) {
-        if (ranking.size() < 2 || ranking.size() > MAX_ITEMS) {
-            throw new InvalidRequestException("Ranking must contain between 2 and " + MAX_ITEMS + " items");
-        }
-        Map<Long, Integer> position = new HashMap<>();
-        for (Long id : ranking) {
-            if (position.putIfAbsent(id, position.size()) != null) {
-                throw new InvalidRequestException("Ranking contains item " + id + " more than once");
-            }
-            if (!bracketItemIds.contains(id)) {
-                throw new InvalidRequestException("Item " + id + " does not belong to this bracket");
-            }
-        }
-        Set<Long> ranked = position.keySet();
-        if (matches.size() != ranking.size() - 1) {
-            throw new InvalidRequestException("A run of " + ranking.size() + " items must have exactly "
-                    + (ranking.size() - 1) + " matches");
-        }
-        Long champion = ranking.get(0);
-        // A knockout of n entries has ceil(log2 n) rounds, so nobody can win more matches than that.
-        int rounds = 32 - Integer.numberOfLeadingZeros(ranking.size() - 1);
-        Map<Long, Integer> wins = new HashMap<>();
-        Set<Long> losers = new HashSet<>();
-        Set<String> pairs = new HashSet<>();
-        for (MatchOutcome m : matches) {
-            Long winner = m.winnerId();
-            Long loser = m.loserId();
-            if (!ranked.contains(winner) || !ranked.contains(loser)) {
-                throw new InvalidRequestException("Matches may only involve ranked items");
-            }
-            if (winner.equals(loser)) {
-                throw new InvalidRequestException("An item cannot play itself");
-            }
-            if (loser.equals(champion)) {
-                throw new InvalidRequestException("The champion cannot lose a match");
-            }
-            if (!losers.add(loser)) {
-                throw new InvalidRequestException("Item " + loser + " loses more than once");
-            }
-            String pair = Math.min(winner, loser) + ":" + Math.max(winner, loser);
-            if (!pairs.add(pair)) {
-                throw new InvalidRequestException("Items " + winner + " and " + loser + " play each other twice");
-            }
-            if (position.get(winner) > position.get(loser)) {
-                throw new InvalidRequestException("Item " + winner + " beat item " + loser + " but is ranked below it");
-            }
-            if (wins.merge(winner, 1, Integer::sum) > rounds) {
-                throw new InvalidRequestException("Item " + winner + " has more wins than a bracket of "
-                        + ranking.size() + " has rounds");
-            }
-        }
-        // n-1 distinct losers, none of them the champion, means every other item lost exactly once.
-        // Winners always rank above their losers, so following "beaten by" from any item climbs the
-        // ranking and ends at the champion: the matches form one tree with no cycles.
-    }
-
-    private static Result requireSameSubmitter(Result existing, Long bracketId, String userId) {
-        if (!Objects.equals(existing.getBracketId(), bracketId) || !Objects.equals(existing.getUserId(), userId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Submission token has already been used");
-        }
-        return existing;
-    }
-
-    private static String blankToNull(String s) {
-        return s == null || s.isBlank() ? null : s;
     }
 }

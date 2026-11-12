@@ -81,15 +81,15 @@ class BracketEdgeCasesIT extends IntegrationTest {
     // ---- submission tokens ---------------------------------------------------------------------
 
     @Test
-    void aTokenCannotBeReusedForAnotherBracketOrSubmitter() throws Exception {
+    void aTicketCannotBeReusedForAnotherBracketOrSubmitter() throws Exception {
         long id = createBracket(USER_A, "Token A", 2).get("id").asLong();
         long other = createBracket(USER_A, "Token B", 2).get("id").asLong();
         assertThat(perform(as(USER_A, postJson("/brackets/" + id + "/results", runPayload(itemIds(id), "shared-1", null))))
                 .getResponse().getStatus()).isEqualTo(200);
 
-        // Same user, other bracket
+        // Same user, other bracket: the ticket names the bracket it was issued for
         assertThat(perform(as(USER_A, postJson("/brackets/" + other + "/results", runPayload(itemIds(other), "shared-1", null))))
-                .getResponse().getStatus()).isEqualTo(409);
+                .getResponse().getStatus()).isEqualTo(400);
 
         // A guest's token cannot be claimed by a signed-in user
         perform(postJson("/brackets/" + id + "/results", runPayload(itemIds(id), "guest-shared", null)));
@@ -118,17 +118,17 @@ class BracketEdgeCasesIT extends IntegrationTest {
         long id = createBracket(USER_A, "Shapes", 2).get("id").asLong();
         List<Long> r = itemIds(id);
 
+        String ticket = ticketFor(r);
         Map<String, Object> nullWinner = new HashMap<>();
         nullWinner.put("winnerId", null);
         nullWinner.put("loserId", r.get(1));
-        assertBadRun(id, Map.of("ranking", r, "matches", List.of(nullWinner), "submissionToken", "n1"));
-        assertBadRun(id, Map.of("ranking", List.of(0L, -1L), "matches", List.of(), "submissionToken", "n2"));
-        assertBadRun(id, Map.of("ranking", r, "matches", knockoutMatches(r), "submissionToken", "   "));
-        assertBadRun(id, Map.of("ranking", r, "matches", knockoutMatches(r), "submissionToken", "x".repeat(101)));
-        assertBadRun(id, Map.of("ranking", r, "matches", knockoutMatches(r), "submissionToken", "c1",
-                "comment", "x".repeat(501)));
-        assertBadRun(id, Map.of("ranking", "not a list", "matches", List.of(), "submissionToken", "n3"));
-        assertBadRun(id, Map.of("ranking", List.of(r.get(0), "abc"), "matches", List.of(), "submissionToken", "n4"));
+        assertBadRun(id, Map.of("ticket", ticket, "matches", List.of(nullWinner)));
+        assertBadRun(id, Map.of("ticket", ticket, "matches", List.of()));
+        assertBadRun(id, Map.of("ticket", "   ", "matches", knockoutMatches(r)));
+        assertBadRun(id, Map.of("ticket", "x".repeat(513), "matches", knockoutMatches(r)));
+        assertBadRun(id, Map.of("ticket", ticket, "matches", knockoutMatches(r), "comment", "x".repeat(501)));
+        assertBadRun(id, Map.of("ticket", ticket, "matches", "not a list"));
+        assertBadRun(id, Map.of("ticket", ticket, "matches", List.of("abc")));
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isZero();
     }
@@ -138,14 +138,8 @@ class BracketEdgeCasesIT extends IntegrationTest {
     void oversizedListsAreOneErrorWithoutCheckingEachElement() throws Exception {
         long id = createBracket(USER_A, "Oversized", 2).get("id").asLong();
 
-        MvcResult ranking = perform(postJson("/brackets/" + id + "/results",
-                Map.of("ranking", Collections.nCopies(5000, 0L), "matches", List.of(), "submissionToken", "big-1")));
-        assertThat(ranking.getResponse().getStatus()).isEqualTo(400);
-        assertThat(body(ranking).get("errors").size()).isEqualTo(1);
-        assertThat(body(ranking).get("errors").has("ranking")).isTrue();
-
         MvcResult matches = perform(postJson("/brackets/" + id + "/results",
-                Map.of("ranking", itemIds(id), "matches", Collections.nCopies(5000, Map.of()), "submissionToken", "big-2")));
+                Map.of("ticket", "t", "matches", Collections.nCopies(5000, Map.of()))));
         assertThat(matches.getResponse().getStatus()).isEqualTo(400);
         assertThat(body(matches).get("errors").size()).isEqualTo(1);
         assertThat(body(matches).get("errors").has("matches")).isTrue();
@@ -159,9 +153,10 @@ class BracketEdgeCasesIT extends IntegrationTest {
 
         // Within the size limit every bad element is still reported, up to a capped response.
         MvcResult capped = perform(postJson("/brackets/" + id + "/results",
-                Map.of("ranking", Collections.nCopies(500, 0L), "matches", List.of(), "submissionToken", "big-3")));
+                Map.of("ticket", "t", "matches", Collections.nCopies(499, Map.of()))));
         assertThat(capped.getResponse().getStatus()).isEqualTo(400);
-        assertThat(body(capped).get("errors").has("ranking[0]")).isTrue();
+        // Validation reports a set, so which 50 elements are named is arbitrary.
+        assertThat(body(capped).get("errors").propertyNames()).allMatch(name -> name.matches("matches\\[\\d+]\\.(winnerId|loserId)"));
         assertThat(body(capped).get("errors").size()).isEqualTo(50);
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isZero();
@@ -175,7 +170,7 @@ class BracketEdgeCasesIT extends IntegrationTest {
                 Map.of("winnerId", r.get(0), "loserId", r.get(1)),
                 Map.of("winnerId", r.get(0), "loserId", r.get(2)),
                 Map.of("winnerId", r.get(0), "loserId", r.get(3)));
-        assertBadRun(id, Map.of("ranking", r, "matches", star, "submissionToken", "star-1"));
+        assertBadRun(id, Map.of("ticket", ticketFor(r), "matches", star));
     }
 
     @Test
@@ -189,6 +184,7 @@ class BracketEdgeCasesIT extends IntegrationTest {
         assertThat(rankings).hasSize(2);
         assertThat(rankings.get(0).get("item").get("id").asLong()).isEqualTo(r.get(3));
         assertThat(rankings.get(0).get("averageScore").asDouble()).isEqualTo(1.0);
+        assertThat(rankings.get(0).get("score").asDouble()).isEqualTo((1.0 + 2.5) / 6);
     }
 
     @Test

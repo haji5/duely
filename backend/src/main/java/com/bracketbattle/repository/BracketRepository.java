@@ -28,4 +28,7 @@ public interface BracketRepository extends JpaRepository<Bracket, Long> {
     List<Bracket> findPopular();
 
     List<Bracket> findByCreatedByOrderByCreatedAtDescIdDesc(String createdBy);
+
+    @Query("SELECT b.id FROM Bracket b ORDER BY b.id")
+    List<Long> findAllIds();
 }

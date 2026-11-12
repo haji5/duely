@@ -37,9 +37,8 @@ class ValidationOrderTest {
 
     @Test
     void oversizedListsStopBeforeTheirElementsAreChecked() {
-        var run = new SaveResultRequest(Collections.nCopies(5000, 0L),
-                Collections.nCopies(5000, new MatchOutcome(null, null)), "tok", null, null);
-        assertThat(paths(validator.validate(run, ValidationOrder.class))).containsExactly("matches", "ranking");
+        var run = new SaveResultRequest("ticket", Collections.nCopies(5000, new MatchOutcome(null, null)), null, null);
+        assertThat(paths(validator.validate(run, ValidationOrder.class))).containsExactly("matches");
 
         var bracket = new CreateBracketRequest("Name", null, "image", null,
                 Collections.nCopies(2000, new CreateBracketRequest.NewItemRequest(null, null)));
@@ -48,9 +47,9 @@ class ValidationOrderTest {
 
     @Test
     void elementsAreCheckedOnceTheFieldsPass() {
-        var run = new SaveResultRequest(List.of(0L, -1L), List.of(new MatchOutcome(null, 2L)), "tok", null, null);
+        var run = new SaveResultRequest("ticket", List.of(new MatchOutcome(null, 2L), new MatchOutcome(1L, null)), null, null);
         assertThat(paths(validator.validate(run, ValidationOrder.class)))
-                .containsExactly("matches[0].winnerId", "ranking[0].<list element>", "ranking[1].<list element>");
+                .containsExactly("matches[0].winnerId", "matches[1].loserId");
     }
 
     @Test
@@ -62,10 +61,10 @@ class ValidationOrderTest {
 
     @Test
     void aPlainValidStillEnforcesEveryConstraint() {
-        var run = new SaveResultRequest(List.of(5L), List.of(), " ", "x".repeat(101), null);
-        assertThat(paths(validator.validate(run))).containsExactly("displayName", "ranking", "submissionToken");
+        var run = new SaveResultRequest(" ", List.of(), "x".repeat(101), null);
+        assertThat(paths(validator.validate(run))).containsExactly("displayName", "matches", "ticket");
 
-        var elements = new SaveResultRequest(List.of(0L, 1L), List.of(), "tok", null, null);
-        assertThat(paths(validator.validate(elements))).containsExactly("ranking[0].<list element>");
+        var elements = new SaveResultRequest("ticket", List.of(new MatchOutcome(1L, null)), null, null);
+        assertThat(paths(validator.validate(elements))).containsExactly("matches[0].loserId");
     }
 }

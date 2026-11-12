@@ -1,6 +1,9 @@
 package com.bracketbattle.model;
 
+import com.bracketbattle.advice.InvalidRequestException;
+import com.bracketbattle.scoring.RunScoring;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -14,8 +17,9 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * One completed run of a bracket. Immutable once saved.
  *
- * <p>userId and submissionToken are hidden from JSON: the public API must not expose who voted,
- * and the token is a per-submission secret. The Valkey cache honours the same annotations, which
+ * <p>userId, submissionToken and counted are hidden from JSON: the public API must not expose who
+ * voted, the token is a per-submission secret (the run ticket's nonce), and whether a run counted
+ * toward the leaderboard is deliberately not told to the client. The Valkey cache honours the same annotations, which
  * is fine because the idempotency and ownership checks read the repository. Results themselves
  * only ever go to their submitter (public views use CommentDto), so the matches are included:
  * the owner's "your ranking" needs them for real win percentages.
@@ -59,6 +63,11 @@ public class Result {
     @Column(name = "comment", columnDefinition = "TEXT")
     private String comment;
 
+    /** Whether this run added to the leaderboard (see RunService). Every valid run is saved. */
+    @JsonIgnore
+    @Column(name = "counted", nullable = false)
+    private boolean counted = true;
+
     public Result() {}
 
     public Result(Long bracketId, String userId, List<Long> ranking, List<MatchOutcome> matches, String submissionToken) {
@@ -68,6 +77,33 @@ public class Result {
         setRanking(ranking);
         setMatches(matches);
     }
+
+    /** The scoring of this run: tiers from the matches, or list positions for legacy runs. */
+    public RunScoring.Scored scored() {
+        List<MatchOutcome> matches = getMatches();
+        if (matches != null) {
+            try {
+                return RunScoring.score(matches);
+            } catch (InvalidRequestException e) {
+                // Accepted under older, looser rules; its stored ranking is all we can trust.
+            }
+        }
+        return RunScoring.legacy(getRanking());
+    }
+
+    /** Each entry's place in this run, in ranking order. Tied entries share a range ("5th to 8th"). */
+    @JsonProperty(value = "places", access = JsonProperty.Access.READ_ONLY)
+    public List<Place> getPlaces() {
+        RunScoring.Scored scored = scored();
+        List<Place> places = new ArrayList<>();
+        for (Long itemId : getRanking()) {
+            RunScoring.Standing s = scored.standings().get(itemId);
+            places.add(s == null ? new Place(itemId, 0, 0) : new Place(itemId, s.placeFrom(), s.placeTo()));
+        }
+        return places;
+    }
+
+    public record Place(long itemId, int from, int to) {}
 
     @PrePersist
     void onCreate() {
@@ -116,6 +152,11 @@ public class Result {
 
     public String getComment() { return comment; }
     public void setComment(String comment) { this.comment = comment; }
+
+    @JsonIgnore
+    public boolean isCounted() { return counted; }
+    @JsonIgnore
+    public void setCounted(boolean counted) { this.counted = counted; }
 
     private static <T> List<T> read(String json, TypeReference<List<T>> type) {
         if (json == null || json.isEmpty()) {

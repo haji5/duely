@@ -4,6 +4,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
+import com.bracketbattle.service.RunTickets;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -12,6 +13,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -20,11 +22,13 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -37,7 +41,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /**
  * Base for tests against the real stack: Postgres and Valkey in Testcontainers (started once per
  * JVM and shared by every Spring context), MockMvc, and a mocked FirebaseAuth that accepts the
- * fake tokens {@link #USER_A}, {@link #USER_B} and {@link #ADMIN}.
+ * fake tokens {@link #USER_A}, {@link #USER_B}, {@link #USER_C} and {@link #ADMIN}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -73,6 +77,14 @@ public abstract class IntegrationTest {
 
     @Autowired
     protected StringRedisTemplate redis;
+
+    @Autowired
+    protected RunTickets runTickets;
+
+    @Autowired
+    private JdbcTemplate baseJdbc;
+
+    private final Map<String, String> ticketsByToken = new HashMap<>();
 
     @BeforeEach
     void resetValkeyAndTokens() throws Exception {
@@ -148,15 +160,16 @@ public abstract class IntegrationTest {
     }
 
     /**
-     * A run payload for a ranking played as a single-elimination tournament without byes, where
-     * the higher-ranked item wins: the matches are derived from a standard bracket over the
-     * ranking order. Only valid for power-of-two sizes.
+     * A run payload for a ranking, with a real signed ticket for exactly those entries (looked up
+     * from the first item's bracket) and matches that produce that ranking (see
+     * {@link #knockoutMatches}). The same {@code token} gives the same ticket within a test, so
+     * a retry is a resubmission of the same run; null always starts a new run. Tickets are dated
+     * an hour back, as if the run had been played at a human pace.
      */
-    protected static Map<String, Object> runPayload(List<Long> ranking, String token, String comment) {
+    protected Map<String, Object> runPayload(List<Long> ranking, String token, String comment) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("ranking", ranking);
+        payload.put("ticket", token == null ? ticketFor(ranking) : ticketsByToken.computeIfAbsent(token, t -> ticketFor(ranking)));
         payload.put("matches", knockoutMatches(ranking));
-        payload.put("submissionToken", token != null ? token : UUID.randomUUID().toString());
         if (comment != null) {
             payload.put("comment", comment);
             payload.put("displayName", "Tester");
@@ -164,17 +177,34 @@ public abstract class IntegrationTest {
         return payload;
     }
 
+    /** A ticket for these entries, issued an hour ago. */
+    protected String ticketFor(List<Long> entrants) {
+        List<Long> brackets = baseJdbc.queryForList("SELECT bracket_id FROM items WHERE id = ?", Long.class, entrants.get(0));
+        long bracketId = brackets.isEmpty() ? -1 : brackets.get(0);
+        return runTickets.issue(bracketId, entrants, Instant.now().minus(Duration.ofHours(1)));
+    }
+
     /**
-     * Matches consistent with {@code ranking} for a power-of-two field: champion beats runner-up in
-     * the final, the two semifinal losers lost to the finalists, and so on. Item at position p
-     * (0-based, p >= 1) lost to the item at position p - highestOneBit(p).
+     * Matches, in the order played, of a knockout whose result is {@code ranking}: the item at
+     * position p (0-based, p >= 1) lost to the item at p - highestOneBit(p), and earlier rounds
+     * (larger p) come first. For a power-of-two field this is a full bracket; for other sizes the
+     * top seeds simply had byes.
      */
     protected static List<Map<String, Long>> knockoutMatches(List<Long> ranking) {
         List<Map<String, Long>> matches = new ArrayList<>();
-        for (int p = 1; p < ranking.size(); p++) {
+        for (int p = ranking.size() - 1; p >= 1; p--) {
             int winner = p - Integer.highestOneBit(p);
             matches.add(Map.of("winnerId", ranking.get(winner), "loserId", ranking.get(p)));
         }
         return matches;
+    }
+
+    /** Starts a run through the API and returns the response. */
+    protected JsonNode startRun(String token, long bracketId, int size) throws Exception {
+        MvcResult result = perform(as(token, postJson("/brackets/" + bracketId + "/runs", Map.of("size", size))));
+        if (result.getResponse().getStatus() != 200) {
+            throw new AssertionError("start failed: " + result.getResponse().getContentAsString());
+        }
+        return body(result);
     }
 }
