@@ -16,6 +16,7 @@ const CustomBracketPage = React.lazy(() => import('./pages/CustomBracketPage'));
 const BracketPage = React.lazy(() => import('./pages/BracketPage'));
 const ResultsPage = React.lazy(() => import('./pages/ResultsPage'));
 const AboutPage = React.lazy(() => import('./pages/AboutPage'));
+const PrivacyPage = React.lazy(() => import('./pages/PrivacyPage'));
 const AdminPage = React.lazy(() => import('./pages/AdminPage'));
 const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage'));
 
@@ -44,6 +45,7 @@ function App() {
                       <Route path="/bracket/:id" element={<BracketPage />} />
                       <Route path="/results/:id" element={<ResultsPage />} />
                       <Route path="/about" element={<AboutPage />} />
+                      <Route path="/privacy" element={<PrivacyPage />} />
                       <Route path="/admin" element={<AdminPage />} />
                       <Route path="*" element={<NotFoundPage />} />
                     </Routes>

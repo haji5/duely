@@ -17,6 +17,7 @@ const Footer: React.FC = () => (
       <nav aria-label="Footer">
         <ul className="flex flex-wrap gap-x-5 gap-y-2">
           <li><Link to="/about" className={linkClass}>How Duely works</Link></li>
+          <li><Link to="/privacy" className={linkClass}>Privacy</Link></li>
           <li><a href={REPO_URL} className={linkClass}>GitHub</a></li>
           <li><a href={LICENSE_URL} className={linkClass}>License</a></li>
         </ul>

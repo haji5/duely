@@ -1,5 +1,6 @@
 package com.bracketbattle.media;
 
+import com.bracketbattle.support.SharedFixtures;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -7,6 +8,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -203,5 +205,56 @@ class MediaUrlValidatorTest {
     @Test
     void schemeIsCaseInsensitive() {
         assertThat(check("HTTPS://images.example.com/cat.png", "image")).isNull();
+    }
+
+    @Test
+    void oneRequestNamesAtMostTwentyHostsAndRepeatsAreFree() {
+        MediaUrlValidator.Session session = validator.session();
+        for (int i = 0; i < MediaUrlValidator.MAX_HOSTS; i++) {
+            assertThat(session.check("https://host" + i + ".example/a.png", "image")).isNull();
+        }
+        assertThat(session.check("https://host0.example/b.png", "image")).isNull();
+        assertThat(session.check("https://one-too-many.example/a.png", "image"))
+                .isEqualTo("a bracket can link to media on at most 20 different websites");
+        assertThat(lookups).hasSize(MediaUrlValidator.MAX_HOSTS);
+        // The cap is per request.
+        assertThat(validator.session().check("https://one-too-many.example/a.png", "image")).isNull();
+    }
+
+    @Test
+    void theHostCapMatchesTheSharedCases() {
+        var fixture = SharedFixtures.read("media-hosts.json");
+        assertThat(MediaUrlValidator.MAX_HOSTS).isEqualTo(fixture.get("maxHosts").asInt());
+        fixture.get("cases").forEach(c -> {
+            List<String> urls = new ArrayList<>();
+            for (int i = 0; i < c.get("distinctHosts").asInt(); i++) urls.add("https://host" + i + ".example/a.png");
+            c.get("extraUrls").forEach(u -> urls.add(u.asString()));
+            MediaUrlValidator.Session session = validator.session();
+            boolean tooMany = urls.stream().map(u -> session.check(u, "image")).anyMatch(p -> p != null && p.contains("different websites"));
+            assertThat(tooMany).as(c.toString()).isEqualTo(c.get("tooMany").asBoolean());
+        });
+    }
+
+    @Test
+    void allLookupsOfOneRequestShareABudget() {
+        MediaUrlValidator slow = new MediaUrlValidator(host -> {
+            try {
+                Thread.sleep(host.startsWith("stuck") ? 5_000 : 150);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return new InetAddress[]{InetAddress.getByName("93.184.216.34")};
+        }, 20, Duration.ofMillis(400));
+
+        long start = System.nanoTime();
+        MediaUrlValidator.Session session = slow.session();
+        assertThat(session.check("https://a.example/x.png", "image")).isNull();
+        assertThat(session.check("https://stuck.example/x.png", "image")).contains("took too long");
+        // The budget is spent: later hosts aren't even looked up.
+        assertThat(session.check("https://b.example/x.png", "image")).contains("took too long");
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(2));
+        // Literal addresses need no lookup, and a known host keeps its verdict.
+        assertThat(session.check("https://93.184.216.34/x.png", "image")).isNull();
+        assertThat(session.check("https://a.example/y.png", "image")).isNull();
     }
 }

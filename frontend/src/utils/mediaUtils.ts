@@ -16,6 +16,9 @@ const BLOCKED_HOSTS = new Set(['localhost', 'metadata', 'metadata.google.interna
 const BLOCKED_SUFFIXES = ['.localhost', '.local', '.internal'];
 
 export const MAX_URL_LENGTH = 2000;
+export const YOUTUBE_EMBED_ORIGIN = 'https://www.youtube-nocookie.com';
+/** A bracket may link to media on at most this many different hosts (shared/media-hosts.json). */
+export const MAX_MEDIA_HOSTS = 20;
 
 function parse(url: string | null | undefined): URL | null {
   if (!url) return null;
@@ -85,11 +88,15 @@ export function getSpotifyEmbedUrl(url: string): string | null {
   return r ? `https://open.spotify.com/embed/${r.kind}/${r.id}?utm_source=generator` : null;
 }
 
+/**
+ * The privacy-enhanced player: YouTube sets no cookies until the viewer plays the video (see the
+ * privacy page).
+ */
 export function getYouTubeEmbedUrl(url: string, autoplay = true): string | null {
   const id = youTubeVideoId(url);
   if (!id) return null;
   const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-  return `https://www.youtube.com/embed/${id}?enablejsapi=1&autoplay=${autoplay ? 1 : 0}&mute=1&controls=1&modestbranding=1&rel=0&playsinline=1&origin=${origin}`;
+  return `${YOUTUBE_EMBED_ORIGIN}/embed/${id}?enablejsapi=1&autoplay=${autoplay ? 1 : 0}&mute=1&controls=1&modestbranding=1&rel=0&playsinline=1&origin=${origin}`;
 }
 
 export function getYouTubeThumbnail(url: string): string | null {
@@ -126,6 +133,16 @@ export function mediaUrlProblem(url: string, type: BracketType): string | null {
     }
   }
   return null;
+}
+
+/** Whether these links name more different hosts than one bracket may use. */
+export function tooManyMediaHosts(urls: string[]): boolean {
+  const hosts = new Set<string>();
+  for (const url of urls) {
+    const host = parse(url)?.hostname.toLowerCase().replace(/\.$/, '');
+    if (host) hosts.add(host);
+  }
+  return hosts.size > MAX_MEDIA_HOSTS;
 }
 
 function isPrivateIpLiteral(host: string): boolean {

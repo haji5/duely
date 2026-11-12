@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type { Item } from '@/types';
 import {
-  getSpotifyEmbedUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl,
+  getSpotifyEmbedUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl, YOUTUBE_EMBED_ORIGIN,
 } from '../utils/mediaUtils';
 import { useLatest } from '@/utils/useLatest';
 
@@ -111,6 +111,8 @@ const AudioPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
       <audio
         ref={audioRef}
         src={item.mediaUrl}
+        // <audio> takes no referrerpolicy; the page's strict-origin-when-cross-origin policy (nginx)
+        // sends the audio's host this site's origin only, never the page.
         preload="none"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
@@ -135,7 +137,7 @@ const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
   const post = React.useCallback((message: object) => {
     iframeRef.current?.contentWindow?.postMessage(
       JSON.stringify({ ...message, id: 1, channel: 'widget' }),
-      'https://www.youtube.com',
+      YOUTUBE_EMBED_ORIGIN,
     );
   }, []);
 
@@ -180,7 +182,7 @@ const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
   if (thumbnail) {
     return thumbFailed
       ? <Unavailable label="" tall={false} />
-      : <img src={thumbnailUrl} alt="" width={480} height={360} className="h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />;
+      : <img src={thumbnailUrl} alt="" width={480} height={360} className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" onError={() => setThumbFailed(true)} />;
   }
 
   if (!started) {
@@ -194,7 +196,7 @@ const VideoPreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
         aria-label={`Play a preview of ${item.title}`}
       >
         {!thumbFailed && (
-          <img src={thumbnailUrl} alt="" width={480} height={360} className="absolute inset-0 h-full w-full object-cover" loading="lazy" onError={() => setThumbFailed(true)} />
+          <img src={thumbnailUrl} alt="" width={480} height={360} className="absolute inset-0 h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" onError={() => setThumbFailed(true)} />
         )}
         <span className="absolute inset-0 bg-black/30 transition-colors group-hover/play:bg-black/40" />
         <span className="relative rounded-full bg-white/90 p-4 text-gray-800 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-active/play:scale-95">
@@ -246,6 +248,8 @@ const ImagePreview: React.FC<{ item: Item; thumbnail: boolean }> = ({ item, thum
       alt={item.title}
       className={`w-full ${thumbnail ? 'h-full' : 'h-72'} rounded-lg object-cover`}
       loading="lazy"
+      // Anyone's image host: it learns nothing about which page showed it.
+      referrerPolicy="no-referrer"
       onError={() => setFailedUrl(item.mediaUrl)}
     />
   );

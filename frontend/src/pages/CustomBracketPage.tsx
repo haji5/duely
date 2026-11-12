@@ -10,7 +10,8 @@ import { randomId } from '@/utils/ids';
 import { useLatest } from '@/utils/useLatest';
 import { CATEGORIES } from '@/utils/categories';
 import {
-  getSpotifyEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl, isYouTubeUrl, mediaUrlProblem,
+  getSpotifyEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl, isYouTubeUrl, MAX_MEDIA_HOSTS, mediaUrlProblem,
+  tooManyMediaHosts,
 } from '../utils/mediaUtils';
 
 export interface Entry {
@@ -227,6 +228,9 @@ const CustomBracketPage: React.FC = () => {
     else if (Object.keys(errors).length > 0) message = Object.values(errors)[0];
     else if (filled.length < LIMITS.minEntries) message = `Add at least ${LIMITS.minEntries} entries`;
     else if (filled.length > LIMITS.maxEntries) message = `A bracket can have at most ${LIMITS.maxEntries} entries`;
+    else if (tooManyMediaHosts(filled.map(e => e.mediaUrl))) {
+      message = `A bracket can link to media on at most ${MAX_MEDIA_HOSTS} different websites`;
+    }
     return { errors, message, filled };
   };
 
@@ -542,7 +546,7 @@ const EntryPreview: React.FC<{ url: string; type: BracketType; label: string }> 
   if (type === 'video') {
     const thumbnail = getYouTubeThumbnail(url);
     return thumbnail ? (
-      <img src={thumbnail} alt={label} width={480} height={360} className="mt-3 h-24 w-40 rounded object-cover" loading="lazy" onError={() => setFailedUrl(url)} />
+      <img src={thumbnail} alt={label} width={480} height={360} className="mt-3 h-24 w-40 rounded object-cover" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} />
     ) : null;
   }
   if (type === 'song') {
@@ -554,7 +558,7 @@ const EntryPreview: React.FC<{ url: string; type: BracketType; label: string }> 
     // eslint-disable-next-line jsx-a11y/media-has-caption
     return isSpotifyUrl(url) ? null : <audio controls preload="none" src={url} className="mt-3 h-8 w-full" />;
   }
-  return <img src={url} alt={label} className="mt-3 h-32 w-full rounded object-cover" loading="lazy" onError={() => setFailedUrl(url)} />;
+  return <img src={url} alt={label} className="mt-3 h-32 w-full rounded object-cover" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} />;
 };
 
 export default CustomBracketPage;

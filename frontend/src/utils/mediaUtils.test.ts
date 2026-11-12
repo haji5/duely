@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  getSpotifyEmbedUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, mediaUrlProblem, spotifyResource,
-  youTubeVideoId,
+  getSpotifyEmbedUrl, getYouTubeEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, MAX_MEDIA_HOSTS, mediaUrlProblem, spotifyResource,
+  tooManyMediaHosts, youTubeVideoId,
 } from './mediaUtils';
 import { randomId } from './ids';
+import { readSharedFixture } from './sharedFixtures';
 
 describe('youTubeVideoId (same rules as the backend)', () => {
   it.each([
@@ -105,11 +106,26 @@ describe('mediaUrlProblem parity with the server', () => {
   });
 });
 
+describe('media hosts per bracket (shared/media-hosts.json)', () => {
+  const fixture = readSharedFixture<{
+    maxHosts: number; cases: { distinctHosts: number; extraUrls: string[]; tooMany: boolean }[];
+  }>('media-hosts.json');
+
+  it('allows as many hosts as the server', () => {
+    expect(MAX_MEDIA_HOSTS).toBe(fixture.maxHosts);
+  });
+
+  it.each(fixture.cases)('$distinctHosts hosts plus $extraUrls: too many = $tooMany', (c) => {
+    const urls = Array.from({ length: c.distinctHosts }, (_, i) => `https://host${i}.example/a.png`).concat(c.extraUrls);
+    expect(tooManyMediaHosts(urls)).toBe(c.tooMany);
+  });
+});
+
 describe('embed URLs', () => {
   it('builds embeds only for recognised links', () => {
     expect(getSpotifyEmbedUrl('https://example.com/track/abc')).toBeNull();
     expect(getYouTubeEmbedUrl('https://vimeo.com/1')).toBeNull();
-    expect(getYouTubeEmbedUrl('https://youtu.be/dQw4w9WgXcQ', false)).toMatch(/^https:\/\/www\.youtube\.com\/embed\/dQw4w9WgXcQ\?.*autoplay=0/);
+    expect(getYouTubeEmbedUrl('https://youtu.be/dQw4w9WgXcQ', false)).toMatch(/^https:\/\/www\.youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?.*autoplay=0/);
     expect(getYouTubeThumbnail('https://youtu.be/dQw4w9WgXcQ')).toBe('https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
   });
 

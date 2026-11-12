@@ -1,5 +1,7 @@
 package com.bracketbattle.media;
 
+import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.net.Inet4Address;
@@ -7,21 +9,34 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 
 /**
  * Validates media URLs before they are stored. Viewers' browsers load these URLs, so they must be
  * public https links (no LAN routers, cloud metadata hosts or localhost) and must match what the
  * frontend can actually play for the bracket type.
+ *
+ * <p>The DNS check is hygiene at creation time, not a security boundary: a host can resolve to
+ * something else later. What it costs is bounded: one request may name at most {@link #MAX_HOSTS}
+ * hosts, and all of its lookups together get {@link #DNS_BUDGET}.
  */
 @Component
 public class MediaUrlValidator {
 
     public static final int MAX_LENGTH = 2000;
+    public static final int MAX_HOSTS = 20;
+    static final Duration DNS_BUDGET = Duration.ofSeconds(10);
 
     private static final Set<String> BLOCKED_HOSTS = Set.of("localhost", "metadata", "metadata.google.internal");
     private static final Set<String> BLOCKED_SUFFIXES = Set.of(".localhost", ".local", ".internal");
@@ -30,20 +45,43 @@ public class MediaUrlValidator {
     private static final Pattern DOTTED_QUAD = Pattern.compile("^(?:(?:0|[1-9]\\d{0,2})\\.){3}(?:0|[1-9]\\d{0,2})$");
 
     private final HostResolver resolver;
+    private final int maxHosts;
+    private final Duration dnsBudget;
+    // A lookup can't be interrupted, so it runs on its own (virtual) thread and is waited for with
+    // a timeout; one that overruns is abandoned and finishes on its own.
+    private final ExecutorService lookups = Executors.newVirtualThreadPerTaskExecutor();
 
+    @Autowired
     public MediaUrlValidator(HostResolver resolver) {
-        this.resolver = resolver;
+        this(resolver, MAX_HOSTS, DNS_BUDGET);
     }
 
-    /** Starts a validation pass. Each distinct host is looked up at most once per session. */
+    MediaUrlValidator(HostResolver resolver, int maxHosts, Duration dnsBudget) {
+        this.resolver = resolver;
+        this.maxHosts = maxHosts;
+        this.dnsBudget = dnsBudget;
+    }
+
+    @PreDestroy
+    void shutdown() {
+        lookups.shutdownNow();
+    }
+
+    /**
+     * Starts a validation pass, one per request. Each distinct host is looked up at most once,
+     * and the pass's DNS budget starts now.
+     */
     public Session session() {
-        return new Session();
+        return new Session(System.nanoTime() + dnsBudget.toNanos());
     }
 
     public final class Session {
         private final Map<String, String> hostVerdicts = new HashMap<>();
+        private final long deadline;
 
-        private Session() {}
+        private Session(long deadline) {
+            this.deadline = deadline;
+        }
 
         /** Returns null if the URL is acceptable for the given bracket type, else a reason. */
         public String check(String url, String type) {
@@ -61,7 +99,14 @@ public class MediaUrlValidator {
             String host = normaliseHost(uri.getHost());
             String typeProblem = checkType(trimmed, uri, host, type);
             if (typeProblem != null) return typeProblem;
-            String hostProblem = hostVerdicts.computeIfAbsent(host, MediaUrlValidator.this::checkHost);
+            String hostProblem = hostVerdicts.get(host);
+            if (hostProblem == null) {
+                if (hostVerdicts.size() >= maxHosts) {
+                    return "a bracket can link to media on at most " + maxHosts + " different websites";
+                }
+                hostProblem = checkHost(host, deadline);
+                hostVerdicts.put(host, hostProblem);
+            }
             return hostProblem.isEmpty() ? null : hostProblem;
         }
     }
@@ -88,7 +133,7 @@ public class MediaUrlValidator {
     }
 
     /** Returns "" when the host is public, else the reason it is rejected. */
-    private String checkHost(String host) {
+    private String checkHost(String host, long deadline) {
         if (BLOCKED_HOSTS.contains(host) || BLOCKED_SUFFIXES.stream().anyMatch(host::endsWith)) {
             return "the media URL must not point to a local or internal host";
         }
@@ -102,7 +147,8 @@ public class MediaUrlValidator {
         try {
             InetAddress[] addresses = (ipv6Literal || numeric)
                     ? new InetAddress[]{InetAddress.getByName(host)} // literal: no DNS lookup
-                    : resolver.resolve(host);
+                    : resolve(host, deadline);
+            if (addresses == null) return "looking up the media URL's host took too long; try again, or use fewer websites";
             if (addresses.length == 0) return "the media URL's host could not be found";
             for (InetAddress address : addresses) {
                 if (!isPublic(address)) {
@@ -113,6 +159,26 @@ public class MediaUrlValidator {
         } catch (UnknownHostException | IllegalArgumentException e) {
             // Some malformed hosts make InetAddress throw IllegalArgumentException instead.
             return "the media URL's host could not be found";
+        }
+    }
+
+    /** The host's addresses, or null when the pass's DNS budget ran out first. */
+    private InetAddress[] resolve(String host, long deadline) throws UnknownHostException {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) return null;
+        Future<InetAddress[]> lookup = lookups.submit(() -> resolver.resolve(host));
+        try {
+            return lookup.get(remaining, TimeUnit.NANOSECONDS);
+        } catch (TimeoutException e) {
+            lookup.cancel(true);
+            return null;
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof UnknownHostException unknown) throw unknown;
+            if (e.getCause() instanceof IllegalArgumentException bad) throw bad;
+            throw new IllegalStateException("DNS lookup failed", e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
         }
     }
 

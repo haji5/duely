@@ -279,6 +279,22 @@ class BracketEdgeCasesIT extends IntegrationTest {
     }
 
     @Test
+    void aBracketLinksToAtMostTwentyWebsites() throws Exception {
+        Map<String, Object> payload = bracketPayload("Hosts", "image", 2);
+        List<Map<String, String>> items = new ArrayList<>();
+        for (int i = 0; i < 21; i++) {
+            items.add(Map.of("title", "Image " + i, "mediaUrl", "https://img" + i + ".example.com/x.png"));
+        }
+        payload.put("items", items);
+        MvcResult tooMany = perform(as(USER_A, postJson("/brackets", payload)));
+        assertThat(tooMany.getResponse().getStatus()).isEqualTo(400);
+        assertThat(body(tooMany).get("errors").get("items[20].mediaUrl").asString()).contains("at most 20 different websites");
+
+        payload.put("items", items.subList(0, 20));
+        assertThat(perform(as(USER_A, postJson("/brackets", payload))).getResponse().getStatus()).isEqualTo(200);
+    }
+
+    @Test
     void newBracketsAppearInCachedListsAtOnce() throws Exception {
         perform(get("/brackets"));
         perform(get("/brackets").param("sort", "oldest").param("size", "1"));
