@@ -6,6 +6,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -13,7 +14,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @TestPropertySource(properties = {
         "app.rate-limit.buckets.read.limit=3",
         "app.rate-limit.buckets.result-ip.limit=2",
-        "app.rate-limit.buckets.bracket-create.limit=1"
+        "app.rate-limit.buckets.bracket-create.limit=1",
+        "app.rate-limit.buckets.report.limit=2"
 })
 class RateLimitIT extends IntegrationTest {
 
@@ -49,5 +51,18 @@ class RateLimitIT extends IntegrationTest {
         MvcResult limited = perform(postJson("/brackets/" + id + "/results", runPayload(ranking, null, null)));
         assertThat(limited.getResponse().getStatus()).isEqualTo(429);
         assertThat(limited.getResponse().getHeader("Retry-After")).isNotNull();
+    }
+
+    @Test
+    void reportsAreLimitedPerSubject() throws Exception {
+        long id = createBracket(USER_A, "Reported often", 2).get("id").asLong();
+        Map<String, Object> report = Map.of("targetType", "bracket", "targetId", id, "reason", "spam");
+        assertThat(perform(postJson("/reports", report)).getResponse().getStatus()).isEqualTo(204);
+        assertThat(perform(postJson("/reports", report)).getResponse().getStatus()).isEqualTo(204);
+        MvcResult limited = perform(postJson("/reports", report));
+        assertThat(limited.getResponse().getStatus()).isEqualTo(429);
+        assertThat(body(limited).get("message").asString()).contains("the limit is 2 per hour");
+        // A signed-in reporter has their own bucket.
+        assertThat(perform(as(USER_B, postJson("/reports", report))).getResponse().getStatus()).isEqualTo(204);
     }
 }

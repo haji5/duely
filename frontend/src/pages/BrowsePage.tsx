@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import BracketCard, { PageLoader, typeLabel } from '../components/BracketCard';
 import { ErrorState } from '../components/PageStates';
+import ConfirmDialog from '../components/ConfirmDialog';
 import PageMeta, { pageTitle } from '../components/PageMeta';
 import { bracketApi, errorMessage } from '../services/api';
 import type { Bracket } from '@/types';
@@ -196,12 +197,56 @@ const BrowsePage: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {filtered.map(bracket => <BracketCard key={bracket.id} bracket={bracket} />)}
+                  {filtered.map(bracket => (mine ? (
+                    <OwnBracket
+                      key={bracket.id}
+                      bracket={bracket}
+                      onDeleted={() => setData(d => (d.status === 'ready'
+                        ? { ...d, brackets: d.brackets.filter(b => b.id !== bracket.id) }
+                        : d))}
+                    />
+                  ) : <BracketCard key={bracket.id} bracket={bracket} />))}
                 </div>
               )}
             </>
           )}
         </>
+      )}
+    </div>
+  );
+};
+
+/** One of the signed-in user's brackets, which they may delete. */
+const OwnBracket: React.FC<{ bracket: Bracket; onDeleted: () => void }> = ({ bracket, onDeleted }) => {
+  const [confirming, setConfirming] = React.useState(false);
+  return (
+    <div className="flex flex-col">
+      <div className="flex-1"><BracketCard bracket={bracket} /></div>
+      <div className="mt-1 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="btn btn-ghost px-3 py-1.5 text-sm"
+          aria-label={`Delete ${bracket.name}`}
+        >
+          Delete
+        </button>
+      </div>
+      {confirming && (
+        <ConfirmDialog
+          title="Delete this bracket?"
+          confirmLabel="Delete bracket"
+          busyLabel="Deleting…"
+          onClose={() => setConfirming(false)}
+          onConfirm={async () => {
+            await bracketApi.deleteBracket(bracket.id);
+            onDeleted();
+          }}
+        >
+          <p>
+            “{bracket.name}” goes for good, with every run anyone has played and its rankings. This can’t be undone.
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );

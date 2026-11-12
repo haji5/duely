@@ -42,9 +42,9 @@ class CacheRoundTripIT extends IntegrationTest {
         List<Bracket> all = service.getAllBrackets();
 
         // Raw cache entries exist in Valkey under the versioned prefix...
-        assertThat(redis.hasKey("duely:v5:bracket::" + id)).isTrue();
-        assertThat(redis.hasKey("duely:v5:bracketRankings::" + id)).isTrue();
-        assertThat(redis.hasKey("duely:v5:bracketStats::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v6:bracket::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v6:bracketRankings::" + id)).isTrue();
+        assertThat(redis.hasKey("duely:v6:bracketStats::" + id)).isTrue();
         assertThat(get("bracketStats", id, BracketStatsDto.class).getRunCount()).isEqualTo(stats.getRunCount()).isEqualTo(1);
 
         // ...and deserialize into the original types with the same content.

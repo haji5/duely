@@ -8,7 +8,7 @@ const bracket: Bracket = {
 };
 const item = (id: number, title: string): Item => ({ id, bracketId: 3, title, mediaUrl: 'https://x.test/a.mp3', mediaType: 'song' });
 const items = [item(1, 'Alpha'), item(2, 'Bravo'), item(3, 'Charlie')];
-const state = vi.hoisted(() => ({ items: [] as Item[], battles: [] as unknown[] }));
+const state = vi.hoisted(() => ({ items: [] as Item[], battles: [] as unknown[], comments: [] as unknown[] }));
 
 // Bravo has the higher win rate but the lower average finish: the case that looked like a bug.
 const rankings: ItemRanking[] = [
@@ -24,7 +24,7 @@ vi.mock('../../services/api', () => ({
     getBracket: vi.fn(async () => bracket),
     getBracketItems: vi.fn(async () => (state.items.length ? state.items : items)),
     getBracketRankings: vi.fn(async () => rankings),
-    getBracketComments: vi.fn(async () => []),
+    getBracketComments: vi.fn(async () => state.comments),
     getBracketStats: api.getBracketStats,
     getMyResults: vi.fn(async () => []),
   },
@@ -51,6 +51,7 @@ afterEach(() => {
   api.getBracketStats.mockReset();
   state.items = [];
   state.battles = [];
+  state.comments = [];
 });
 
 describe('ResultsPage ranking', () => {
@@ -107,3 +108,17 @@ describe('ResultsPage run view', () => {
   });
 });
 
+describe('ResultsPage comments', () => {
+  it('offers a report control on every comment', async () => {
+    api.getBracketStats.mockResolvedValue({ runCount: 2 });
+    state.comments = [
+      { id: 11, displayName: 'Ann', comment: 'Alpha forever', createdAt: '2026-10-02T12:00:00Z', championItemId: 1 },
+      { id: 12, displayName: null, comment: 'Meh', createdAt: '2026-10-03T12:00:00Z', championItemId: null },
+    ];
+    renderResults();
+
+    expect(await screen.findByText('Alpha forever')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Report the comment by Ann' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Report the comment by Anonymous' })).toBeInTheDocument();
+  });
+});

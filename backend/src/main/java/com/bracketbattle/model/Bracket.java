@@ -35,6 +35,11 @@ public class Bracket {
     @Column(name = "created_by")
     private String createdBy;
 
+    // Set by a moderator. Hidden brackets are only ever served to their owner and admins, so the
+    // public never sees this field set; for those two it is the badge's source.
+    @Column(name = "hidden_at")
+    private Instant hiddenAt;
+
     public Bracket() {}
 
     public Bracket(String name, String description, String type, String category, String createdBy) {
@@ -74,4 +79,7 @@ public class Bracket {
     public String getCreatedBy() { return createdBy; }
     @JsonIgnore
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+
+    public Instant getHiddenAt() { return hiddenAt; }
+    public void setHiddenAt(Instant hiddenAt) { this.hiddenAt = hiddenAt; }
 }

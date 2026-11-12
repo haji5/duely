@@ -1,5 +1,6 @@
 package com.bracketbattle.service;
 
+import com.bracketbattle.config.CacheEvictor;
 import com.bracketbattle.model.Result;
 import com.bracketbattle.repository.BracketRepository;
 import com.bracketbattle.repository.ItemRepository;
@@ -9,8 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -42,24 +41,34 @@ public class StatsService implements ApplicationRunner {
     private final ItemStatsRepository itemStatsRepository;
     private final TransactionTemplate transactionTemplate;
     private final JdbcTemplate jdbc;
-    private final CacheManager cacheManager;
+    private final CacheEvictor caches;
 
     public StatsService(BracketRepository bracketRepository, ItemRepository itemRepository,
                         ResultRepository resultRepository, ItemStatsRepository itemStatsRepository,
-                        TransactionTemplate transactionTemplate, JdbcTemplate jdbc, CacheManager cacheManager) {
+                        TransactionTemplate transactionTemplate, JdbcTemplate jdbc, CacheEvictor caches) {
         this.bracketRepository = bracketRepository;
         this.itemRepository = itemRepository;
         this.resultRepository = resultRepository;
         this.itemStatsRepository = itemStatsRepository;
         this.transactionTemplate = transactionTemplate;
         this.jdbc = jdbc;
-        this.cacheManager = cacheManager;
+        this.caches = caches;
     }
 
     /** Recomputes one bracket's rows in one transaction, then drops its cached leaderboard. */
     public void rebuild(long bracketId) {
+        rebuild(bracketId, () -> {});
+    }
+
+    /**
+     * Makes {@code change} to the bracket's runs (deleting one, say) and recomputes its rows in the
+     * same transaction, under the exclusive stats lock: no submission interleaves, and nobody sees
+     * the change without the leaderboard that goes with it.
+     */
+    public void rebuild(long bracketId, Runnable change) {
         transactionTemplate.executeWithoutResult(status -> {
             itemStatsRepository.lockExclusively(bracketId);
+            change.run();
             Set<Long> items = new HashSet<>(itemRepository.findIdsByBracketId(bracketId));
             Map<Long, ItemStatsRepository.Totals> totals = new TreeMap<>();
             // Oldest first: the order the incremental upserts added them in, so the floating-point
@@ -73,8 +82,8 @@ public class StatsService implements ApplicationRunner {
             }
             itemStatsRepository.replaceAll(bracketId, totals);
         });
-        evict("bracketRankings", bracketId);
-        evict("bracketStats", bracketId);
+        caches.evict("bracketRankings", bracketId);
+        caches.evict("bracketStats", bracketId);
     }
 
     /** Applies a new scoring version to every bracket. Each bracket is its own transaction. */
@@ -95,16 +104,5 @@ public class StatsService implements ApplicationRunner {
     int storedVersion() {
         List<String> values = jdbc.queryForList("SELECT meta_value FROM app_meta WHERE meta_key = ?", String.class, VERSION_KEY);
         return values.isEmpty() ? 0 : Integer.parseInt(values.get(0));
-    }
-
-    private void evict(String cacheName, long bracketId) {
-        Cache cache = cacheManager.getCache(cacheName);
-        if (cache == null) return;
-        try {
-            cache.evict(bracketId);
-        } catch (RuntimeException e) {
-            // Valkey down: the TTL bounds how long the old leaderboard is served.
-            log.warn("Could not evict {} for bracket {}: {}", cacheName, bracketId, e.getMessage());
-        }
     }
 }

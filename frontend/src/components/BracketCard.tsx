@@ -61,7 +61,14 @@ const BracketCard: React.FC<{ bracket: Bracket }> = ({ bracket }) => {
           <TypeIcon type={bracket.type} />
           {typeLabel(bracket.type)}
         </span>
-        <span className="truncate text-themed-tertiary">{bracket.category || 'General'}</span>
+        <span className="inline-flex min-w-0 items-center gap-2">
+          {bracket.hiddenAt && (
+            <span className="shrink-0 rounded bg-themed-tertiary px-1.5 py-0.5 text-xs font-semibold text-themed-secondary">
+              Hidden
+            </span>
+          )}
+          <span className="truncate text-themed-tertiary">{bracket.category || 'General'}</span>
+        </span>
       </div>
 
       <h3 id={titleId} className="font-display text-[1.65rem] font-extrabold leading-[1.05] text-themed-primary line-clamp-2">

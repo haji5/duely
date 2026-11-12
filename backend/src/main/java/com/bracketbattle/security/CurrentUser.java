@@ -15,4 +15,10 @@ public final class CurrentUser {
         }
         return null;
     }
+
+    /** Whether the caller has ROLE_ADMIN (see FirebaseAuthenticationFilter for the claims). */
+    public static boolean isAdmin(Authentication authentication) {
+        return uidOrNull(authentication) != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+    }
 }

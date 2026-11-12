@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.within;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 class BracketApiIT extends IntegrationTest {
 
@@ -398,7 +399,7 @@ class BracketApiIT extends IntegrationTest {
         assertThat(body(malformed).get("message").asString()).isEqualTo("Malformed request body");
         assertThat(body(malformed).get("error").asString()).isEqualTo("Bad Request");
 
-        assertThat(perform(as(USER_A, delete("/brackets/1"))).getResponse().getStatus()).isEqualTo(405);
+        assertThat(perform(as(USER_A, put("/brackets/1"))).getResponse().getStatus()).isEqualTo(405);
         assertThat(perform(as(USER_A, get("/no-such-route"))).getResponse().getStatus()).isEqualTo(404);
         assertThat(perform(as(USER_A, post("/brackets").contentType(MediaType.TEXT_PLAIN).content("x")))
                 .getResponse().getStatus()).isEqualTo(415);

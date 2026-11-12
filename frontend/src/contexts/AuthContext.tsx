@@ -2,12 +2,15 @@ import React, { createContext, useContext, useEffect, useRef, useState, ReactNod
 import { loadAuth, mayHaveStoredSession, SESSION_HINT_KEY } from '../config/firebase';
 import { resetApiAuthState } from '@/services/api';
 import { local } from '@/utils/storage';
+import { isAdminClaims } from '@/utils/reports';
 
 export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
+  /** From the ID token's claims; only decides whether admin controls show. The server checks. */
+  isAdmin: boolean;
 }
 
 interface AuthContextType {
@@ -83,8 +86,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           email: user.email,
           displayName: user.displayName,
           photoURL: user.photoURL,
+          isAdmin: false,
         } : null);
         setLoading(false);
+        if (user) {
+          // The claims come with the (cached) token; admins get their controls a moment later.
+          Promise.resolve()
+            .then(() => user.getIdTokenResult())
+            .then(({ claims }) => {
+              if (!cancelled && isAdminClaims(claims)) {
+                setCurrentUser(u => (u && u.uid === user.uid ? { ...u, isAdmin: true } : u));
+              }
+            })
+            .catch(() => { /* no claims, no admin controls */ });
+        }
       });
     }).catch((error: unknown) => {
       // Firebase couldn't be downloaded: carry on as a guest; signing in retries the download.

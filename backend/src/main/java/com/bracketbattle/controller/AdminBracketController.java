@@ -1,6 +1,7 @@
 package com.bracketbattle.controller;
 
 import com.bracketbattle.repository.BracketRepository;
+import com.bracketbattle.service.ModerationService;
 import com.bracketbattle.service.StatsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,10 +24,30 @@ public class AdminBracketController {
 
     private final BracketRepository bracketRepository;
     private final StatsService statsService;
+    private final ModerationService moderationService;
 
-    public AdminBracketController(BracketRepository bracketRepository, StatsService statsService) {
+    public AdminBracketController(BracketRepository bracketRepository, StatsService statsService,
+                                  ModerationService moderationService) {
         this.bracketRepository = bracketRepository;
         this.statsService = statsService;
+        this.moderationService = moderationService;
+    }
+
+    /** Takes a bracket off every public list and page; its owner still sees it, marked hidden. */
+    @PostMapping("/{id}/hide")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void hide(@PathVariable Long id) {
+        if (!moderationService.setHidden(id, true)) {
+            throw notFound();
+        }
+    }
+
+    @PostMapping("/{id}/unhide")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unhide(@PathVariable Long id) {
+        if (!moderationService.setHidden(id, false)) {
+            throw notFound();
+        }
     }
 
     /** Recomputes the leaderboard from the bracket's counted runs, e.g. after removing one by hand. */
@@ -34,9 +55,13 @@ public class AdminBracketController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void rebuildStats(@PathVariable Long id) {
         if (!bracketRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found");
+            throw notFound();
         }
         statsService.rebuild(id);
         log.info("Rebuilt the leaderboard of bracket {}", id);
+    }
+
+    private static ResponseStatusException notFound() {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found");
     }
 }
