@@ -214,3 +214,6 @@ PROJECT_FLAWS_ANALYSIS.md
 # Playwright MCP output (screenshots, snapshots, console logs)
 # -----------------
 .playwright-mcp/
+
+# Database dumps from the backup service (docker-compose.prod.yml)
+/backups/

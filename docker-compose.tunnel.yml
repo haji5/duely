@@ -1,0 +1,26 @@
+# docker-compose.tunnel.yml: a named Cloudflare tunnel in front of docker-compose.prod.yml.
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d
+#
+# cloudflared connects out to Cloudflare, so nothing listens on the Internet here. In the Cloudflare
+# dashboard the tunnel's public hostname points at http://frontend:3000, and PUBLIC_BASE_URL is
+# https://<that hostname>. On a provider with its own load balancer, leave this file out.
+
+services:
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.1
+    command: tunnel --no-autoupdate run
+    environment:
+      # From the environment rather than --token, so it doesn't show in the process list.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN to the named tunnel's token}
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    networks:
+      bracket-battle-network:
+        ipv4_address: 172.29.53.250
+
+  frontend:
+    environment:
+      # Only the tunnel reports client addresses; it appends the visitor's to X-Forwarded-For.
+      TRUSTED_PROXIES: 172.29.53.250
