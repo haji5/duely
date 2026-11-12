@@ -11,16 +11,19 @@ public class ItemRankingDto {
     private long wins;
     private long totalMatches;
     private int winPercentage;
+    private double score;
     private double averageScore;
     private int timesRanked;
 
     public ItemRankingDto() {}
 
-    public ItemRankingDto(Item item, long wins, long totalMatches, int winPercentage, double averageScore, int timesRanked) {
+    public ItemRankingDto(Item item, long wins, long totalMatches, int winPercentage, double score,
+                          double averageScore, int timesRanked) {
         this.item = item;
         this.wins = wins;
         this.totalMatches = totalMatches;
         this.winPercentage = winPercentage;
+        this.score = score;
         this.averageScore = averageScore;
         this.timesRanked = timesRanked;
     }
@@ -38,7 +41,11 @@ public class ItemRankingDto {
     public int getWinPercentage() { return winPercentage; }
     public void setWinPercentage(int winPercentage) { this.winPercentage = winPercentage; }
 
-    /** Mean normalised finishing position, 0..1 (1 = champion every time). */
+    /** What the leaderboard shows and sorts by: the mean adjusted for sample size (see Leaderboard). */
+    public double getScore() { return score; }
+    public void setScore(double score) { this.score = score; }
+
+    /** Raw mean run score, 0..1 (1 = champion every time). */
     public double getAverageScore() { return averageScore; }
     public void setAverageScore(double averageScore) { this.averageScore = averageScore; }
 
