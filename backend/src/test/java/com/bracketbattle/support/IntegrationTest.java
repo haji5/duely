@@ -126,7 +126,7 @@ public abstract class IntegrationTest {
         payload.put("name", name);
         payload.put("description", "A test bracket");
         payload.put("type", type);
-        payload.put("category", "Testing");
+        payload.put("category", "Technology");
         payload.put("items", items);
         return payload;
     }

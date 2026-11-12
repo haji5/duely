@@ -38,19 +38,31 @@ class FirebaseAuthenticationFilterTest {
         SecurityContextHolder.clearContext();
     }
 
-    /** Runs the filter and returns the authentication the rest of the chain sees. */
-    private Authentication run(String authorization) throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/brackets");
+    /** What one request through the filter produced. */
+    private record Outcome(boolean chainCalled, Authentication authentication, MockHttpServletResponse response) {}
+
+    private Outcome run(String method, String authorization) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest(method, "/brackets/1/results");
         if (authorization != null) request.addHeader("Authorization", authorization);
+        boolean[] called = new boolean[1];
         Authentication[] seen = new Authentication[1];
         MockFilterChain chain = new MockFilterChain() {
             @Override
             public void doFilter(ServletRequest req, ServletResponse res) {
+                called[0] = true;
                 seen[0] = SecurityContextHolder.getContext().getAuthentication();
             }
         };
-        filter.doFilter(request, new MockHttpServletResponse(), chain);
-        return seen[0];
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, chain);
+        return new Outcome(called[0], seen[0], response);
+    }
+
+    /** Runs a GET through the filter and returns the authentication the rest of the chain sees. */
+    private Authentication run(String authorization) throws Exception {
+        Outcome outcome = run("GET", authorization);
+        assertThat(outcome.chainCalled()).isTrue();
+        return outcome.authentication();
     }
 
     private void stub(String token, String uid, Map<String, Object> claims) throws Exception {
@@ -101,6 +113,40 @@ class FirebaseAuthenticationFilterTest {
         for (String token : List.of("t1", "t2", "t3", "t4")) {
             assertThat(roles(run("Bearer " + token))).as(token).containsExactly("ROLE_USER");
         }
+    }
+
+    @Test
+    void invalidTokenOnAWriteIsA401AndStopsTheChain() throws Exception {
+        doThrow(new IllegalArgumentException("expired")).when(firebaseAuth).verifyIdToken(anyString());
+        for (String method : List.of("POST", "PUT", "PATCH", "DELETE")) {
+            Outcome outcome = run(method, "Bearer expired");
+            assertThat(outcome.chainCalled()).as(method).isFalse();
+            assertThat(outcome.response().getStatus()).as(method).isEqualTo(401);
+            assertThat(outcome.response().getHeader("WWW-Authenticate")).isEqualTo("Bearer error=\"invalid_token\"");
+            assertThat(outcome.response().getContentAsString()).contains("\"status\":401", "sign in again");
+        }
+    }
+
+    @Test
+    void invalidTokenOnASafeMethodContinuesAnonymously() throws Exception {
+        doThrow(new IllegalArgumentException("expired")).when(firebaseAuth).verifyIdToken(anyString());
+        for (String method : List.of("GET", "HEAD", "OPTIONS")) {
+            Outcome outcome = run(method, "Bearer expired");
+            assertThat(outcome.chainCalled()).as(method).isTrue();
+            assertThat(outcome.authentication()).as(method).isNull();
+        }
+    }
+
+    @Test
+    void writesWithoutATokenAreGuestsAndValidTokensAuthenticate() throws Exception {
+        Outcome guest = run("POST", null);
+        assertThat(guest.chainCalled()).isTrue();
+        assertThat(guest.authentication()).isNull();
+
+        stub("good", "uid-1", Map.of());
+        Outcome signedIn = run("POST", "Bearer good");
+        assertThat(signedIn.chainCalled()).isTrue();
+        assertThat(CurrentUser.uidOrNull(signedIn.authentication())).isEqualTo("uid-1");
     }
 
     @Test

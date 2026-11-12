@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
   Bracket, BracketStats, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Result,
 } from '@/types';
@@ -7,9 +7,14 @@ import { apiCache } from '@/utils/apiCache';
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-const api = axios.create({
+/** Endpoints that wait on third parties (YouTube, Spotify, DNS) get longer than the default. */
+const SLOW_REQUEST_TIMEOUT_MS = 30_000;
+
+export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  // Without a timeout a stalled connection leaves a spinner forever instead of an error with a retry.
+  timeout: 15_000,
 });
 
 // Firebase's getIdToken() returns the cached token and refreshes it shortly before it expires.
@@ -19,6 +24,26 @@ api.interceptors.request.use(async (config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
+});
+
+type RetriableConfig = InternalAxiosRequestConfig & { authRetried?: boolean };
+
+// The server answers 401 to a write whose token it cannot verify (expired while the tab slept,
+// revoked, clock skew) rather than silently treating the player as a guest. Force a fresh token
+// and retry once; if that fails too, the caller sees the original error.
+api.interceptors.response.use(undefined, async (error: AxiosError) => {
+  const config = error.config as RetriableConfig | undefined;
+  const user = currentFirebaseUser();
+  if (error.response?.status !== 401 || !config || config.authRetried || !config.headers?.Authorization || !user) {
+    throw error;
+  }
+  config.authRetried = true;
+  try {
+    await user.getIdToken(true);
+  } catch {
+    throw error;
+  }
+  return api.request(config);
 });
 
 /** Drops cached responses; called whenever the signed-in user changes. */
@@ -31,6 +56,7 @@ export function errorMessage(error: unknown, fallback = 'Something went wrong. P
   if (axios.isAxiosError(error)) {
     const message = (error.response?.data as { message?: unknown } | undefined)?.message;
     if (typeof message === 'string' && message.trim()) return message;
+    if (error.code === 'ECONNABORTED') return 'The server took too long to answer. Please try again.';
     if (!error.response) return 'Can’t reach the server. Check your connection and try again.';
   }
   return fallback;
@@ -63,8 +89,8 @@ const keys = {
   myResults: (uid: string, bracketId?: number) => `/me/results:${uid}:${bracketId ?? 'all'}`,
 };
 
-async function get<T>(path: string, params?: Record<string, unknown>): Promise<T> {
-  const response = await api.get<T>(path, { params });
+async function get<T>(path: string, params?: Record<string, unknown>, timeout?: number): Promise<T> {
+  const response = await api.get<T>(path, { params, timeout });
   return response.data;
 }
 
@@ -102,7 +128,7 @@ export const bracketApi = {
 
   /** Creates the bracket and all of its entries in one request. */
   createBracket: async (payload: CreateBracketPayload): Promise<Bracket> => {
-    const response = await api.post<Bracket>('/brackets', payload);
+    const response = await api.post<Bracket>('/brackets', payload, { timeout: SLOW_REQUEST_TIMEOUT_MS });
     apiCache.invalidate(keys.brackets, keys.popular);
     return response.data;
   },
@@ -121,7 +147,7 @@ export const bracketApi = {
   /** The first embeddable YouTube video for a search, or null if none was found. */
   searchYouTube: async (query: string): Promise<string | null> => {
     try {
-      const data = await get<{ mediaUrl: string }>('/metadata/youtube/search', { query });
+      const data = await get<{ mediaUrl: string }>('/metadata/youtube/search', { query }, SLOW_REQUEST_TIMEOUT_MS);
       return data.mediaUrl;
     } catch (error) {
       if (errorStatus(error) === 404) return null;
@@ -130,5 +156,5 @@ export const bracketApi = {
   },
 
   getSpotifyPlaylist: (url: string): Promise<PlaylistTrack[]> =>
-    get<PlaylistTrack[]>('/metadata/spotify/playlist', { url }),
+    get<PlaylistTrack[]>('/metadata/spotify/playlist', { url }, SLOW_REQUEST_TIMEOUT_MS),
 };

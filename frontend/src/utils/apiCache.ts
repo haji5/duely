@@ -12,6 +12,8 @@ const MAX_ENTRIES = 100;
 
 class ApiCache {
   private entries = new Map<string, CacheEntry>();
+  /** Loads in progress, so components asking for the same key at once share one request. */
+  private inFlight = new Map<string, Promise<unknown>>();
   /** Bumped by clear(); responses that started before a clear are not stored. */
   private generation = 0;
   /** Per-key counterpart for invalidate(): a load that started before it is not stored. */
@@ -41,27 +43,43 @@ class ApiCache {
   invalidate(...keys: string[]): void {
     keys.forEach(key => {
       this.entries.delete(key);
+      // A caller after a write must not join a load that started before it.
+      this.inFlight.delete(key);
       this.keyVersions.set(key, (this.keyVersions.get(key) ?? 0) + 1);
     });
   }
 
   clear(): void {
     this.entries.clear();
+    this.inFlight.clear();
     this.keyVersions.clear();
     this.generation++;
   }
 
-  /** Returns the cached value or loads, caches and returns it. */
-  async getOrLoad<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  /** Returns the cached value, joins a load already in progress, or loads, caches and returns it. */
+  getOrLoad<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
     const cached = this.get<T>(key);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) return Promise.resolve(cached);
+    const pending = this.inFlight.get(key);
+    if (pending) return pending as Promise<T>;
+
     const generation = this.generation;
     const version = this.keyVersions.get(key);
-    const data = await load();
-    if (generation === this.generation && version === this.keyVersions.get(key)) {
-      this.set(key, data, ttlMs);
-    }
-    return data;
+    // Starting the load in a microtask means `promise` is assigned before any callback runs,
+    // even when load() throws synchronously.
+    const promise: Promise<T> = Promise.resolve()
+      .then(load)
+      .then(data => {
+        if (generation === this.generation && version === this.keyVersions.get(key)) {
+          this.set(key, data, ttlMs);
+        }
+        return data;
+      })
+      .finally(() => {
+        if (this.inFlight.get(key) === promise) this.inFlight.delete(key);
+      });
+    this.inFlight.set(key, promise);
+    return promise;
   }
 }
 

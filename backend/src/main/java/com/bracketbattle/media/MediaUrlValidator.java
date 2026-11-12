@@ -110,7 +110,8 @@ public class MediaUrlValidator {
                 }
             }
             return "";
-        } catch (UnknownHostException e) {
+        } catch (UnknownHostException | IllegalArgumentException e) {
+            // Some malformed hosts make InetAddress throw IllegalArgumentException instead.
             return "the media URL's host could not be found";
         }
     }

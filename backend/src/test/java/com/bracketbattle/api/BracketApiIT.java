@@ -31,7 +31,7 @@ class BracketApiIT extends IntegrationTest {
 
         assertThat(bracket.get("id").asLong()).isPositive();
         assertThat(bracket.get("name").asString()).isEqualTo("Best images");
-        assertThat(bracket.get("category").asString()).isEqualTo("Testing");
+        assertThat(bracket.get("category").asString()).isEqualTo("Technology");
         assertThat(bracket.has("createdBy")).isFalse();
         assertThat(bracket.get("createdAt").asString()).endsWith("Z");
 
@@ -42,15 +42,31 @@ class BracketApiIT extends IntegrationTest {
     }
 
     @Test
-    void sanitizesTextAndDefaultsCategory() throws Exception {
-        Map<String, Object> payload = bracketPayload("<b>Bold</b> &amp; brave", "image", 2);
+    void storesTextAsTypedAndDefaultsCategory() throws Exception {
+        Map<String, Object> payload = bracketPayload("  x<y &amp; y>z\u00A0", "image", 2);
         payload.put("category", "  ");
         payload.put("description", "line one\nline two");
         JsonNode bracket = body(perform(as(USER_A, postJson("/brackets", payload))));
 
-        assertThat(bracket.get("name").asString()).isEqualTo("Bold & brave");
+        assertThat(bracket.get("name").asString()).isEqualTo("x<y &amp; y>z");
         assertThat(bracket.get("category").asString()).isEqualTo("General");
         assertThat(bracket.get("description").asString()).isEqualTo("line one\nline two");
+    }
+
+    @Test
+    void categoryMustBeOneOfTheFixedList() throws Exception {
+        long before = jdbc.queryForObject("SELECT COUNT(*) FROM brackets", Long.class);
+        Map<String, Object> unknown = bracketPayload("Free text", "image", 2);
+        unknown.put("category", "My Own Chip");
+        MvcResult rejected = perform(as(USER_A, postJson("/brackets", unknown)));
+        assertThat(rejected.getResponse().getStatus()).isEqualTo(400);
+        assertThat(body(rejected).get("errors").get("category").asString()).contains("Music");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM brackets", Long.class)).isEqualTo(before);
+
+        Map<String, Object> lowerCase = bracketPayload("Lower case", "image", 2);
+        lowerCase.put("category", " music ");
+        assertThat(body(perform(as(USER_A, postJson("/brackets", lowerCase)))).get("category").asString())
+                .isEqualTo("Music");
     }
 
     @Test
@@ -103,10 +119,27 @@ class BracketApiIT extends IntegrationTest {
     }
 
     @Test
-    void invalidTokenIsTreatedAsAnonymous() throws Exception {
+    void invalidTokenIsA401OnWritesAndAnonymousOnReads() throws Exception {
         MvcResult result = perform(as("garbage", postJson("/brackets", bracketPayload("Nope", "image", 2))));
         assertThat(result.getResponse().getStatus()).isEqualTo(401);
         assertThat(perform(as("garbage", get("/brackets"))).getResponse().getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void aRunWithAnInvalidTokenIsRejectedNotSavedAsAGuestRun() throws Exception {
+        long id = createBracket(USER_A, "Expired token", 2).get("id").asLong();
+        long before = jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id);
+
+        MvcResult result = perform(as("garbage", postJson("/brackets/" + id + "/results", runPayload(itemIds(id), null, null))));
+        assertThat(result.getResponse().getStatus()).isEqualTo(401);
+        assertThat(result.getResponse().getHeader("WWW-Authenticate")).isEqualTo("Bearer error=\"invalid_token\"");
+        assertThat(body(result).get("message").asString()).contains("sign in again");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM item_stats WHERE bracket_id = ?", Long.class, id)).isZero();
+
+        // Without any token it is an ordinary guest run.
+        assertThat(perform(postJson("/brackets/" + id + "/results", runPayload(itemIds(id), null, null)))
+                .getResponse().getStatus()).isEqualTo(200);
     }
 
     // ---- lists ---------------------------------------------------------------------------------
