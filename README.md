@@ -38,7 +38,7 @@
 - **Community rankings.** Every finished battle is saved. The results page shows your individual battles, your personal averages and the global leaderboard (normalised finishing position plus real head-to-head win rates), plus optional names and comments.
 - **Guests welcome.** Anyone can play and submit results without an account; a guest's own runs are kept for the browser tab. Signing in with Google lets you create brackets and keeps your history across devices.
 - **Moderation built in.** Anyone can report a bracket or a comment. Admins work through the reports at `/admin`: hide or delete a bracket, remove a comment or a whole run (the leaderboard is rebuilt without it). Owners can delete their own brackets, and any signed-in player can delete their data from the account menu.
-- **Host it for friends.** One script serves the app to your local network or puts it on the internet through a Cloudflare tunnel.
+- **Host it for friends, or for everyone.** One script serves the app to your local network or puts it on the internet through a Cloudflare quick tunnel. For a lasting public site, a production Compose file runs the published images on your own domain, behind a named Cloudflare tunnel or any hosting provider's load balancer, with nightly database backups.
 - Light and dark themes, a responsive layout down to phone width, and keyboard-friendly battles.
 
 ## Engineering highlights
@@ -51,14 +51,14 @@
 | **Auth & security** | A filter checks the Firebase ID token in the `Authorization: Bearer` header and maps custom claims to Spring Security roles. Browsers never attach that header to cross-site requests on their own, so there is no ambient credential for a CSRF attack to ride on and no CSRF token is needed. User text is stored exactly as typed (only normalised: Unicode NFC, newlines, control characters) and is always rendered as text, never as HTML. A bearer token that fails verification is a 401 on writes, so a signed-in run is never silently saved as a guest's. Media URLs must be public `https` links (private, loopback, link-local and cloud-metadata addresses are rejected after DNS resolution), cache deserialization only accepts known classes, and nginx sends a strict content security policy. |
 | **Abuse protection** | Fixed-window rate limits live in Valkey (an atomic `INCR`/`EXPIRE` script), so they are shared by every backend instance and their memory is bounded. Reads are limited per client address, run starts, result submissions and reports per user (or per address for guests), bracket creation and metadata lookups per user; a 429 carries `Retry-After`. An address means an IPv4 address or an IPv6 /64, since one IPv6 connection can rotate through a whole /64. If Valkey is unreachable, reads go unlimited while every other limit keeps counting in memory on each backend instance, so a Valkey restart never lifts the write limits. What one player can add to a leaderboard is bounded separately: per bracket and day only 10 runs per signed-in user and 30 per guest address are counted, and a run faster than the UI allows (0.4 s per match) isn't counted either. Such runs are still saved and shown to their player; the response doesn't say. Duplicate submissions (double clicks, retries) are idempotent on the ticket. |
 | **Data integrity** | Liquibase owns the schema and Hibernate only validates it. A bracket and all its entries are created in one transaction. A run is only accepted with a ticket the server signed (HMAC-SHA256, at most 12 hours old, for this bracket), whose matches name exactly the entrants it was issued for and form one single-elimination tournament: n-1 matches, every entry but the champion loses exactly once, no pair meets twice, no cycles, and nobody goes out deeper than the bracket has rounds. Deleting a bracket cascades to its entries, runs and leaderboard rows in the database; deleting a run rebuilds its bracket's leaderboard in the same transaction. A hidden bracket is a 404 on every public route, page and the sitemap, for everyone but its owner and admins (ownership is read from the table, never the cache). |
-| **Delivery** | Multi-stage Docker builds run as non-root users, with health-gated startup and restart policies in Compose. nginx serves the single-page app and proxies `/api`. GitHub Actions runs the backend and frontend test suites, then builds both images and publishes them to GitHub Container Registry. |
+| **Delivery** | Multi-stage Docker builds run as non-root users, with health-gated startup and restart policies in Compose. nginx serves the single-page app and proxies `/api`. GitHub Actions runs the backend and frontend test suites, then builds both images and publishes them to GitHub Container Registry; the production Compose file runs those images at a pinned tag. The same images serve any domain behind any proxy: nginx writes the trusted proxy addresses and the public origin into its config at start. The public origin is configured, never taken from the request, and the backend refuses to start in production unless it is public `https`, so canonicals, the sitemap, `robots.txt` and shared links always name the real site. |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     U[Browser<br/>React SPA] -->|Google sign-in| FA[Firebase Auth]
-    U -->|HTTPS| T[cloudflared tunnel<br/>optional]
+    U -->|HTTPS| T[cloudflared tunnel<br/>or load balancer]
     T --> N
     U -->|HTTP| N[nginx<br/>static files + /api proxy]
     N -->|/api/* → /*| B[Spring Boot API]
@@ -131,6 +131,8 @@ Postgres, Valkey and the backend are bound to `127.0.0.1` only (set `BACKEND_HOS
 
 The script finds the LAN IP of the adapter holding your default route, starts the stack and waits until it's healthy. In LAN mode it also opens port 3000 in Windows Firewall for private networks (when run as Administrator). In Internet mode no firewall change is needed; nginx passes the tunnel's `https` scheme to the backend, so requests through the tunnel are same-origin. For Google sign-in on the tunnel URL, add its host name under **Firebase Console → Authentication → Settings → Authorized domains** (raw LAN IPs generally can't be authorized). Guests can play without signing in either way.
 
+The quick tunnel is for an evening with friends or a demo: its `trycloudflare.com` address changes on every start (so shared links die and the Firebase entry has to be added again), Cloudflare gives it no uptime guarantee, and canonicals and the sitemap still say `localhost`. For a site people can bookmark, see [Running it publicly](#running-it-publicly).
+
 Under Docker Desktop every LAN device reaches nginx through the same gateway address, so LAN guests share one per-IP rate-limit bucket; the guest limits are sized for that.
 
 ### Local development without Docker
@@ -158,6 +160,78 @@ npm install
 npm run dev                  # http://localhost:3000
 ```
 
+## Running it publicly
+
+`docker-compose.prod.yml` runs the images CI publishes to GitHub Container Registry, at a tag you choose, with nightly backups. It serves plain HTTP on port 3000 and expects a proxy in front that terminates TLS. Today that's a named Cloudflare tunnel (`docker-compose.tunnel.yml`, an overlay on top); on a hosting provider, its load balancer takes the tunnel's place and nothing else changes.
+
+### What it needs
+
+Set these in `.env` (the secrets in `.env` and `backend/.env` stay as for development):
+
+- `PUBLIC_BASE_URL`: the public origin, e.g. `https://duely.example`. It goes into canonicals, link previews, JSON-LD, the sitemap and `robots.txt`, and the app hands out share links on it, wherever the page was opened from. The backend refuses to start unless it is `https` on a public host (`localhost`, loopback and private addresses are rejected).
+- `DUELY_TAG`: the image tag to run. Pushing a git tag `v1.2.0` publishes `1.2.0` and `1.2`; every push to `master` publishes the commit's short sha and `master`. The frontend image has the Firebase web config built in from the repository's `VITE_FIREBASE_*` Actions secrets, so set those before the first release. While the packages are private, sign in once with `docker login ghcr.io` and a token that can read packages, or make the two packages public.
+- `RUN_TICKET_SECRET` in `backend/.env`, so runs in progress survive a restart.
+- Under **Firebase Console → Authentication → Settings → Authorized domains**, the domain, once.
+- `TRUSTED_PROXIES`: the address the proxy connects from, so rate limits see each visitor's address (below). The tunnel overlay sets it for you.
+
+### With a Cloudflare tunnel
+
+1. Add the domain to Cloudflare. In the Zero Trust dashboard (**Networks → Tunnels**), create a cloudflared tunnel, copy its token, and give it a public hostname (e.g. `duely.example`) whose service is `http://frontend:3000`.
+2. In `.env`: `PUBLIC_BASE_URL=https://duely.example`, `CLOUDFLARE_TUNNEL_TOKEN=<token>`, `DUELY_TAG=<tag>`.
+3. Start it:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d
+   ```
+
+cloudflared connects outwards, so no port is opened to the Internet. The overlay pins it to `172.29.53.250` and makes that the only trusted proxy; nginx takes the visitor's address from the end of `X-Forwarded-For`, the entry Cloudflare appended. Add the overlay's `-f` to every other command below too.
+
+### On a hosting provider
+
+Leave the tunnel overlay out and point the provider's TLS-terminating load balancer (or a reverse proxy such as Caddy) at port 3000:
+
+- `HTTP_BIND=0.0.0.0` when the proxy runs on another machine, with the port firewalled to it. A proxy on the same host can use the default, `127.0.0.1`.
+- `TRUSTED_PROXIES`: the addresses the proxy connects from, comma-separated, CIDRs allowed: the load balancer's private range (e.g. `10.0.0.0/16`), or `172.29.53.1`, the Docker network's gateway, for a proxy on the same host. Left empty, every visitor appears as the proxy and they all share its rate limits.
+- `REAL_IP_HEADER` if the proxy reports the visitor somewhere other than at the end of `X-Forwarded-For` (e.g. `CF-Connecting-IP` behind Cloudflare's proxy, `Fly-Client-IP` on Fly.io).
+- The proxy must send `X-Forwarded-Proto: https` (load balancers do), so the backend knows requests arrived over https.
+
+### Backups
+
+The `backup` service writes `pg_dump -Fc` dumps to `BACKUP_DIR` (default `./backups`): at start if the newest is more than a day old, then daily at `BACKUP_TIME` (default `03:30`, in `TZ`, default UTC). Dumps older than `BACKUP_KEEP_DAYS` (14) are deleted. To dump now, before an update say:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backup sh /backup.sh now
+```
+
+The dumps sit on the same disk as the database, so keep a copy elsewhere: sync the directory from the host (rclone, restic, a cloud drive's folder), or set `BACKUP_HOOK` to a script you mount into the container with an override file; it runs after every dump with the dump's path as its argument.
+
+### Restoring
+
+A restore replaces the database with a dump. It refuses while the backend is connected, and first saves the current database as `pre-restore-<time>.dump`, which is never deleted automatically.
+
+```bash
+docker compose -f docker-compose.prod.yml stop backend
+docker compose -f docker-compose.prod.yml run --rm backup restore duely-20261111-033000.dump
+docker compose -f docker-compose.prod.yml start backend
+```
+
+On a new machine, copy the dump into `backups/`, start Postgres alone (`docker compose -f docker-compose.prod.yml up -d postgres`), restore, then `up -d`. On start the backend applies whatever migrations are newer than the dump.
+
+### Updating
+
+Take a dump, set `DUELY_TAG` to the new tag, then:
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+The backend migrates the database on start. To go back, set the old tag again; if the new version had migrated the schema, restore the dump you took first.
+
+### From the development stack
+
+The production file uses the same Compose project (`duely`), network and database volume as `docker-compose.yml` in a checkout named `duely`, so stopping one (`.\host.ps1 stop` or `docker compose down`, never with `-v`) and starting the other keeps your brackets. Run one at a time. Valkey keeps nothing on disk in either; the old `duely_valkey_data` volume is unused and `docker volume rm duely_valkey_data` removes it.
+
 ## Configuration
 
 | Variable | Where | Purpose |
@@ -173,6 +247,12 @@ npm run dev                  # http://localhost:3000
 | `READ_RATE_LIMIT`, `RESULT_USER_RATE_LIMIT`, `RESULT_IP_RATE_LIMIT`, `RUN_START_USER_RATE_LIMIT`, `RUN_START_IP_RATE_LIMIT`, `BRACKET_CREATION_LIMIT`, `METADATA_SEARCH_LIMIT`, `METADATA_PLAYLIST_LIMIT` | backend env | Rate limits. Defaults: 600 reads/min per address, 5 runs/min per user and 20/min per guest address, 30 run starts/min per user and 60 per guest address, 10 brackets/hour, 600 YouTube searches and 30 playlist imports per hour per user. Any `app.rate-limit.buckets.*` property can be overridden. |
 | `COUNTED_RUNS_PER_USER`, `COUNTED_RUNS_PER_IP` | backend env | Runs per bracket and day that count toward its leaderboard (defaults 10 per user, 30 per guest address); later runs are saved but not counted. |
 | `REPORT_RATE_LIMIT` | backend env | Reports per hour per user or guest address (default 5). |
+| `PUBLIC_BASE_URL` | `.env` | The public origin for canonicals, link previews, JSON-LD, the sitemap, `robots.txt` and share links. Required by `docker-compose.prod.yml`, which also sets `REQUIRE_PUBLIC_ORIGIN=true` (refuse to start unless it is public `https`). Development defaults to `http://localhost:3000`, and share links then use the page's own host. |
+| `TRUSTED_PROXIES`, `REAL_IP_HEADER` | `.env` | Addresses or CIDRs (comma-separated) allowed to report the client address to nginx, and the header they use (default `X-Forwarded-For`, last entry). Development trusts the quick tunnel's `172.29.53.250`; see [On a hosting provider](#on-a-hosting-provider). |
+| `DUELY_TAG`, `IMAGE_REPOSITORY` | `.env` | Production: the image tag to run, and the GHCR repository (default `haji5/duely`). |
+| `HTTP_BIND`, `HTTP_PORT` | `.env` | Production: where nginx is published on the host (default `127.0.0.1:3000`). |
+| `CLOUDFLARE_TUNNEL_TOKEN` | `.env` | The named tunnel's token, for `docker-compose.tunnel.yml`. |
+| `BACKUP_DIR`, `BACKUP_TIME`, `TZ`, `BACKUP_KEEP_DAYS`, `BACKUP_HOOK` | `.env` | Production backups: where dumps go (`./backups`), when (`03:30` UTC), for how long (14 days), and a script to run after each one. |
 
 Grant admin access by setting a Firebase custom claim of `{"admin": true}` or `{"role": "ADMIN"}` on a user. Admins see a **Reports** entry in the account menu, which opens the moderation queue at `/admin`.
 
@@ -236,11 +316,15 @@ duely/
 │   │   ├── services/                Axios client, oEmbed title lookups
 │   │   └── utils/                   Tournament engine, rankings, API cache, media URL helpers
 │   ├── nginx.conf                   Production server and /api proxy
+│   ├── runtime-config.sh            Writes the trusted proxies and public origin into nginx's config at start
 │   └── security-headers.conf        Headers shared by every nginx location
+├── deploy/backup.sh                 Nightly dumps, retention and restore for the backup service
 ├── docs/screenshots/                README images
 ├── .github/workflows/               CI: tests, then build and publish Docker images
-├── docker-compose.yml               Full stack
-├── docker-compose.local.yml         LAN / tunnel overlay used by host.ps1
+├── docker-compose.yml               Full stack, built from source
+├── docker-compose.local.yml         LAN / quick-tunnel overlay used by host.ps1
+├── docker-compose.prod.yml          Public deployment from published images, with backups
+├── docker-compose.tunnel.yml        Named Cloudflare tunnel overlay for the public deployment
 └── host.ps1                         One-command hosting script
 ```
 
@@ -251,7 +335,7 @@ cd backend && mvn verify      # unit tests, then integration tests (needs Docker
 cd frontend && npm run typecheck && npm test && npm run build
 ```
 
-- **Backend:** JUnit 5 unit tests (media URL validation, sanitizer, run scoring, leaderboard order, run tickets, rate-limit windows) run in `mvn test`. Integration tests (`*IT`) start Postgres and Valkey with Testcontainers and drive the API through MockMvc with a mocked `FirebaseAuth`: creation, run tickets, submissions and idempotency, uncounted runs, rankings after several runs, stats rebuilds, comments, paged, filtered and searched lists over a few hundred brackets in every order, the home lists, the counters on each bracket and what each run evicts, the sitemap index, `/me` endpoints, moderation (hiding and deleting brackets, deleting runs, clearing comments, reports, account deletion) as guest, other user, owner and admin, error statuses, admin access, rate limits with `Retry-After`, cache round-trips through real Valkey, the Liquibase backfills, and startup with Valkey down.
+- **Backend:** JUnit 5 unit tests (media URL validation, sanitizer, run scoring, leaderboard order, run tickets, rate-limit windows) run in `mvn test`. Integration tests (`*IT`) start Postgres and Valkey with Testcontainers and drive the API through MockMvc with a mocked `FirebaseAuth`: creation, run tickets, submissions and idempotency, uncounted runs, rankings after several runs, stats rebuilds, comments, paged, filtered and searched lists over a few hundred brackets in every order, the home lists, the counters on each bracket and what each run evicts, the sitemap index, `robots.txt` and pages that name only the configured origin, `/me` endpoints, moderation (hiding and deleting brackets, deleting runs, clearing comments, reports, account deletion) as guest, other user, owner and admin, error statuses, admin access, rate limits with `Retry-After`, cache round-trips through real Valkey, the Liquibase backfills, and startup with Valkey down.
 - **Shared vectors:** where the frontend mirrors a backend rule (run scoring, leaderboard order, bracket sizes, categories, report reasons), the cases live once in `shared/*.json` and both suites check them.
 - **Frontend:** Vitest covers the tournament engine (every entry count from 2 to 20 at every size, each checked against the server's run validation), the ranking formula, media URL rules, Browse driving the server's filters, search and pages from the URL, the home page's lists, and the bracket builder's title autofill.
 - CI runs both suites (plus `npm audit --omit=dev`) before any image is built.
