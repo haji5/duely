@@ -197,4 +197,32 @@
         </createIndex>
     </changeSet>
 
+    <!-- Every valid run is saved; only counted runs add to item_stats and the run count. Existing
+         runs were all counted. -->
+    <changeSet id="12" author="bracket-battle">
+        <addColumn tableName="results">
+            <column name="counted" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!-- Small key/value table for application state, e.g. the leaderboard scoring version. Version
+         1 is the list-position scoring every existing item_stats row was built with; on startup the
+         application rebuilds item_stats when its own version is newer (StatsService). -->
+    <changeSet id="13" author="bracket-battle">
+        <createTable tableName="app_meta">
+            <column name="meta_key" type="VARCHAR(100)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="meta_value" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <insert tableName="app_meta">
+            <column name="meta_key" value="stats_version"/>
+            <column name="meta_value" value="1"/>
+        </insert>
+    </changeSet>
+
 </databaseChangeLog>

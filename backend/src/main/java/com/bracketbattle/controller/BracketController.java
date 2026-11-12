@@ -4,7 +4,9 @@ import com.bracketbattle.dto.BracketStatsDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.ItemRankingDto;
+import com.bracketbattle.dto.RunTicketDto;
 import com.bracketbattle.dto.SaveResultRequest;
+import com.bracketbattle.dto.StartRunRequest;
 import com.bracketbattle.dto.ValidationOrder;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Item;
@@ -12,6 +14,7 @@ import com.bracketbattle.model.Result;
 import com.bracketbattle.ratelimit.RateLimiter;
 import com.bracketbattle.security.CurrentUser;
 import com.bracketbattle.service.BracketService;
+import com.bracketbattle.service.RunService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -30,10 +33,12 @@ import java.util.List;
 public class BracketController {
 
     private final BracketService bracketService;
+    private final RunService runService;
     private final RateLimiter rateLimiter;
 
-    public BracketController(BracketService bracketService, RateLimiter rateLimiter) {
+    public BracketController(BracketService bracketService, RunService runService, RateLimiter rateLimiter) {
         this.bracketService = bracketService;
+        this.runService = runService;
         this.rateLimiter = rateLimiter;
     }
 
@@ -76,6 +81,19 @@ public class BracketController {
         return bracketService.getBracketComments(id);
     }
 
+    /** Starts a run: the server picks the entrants and signs them into a ticket. Open to guests. */
+    @PostMapping("/brackets/{id}/runs")
+    public RunTicketDto startRun(@PathVariable Long id, @Validated @RequestBody StartRunRequest payload,
+                                 Authentication authentication, HttpServletRequest request) {
+        String userId = CurrentUser.uidOrNull(authentication);
+        if (userId != null) {
+            rateLimiter.tryAcquire("run-start-user", userId);
+        } else {
+            rateLimiter.tryAcquire("run-start-ip", request.getRemoteAddr());
+        }
+        return runService.startRun(id, payload.size());
+    }
+
     /** Open to guests; signed-in runs are attributed to the user and show up in their history. */
     @PostMapping("/brackets/{id}/results")
     public Result saveBracketResult(@PathVariable Long id, @Validated(ValidationOrder.class) @RequestBody SaveResultRequest payload,
@@ -86,7 +104,7 @@ public class BracketController {
         } else {
             rateLimiter.tryAcquire("result-ip", request.getRemoteAddr());
         }
-        return bracketService.saveBracketResult(id, userId, payload);
+        return runService.saveRun(id, userId, request.getRemoteAddr(), payload);
     }
 
     @PostMapping("/brackets")

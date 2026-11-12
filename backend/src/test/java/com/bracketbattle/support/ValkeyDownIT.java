@@ -55,8 +55,8 @@ class ValkeyDownIT {
 
         // Guest submission still works: rate limiting fails open, cache evictions are skipped.
         MvcResult missing = mvc.perform(post("/brackets/987654321/results").contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("ranking", List.of(1, 2),
-                        "matches", List.of(Map.of("winnerId", 1, "loserId", 2)), "submissionToken", "t")))).andReturn();
+                .content(json.writeValueAsString(Map.of("ticket", "t",
+                        "matches", List.of(Map.of("winnerId", 1, "loserId", 2)))))).andReturn();
         assertThat(missing.getResponse().getStatus()).isEqualTo(404);
         assertThat((System.nanoTime() - start) / 1_000_000).as("ms for three requests").isLessThan(5000);
 

@@ -108,19 +108,30 @@ function advance(state: TournamentState): TournamentState {
 }
 
 /**
- * Starts a tournament. With fewer slots than items, a random subset plays. With more slots,
- * the spare slots become byes, each paired with a real entry (never bye vs bye), and the
- * first round alternates real-vs-real and real-vs-bye matches so bye winners meet match
- * winners in round two.
+ * Starts a tournament, locally: a random subset when there are more items than slots. The game
+ * itself uses {@link layoutTournament} with the entrants the server picked; this stays for tests.
  */
 export function createTournament(items: Item[], size: number, random: () => number = Math.random): TournamentState {
   if (items.length < 2) throw new Error('A tournament needs at least 2 entries');
-  if (size < 2 || floorPow2(size) !== size) throw new Error(`Invalid bracket size ${size}`);
   if (!bracketSizeOptions(items.length).includes(size)) {
     throw new Error(`Size ${size} is not available for ${items.length} entries`);
   }
+  return layoutTournament(shuffle(items, random).slice(0, size), size);
+}
 
-  const entrants = shuffle(items, random).slice(0, size);
+/**
+ * Lays out a tournament for entrants in seeding order. With more slots than entrants, the
+ * spare slots become byes, each paired with a real entry (never bye vs bye), and the first
+ * round alternates real-vs-real and real-vs-bye matches so bye winners meet match winners in
+ * round two.
+ */
+export function layoutTournament(entrants: Item[], size: number): TournamentState {
+  if (size < 2 || floorPow2(size) !== size) throw new Error(`Invalid bracket size ${size}`);
+  if (entrants.length < 2 || entrants.length > size || entrants.length <= size / 2) {
+    throw new Error(`${entrants.length} entrants don't fit a bracket of ${size}`);
+  }
+  if (new Set(entrants.map(e => e.id)).size !== entrants.length) throw new Error('An entrant appears twice');
+
   const byes = size - entrants.length;
   let realVsReal = size / 2 - byes;
   let realVsBye = byes;
@@ -169,17 +180,26 @@ function loserOf(match: Match): Entrant {
   return match.winner === match.a ? match.b : match.a;
 }
 
-/** Champion first, then runner-up, then losers by round with later rounds first. */
+/** The champion of a finished tournament. */
+export function champion(state: TournamentState): Item | null {
+  if (!state.complete) return null;
+  const final = state.rounds[state.rounds.length - 1][0];
+  return isReal(final.winner) ? final.winner : null;
+}
+
+/**
+ * Champion first, then by the round each entry went out (later first), the order the server
+ * derives from the matches (rankings.ts scoreRun).
+ */
 export function finalRanking(state: TournamentState): Item[] {
   if (!state.complete) return [];
   const ranking: Item[] = [];
-  const final = state.rounds[state.rounds.length - 1][0];
-  if (isReal(final.winner)) ranking.push(final.winner);
+  const winner = champion(state);
+  if (winner) ranking.push(winner);
   for (let r = state.rounds.length - 1; r >= 0; r--) {
-    for (const match of state.rounds[r]) {
-      const loser = loserOf(match);
-      if (isReal(loser)) ranking.push(loser);
-    }
+    const losers = state.rounds[r].map(loserOf).filter(isReal);
+    // Within a round, later matches first: they were eliminated later.
+    ranking.push(...losers.reverse());
   }
   return ranking;
 }

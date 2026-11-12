@@ -56,20 +56,36 @@ public class RateLimiter {
         RateLimitProperties.Limit limit = properties.get(bucket);
         long now = clock.millis() / 1000;
         long period = limit.periodSeconds();
-        Long count;
+        Long count = increment(bucket, subject, now, period);
+        if (count != null && count > limit.limit()) {
+            long retryAfter = period - (now % period);
+            throw new RateLimitExceededException(describe(limit.limit(), period, retryAfter), retryAfter);
+        }
+    }
+
+    /**
+     * Counts one use of {@code bucket} by {@code subject} and says whether it was within the
+     * limit, without throwing. For quotas whose excess is handled quietly rather than refused,
+     * such as runs that are saved but no longer counted toward the leaderboard.
+     */
+    public boolean tryConsume(String bucket, String subject) {
+        RateLimitProperties.Limit limit = properties.get(bucket);
+        long now = clock.millis() / 1000;
+        Long count = increment(bucket, subject, now, limit.periodSeconds());
+        return count == null || count <= limit.limit();
+    }
+
+    /** The window's new count, or null when Valkey is unreachable (fail open). */
+    private Long increment(String bucket, String subject, long now, long period) {
         try {
-            count = redis.execute(INCREMENT, List.of(windowKey(bucket, subject, now, period)), Long.toString(period));
+            return redis.execute(INCREMENT, List.of(windowKey(bucket, subject, now, period)), Long.toString(period));
         } catch (DataAccessException e) {
             long nowMs = clock.millis();
             long last = lastWarning.get();
             if (nowMs - last > WARN_INTERVAL_MS && lastWarning.compareAndSet(last, nowMs)) {
                 log.warn("Rate limiting is disabled while Valkey is unreachable: {}", e.getMessage());
             }
-            return;
-        }
-        if (count != null && count > limit.limit()) {
-            long retryAfter = period - (now % period);
-            throw new RateLimitExceededException(describe(limit.limit(), period, retryAfter), retryAfter);
+            return null;
         }
     }
 

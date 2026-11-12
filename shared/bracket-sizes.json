@@ -1,0 +1,91 @@
+{
+  "comment": "Entry count -> bracket sizes a run may use (next power of two with byes, then every power of two from the count down to 2).",
+  "cases": [
+    {
+      "count": 0,
+      "options": []
+    },
+    {
+      "count": 1,
+      "options": []
+    },
+    {
+      "count": 2,
+      "options": [
+        2
+      ]
+    },
+    {
+      "count": 3,
+      "options": [
+        4,
+        2
+      ]
+    },
+    {
+      "count": 4,
+      "options": [
+        4,
+        2
+      ]
+    },
+    {
+      "count": 5,
+      "options": [
+        8,
+        4,
+        2
+      ]
+    },
+    {
+      "count": 8,
+      "options": [
+        8,
+        4,
+        2
+      ]
+    },
+    {
+      "count": 13,
+      "options": [
+        16,
+        8,
+        4,
+        2
+      ]
+    },
+    {
+      "count": 16,
+      "options": [
+        16,
+        8,
+        4,
+        2
+      ]
+    },
+    {
+      "count": 17,
+      "options": [
+        32,
+        16,
+        8,
+        4,
+        2
+      ]
+    },
+    {
+      "count": 500,
+      "options": [
+        512,
+        256,
+        128,
+        64,
+        32,
+        16,
+        8,
+        4,
+        2
+      ]
+    }
+  ]
+}

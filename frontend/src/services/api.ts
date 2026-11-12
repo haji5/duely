@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
   Bracket, BracketStats, Comment, CreateBracketPayload, Item, ItemRanking, MatchOutcome, PlaylistTrack, Result,
+  RunTicket,
 } from '@/types';
 import { currentFirebaseUser } from '@/config/firebase';
 import { apiCache } from '@/utils/apiCache';
@@ -114,9 +115,19 @@ export const bracketApi = {
 
   getBracketComments: (id: number): Promise<Comment[]> => get<Comment[]>(`/brackets/${id}/comments`),
 
+  /** Starts a run: the server picks the entrants and signs them into a ticket. */
+  startRun: async (bracketId: number, size: number): Promise<RunTicket> => {
+    const response = await api.post<RunTicket>(`/brackets/${bracketId}/runs`, { size });
+    return response.data;
+  },
+
+  /**
+   * Saves a finished run. The ticket makes retries idempotent; the server derives the ranking
+   * from the matches and returns it.
+   */
   saveBracketResult: async (
     bracketId: number,
-    run: { ranking: number[]; matches: MatchOutcome[]; submissionToken: string; displayName?: string; comment?: string },
+    run: { ticket: string; matches: MatchOutcome[]; displayName?: string; comment?: string },
   ): Promise<Result> => {
     const response = await api.post<Result>(`/brackets/${bracketId}/results`, run);
     const uid = currentFirebaseUser()?.uid;

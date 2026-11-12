@@ -40,22 +40,27 @@ const AboutPage: React.FC = () => (
       <Section id="how-voting-works" title="How does voting work?">
         <p>
           You see two entries at a time and pick the one you like more. Before you start, you choose a bracket size. A
-          smaller size plays a random selection of the entries; a larger one gives some entries a bye, a free pass into
-          the next round, and nobody gets more than one. A finished bracket is called a run, and each run is saved.
+          smaller size plays a random selection of the entries, drawn by the server; a larger one gives some entries a
+          bye, a free pass into the next round, and nobody gets more than one. A finished bracket is called a run, and
+          each run is saved.
         </p>
       </Section>
 
       <Section id="how-rankings-work" title="How are the rankings calculated?">
         <p>
-          Each run places every entry it included, from champion to first knocked out. The champion scores 100, the
-          last place scores 0 and everything in between is spread evenly, so runs of different sizes count the same.
-          An entry’s score is its average over every run it appeared in, and the community ranking is sorted by that
-          score.
+          Each run places every entry it included by how far it got. The champion scores 100 and the runner-up comes
+          next; entries knocked out in the same round did equally well, so they share a place (say 5th to 8th) and a
+          score. Scores are spread from 100 down to 0 by place, so runs of different sizes count the same.
         </p>
         <p>
-          The win rate shown next to it counts only matches that were actually played, so an entry can have a lower win
-          rate than the one below it but still finish further along on average. Ties go to the higher win rate, then to
+          An entry’s score is its average over every run it appeared in, eased towards the middle while it has only been
+          in a few runs, so one lucky run can’t put it on top. The community ranking is sorted by that score. The win
+          rate shown next to it counts only matches that were actually played. Ties go to the higher win rate, then to
           the entry that has been in more runs.
+        </p>
+        <p>
+          To keep one person from steering a ranking, only a limited number of each player’s runs of a bracket count
+          towards it per day. Every run is still saved, and yours stay in your history.
         </p>
       </Section>
 

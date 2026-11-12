@@ -1,0 +1,106 @@
+{
+  "comment": "Aggregated item rows -> leaderboard order. score = (scoreSum + 0.5*K)/(timesRanked + K), K = 5; then winPercentage, timesRanked (desc), item id (asc).",
+  "k": 5,
+  "rows": [
+    {
+      "itemId": 1,
+      "timesRanked": 1,
+      "scoreSum": 1.0,
+      "wins": 3,
+      "matches": 3
+    },
+    {
+      "itemId": 2,
+      "timesRanked": 500,
+      "scoreSum": 465.0,
+      "wins": 900,
+      "matches": 1000
+    },
+    {
+      "itemId": 3,
+      "timesRanked": 10,
+      "scoreSum": 5.0,
+      "wins": 5,
+      "matches": 10
+    },
+    {
+      "itemId": 4,
+      "timesRanked": 10,
+      "scoreSum": 5.0,
+      "wins": 6,
+      "matches": 10
+    },
+    {
+      "itemId": 5,
+      "timesRanked": 20,
+      "scoreSum": 10.0,
+      "wins": 6,
+      "matches": 10
+    },
+    {
+      "itemId": 6,
+      "timesRanked": 20,
+      "scoreSum": 10.0,
+      "wins": 6,
+      "matches": 10
+    },
+    {
+      "itemId": 7,
+      "timesRanked": 3,
+      "scoreSum": 0.0,
+      "wins": 0,
+      "matches": 3
+    }
+  ],
+  "expected": [
+    {
+      "itemId": 2,
+      "score": 0.9257425742574258,
+      "averageScore": 0.93,
+      "winPercentage": 90,
+      "timesRanked": 500
+    },
+    {
+      "itemId": 1,
+      "score": 0.5833333333333334,
+      "averageScore": 1.0,
+      "winPercentage": 100,
+      "timesRanked": 1
+    },
+    {
+      "itemId": 5,
+      "score": 0.5,
+      "averageScore": 0.5,
+      "winPercentage": 60,
+      "timesRanked": 20
+    },
+    {
+      "itemId": 6,
+      "score": 0.5,
+      "averageScore": 0.5,
+      "winPercentage": 60,
+      "timesRanked": 20
+    },
+    {
+      "itemId": 4,
+      "score": 0.5,
+      "averageScore": 0.5,
+      "winPercentage": 60,
+      "timesRanked": 10
+    },
+    {
+      "itemId": 3,
+      "score": 0.5,
+      "averageScore": 0.5,
+      "winPercentage": 50,
+      "timesRanked": 10
+    },
+    {
+      "itemId": 7,
+      "score": 0.3125,
+      "averageScore": 0.0,
+      "winPercentage": 0,
+      "timesRanked": 3
+    }
+  ]
+}

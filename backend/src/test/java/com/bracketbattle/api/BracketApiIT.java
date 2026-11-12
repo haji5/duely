@@ -187,9 +187,12 @@ class BracketApiIT extends IntegrationTest {
         JsonNode guestResult = body(guest);
         assertThat(guestResult.has("userId")).isFalse();
         assertThat(guestResult.has("submissionToken")).isFalse();
-        // Only the submitter receives a Result, so it carries the run's real matches
+        // Only the submitter receives a Result, so it carries the run's real matches and places
         assertThat(guestResult.get("matches")).hasSize(3);
+        assertThat(guestResult.get("ranking")).hasSize(4);
+        assertThat(guestResult.get("places")).hasSize(4);
         assertThat(guestResult.has("version")).isFalse();
+        assertThat(guestResult.has("counted")).isFalse();
 
         JsonNode first = body(perform(as(USER_A, postJson("/brackets/" + id + "/results", runPayload(ranking, "user-token-1", null)))));
         JsonNode again = body(perform(as(USER_A, postJson("/brackets/" + id + "/results", runPayload(ranking, "user-token-1", null)))));
@@ -209,25 +212,38 @@ class BracketApiIT extends IntegrationTest {
         List<Long> r = itemIds(id);
         long foreign = itemIds(other).get(0);
 
-        assertRunRejected(id, Map.of("ranking", List.of(r.get(0)), "matches", List.of(), "submissionToken", "t1"));
-        assertRunRejected(id, Map.of("ranking", List.of(r.get(0), r.get(0)),
-                "matches", List.of(match(r.get(0), r.get(0))), "submissionToken", "t2"));
-        assertRunRejected(id, Map.of("ranking", List.of(r.get(0), foreign),
-                "matches", List.of(match(r.get(0), foreign)), "submissionToken", "t3"));
+        String ticket = ticketFor(r);
+        long a = r.get(0), b = r.get(1), c = r.get(2), d = r.get(3);
+
+        // no matches, or missing ones
+        assertRunRejected(id, Map.of("ticket", ticket, "matches", List.of()));
+        assertRunRejected(id, Map.of("ticket", ticket));
         // wrong match count
-        assertRunRejected(id, Map.of("ranking", List.of(r.get(0), r.get(1)), "matches", List.of(), "submissionToken", "t4"));
-        // champion loses
-        assertRunRejected(id, Map.of("ranking", List.of(r.get(0), r.get(1)),
-                "matches", List.of(match(r.get(1), r.get(0))), "submissionToken", "t5"));
-        // an item loses twice (and the pair repeats)
-        assertRunRejected(id, Map.of("ranking", List.of(r.get(0), r.get(1), r.get(2), r.get(3)),
-                "matches", List.of(match(r.get(0), r.get(1)), match(r.get(0), r.get(1)), match(r.get(2), r.get(3))),
-                "submissionToken", "t6"));
-        // missing matches
-        assertRunRejected(id, Map.of("ranking", List.of(r.get(0), r.get(1)), "submissionToken", "t7"));
+        assertRunRejected(id, Map.of("ticket", ticket, "matches", List.of(match(a, b), match(c, d))));
+        // self-match
+        assertRunRejected(id, Map.of("ticket", ticket, "matches", List.of(match(a, a), match(a, b), match(c, d))));
+        // a pair plays twice, so an entry loses twice
+        assertRunRejected(id, Map.of("ticket", ticket, "matches", List.of(match(a, b), match(a, b), match(c, d))));
+        // a chain deeper than a bracket of four
+        assertRunRejected(id, Map.of("ticket", ticket, "matches", List.of(match(c, d), match(b, c), match(a, b))));
+        // an entry wins after it lost
+        assertRunRejected(id, Map.of("ticket", ticket, "matches", List.of(match(a, b), match(a, c), match(b, d))));
+        // an entry from another bracket
+        assertRunRejected(id, Map.of("ticket", ticket, "matches", List.of(match(a, b), match(c, foreign), match(a, c))));
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM item_stats WHERE bracket_id = ?", Long.class, id)).isZero();
+    }
+
+    @Test
+    void tabsFromBeforeTicketsAreToldToReload() throws Exception {
+        long id = createBracket(USER_A, "Old tab", 2).get("id").asLong();
+        List<Long> r = itemIds(id);
+        MvcResult result = perform(postJson("/brackets/" + id + "/results",
+                Map.of("ranking", r, "matches", knockoutMatches(r), "submissionToken", "old-tab")));
+        assertThat(result.getResponse().getStatus()).isEqualTo(400);
+        assertThat(body(result).get("message").asString()).contains("Reload");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isZero();
     }
 
     private void assertRunRejected(long bracketId, Map<String, Object> payload) throws Exception {
@@ -235,6 +251,7 @@ class BracketApiIT extends IntegrationTest {
         assertThat(result.getResponse().getStatus())
                 .as("payload %s -> %s", payload, result.getResponse().getContentAsString())
                 .isEqualTo(400);
+        assertThat(body(result).get("message").asString()).isNotBlank();
     }
 
     private static Map<String, Long> match(long winner, long loser) {
@@ -256,8 +273,9 @@ class BracketApiIT extends IntegrationTest {
         List<Long> items = itemIds(id);
         long a = items.get(0), b = items.get(1), c = items.get(2), d = items.get(3);
 
-        submit(id, List.of(a, b, c, d));   // A>B, A>C, B>D
-        submit(id, List.of(b, a, d, c));   // B>A, B>D, A>C
+        // Tier scores in a run of four: champion 1, runner-up 2/3, both semifinal losers 1/6.
+        submit(id, List.of(a, b, c, d));   // A>C, B>D, A>B
+        submit(id, List.of(b, a, d, c));   // A>C, B>D, B>A
         JsonNode beforeThird = body(perform(get("/brackets/" + id + "/rankings")));
         // A and B tie on score (5/6), win rate (75%) and appearances, so the lower id wins the tie
         assertThat(beforeThird.get(0).get("item").get("id").asLong()).isEqualTo(a);
@@ -268,8 +286,8 @@ class BracketApiIT extends IntegrationTest {
         assertThat(rankings).hasSize(4);
         assertRanking(rankings.get(0), a, 4, 5, 80, (1 + 2.0 / 3 + 1) / 3, 3);
         assertRanking(rankings.get(1), b, 3, 4, 75, (2.0 / 3 + 1) / 2, 2);
-        assertRanking(rankings.get(2), d, 0, 2, 0, (0 + 1.0 / 3) / 2, 2);
-        assertRanking(rankings.get(3), c, 0, 3, 0, (1.0 / 3 + 0 + 0) / 3, 3);
+        assertRanking(rankings.get(2), d, 0, 2, 0, (1.0 / 6 + 1.0 / 6) / 2, 2);
+        assertRanking(rankings.get(3), c, 0, 3, 0, (1.0 / 6 + 1.0 / 6 + 0) / 3, 3);
     }
 
     @Test
@@ -299,6 +317,8 @@ class BracketApiIT extends IntegrationTest {
         assertThat(row.get("winPercentage").asInt()).isEqualTo(winPct);
         assertThat(row.get("averageScore").asDouble()).isCloseTo(avg, within(1e-9));
         assertThat(row.get("timesRanked").asInt()).isEqualTo(times);
+        // The sort score shrinks the mean towards 0.5 by five imaginary runs.
+        assertThat(row.get("score").asDouble()).isCloseTo((avg * times + 2.5) / (times + 5), within(1e-9));
     }
 
     // ---- comments ------------------------------------------------------------------------------

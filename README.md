@@ -44,11 +44,11 @@
 
 | Area | What's interesting |
 | --- | --- |
-| **Ranking engine** | Rankings are incremental aggregates: each submitted run updates an `item_stats` row per item in the same transaction as the result, so the leaderboard is one indexed query of at most 500 rows, however many people have played. The score is the normalised finishing position (1 = champion, 0 = last), so runs of different sizes compare fairly, and the win rate counts only matches that were actually played. |
+| **Ranking engine** | The server runs the game's rules: it picks a run's entrants and signs them into a ticket (`POST /brackets/{id}/runs`), and when the run comes back it derives the ranking from the matches alone. Entries knocked out in the same round share a place and a score, `(n-1 - (a+b)/2)/(n-1)` for a tier on places a..b, so the champion scores 1 and all first-round losers score the same, and runs of different sizes stay on one scale. Each counted run updates an `item_stats` row per item in the same transaction as the result, so the leaderboard is one indexed query however many people have played. It sorts by the mean shrunk towards 0.5 by five imaginary runs, so one lucky run can't top a long record, and `StatsService` can rebuild it from the results at any time (on startup when the scoring version changes, and via the admin endpoint). |
 | **Caching** | Spring Cache is backed by Valkey (a Redis-compatible store) with absolute per-cache TTLs. Each write evicts exactly the keys it changes (a run evicts that bracket's rankings and comments and the player's history). If Valkey goes down, commands fail fast and requests are served from Postgres; the backend also starts without it. API responses are never cached by browsers (`Cache-Control: no-store`), so a result shows up immediately; the frontend keeps a small in-memory cache that writes invalidate explicitly. |
 | **Auth & security** | A filter checks the Firebase ID token in the `Authorization: Bearer` header and maps custom claims to Spring Security roles. Browsers never attach that header to cross-site requests on their own, so there is no ambient credential for a CSRF attack to ride on and no CSRF token is needed. User text is stored exactly as typed (only normalised: Unicode NFC, newlines, control characters) and is always rendered as text, never as HTML. A bearer token that fails verification is a 401 on writes, so a signed-in run is never silently saved as a guest's. Media URLs must be public `https` links (private, loopback, link-local and cloud-metadata addresses are rejected after DNS resolution), cache deserialization only accepts known classes, and nginx sends a strict content security policy. |
-| **Abuse protection** | Fixed-window rate limits live in Valkey (an atomic `INCR`/`EXPIRE` script), so they are shared by every backend instance and their memory is bounded. Reads are limited per IP, result submissions per user (or per IP for guests), bracket creation and metadata lookups per user; a 429 carries `Retry-After`. Duplicate submissions (double clicks, retries) are idempotent on a client-generated token. |
-| **Data integrity** | Liquibase owns the schema and Hibernate only validates it. A bracket and all its entries are created in one transaction. The server checks that a submitted run is a real single-elimination tournament: every ranked item belongs to the bracket, every item but the champion loses exactly once, and no pair meets twice. |
+| **Abuse protection** | Fixed-window rate limits live in Valkey (an atomic `INCR`/`EXPIRE` script), so they are shared by every backend instance and their memory is bounded. Reads are limited per IP, run starts and result submissions per user (or per IP for guests), bracket creation and metadata lookups per user; a 429 carries `Retry-After`. What one player can add to a leaderboard is bounded separately: per bracket and day only 10 runs per signed-in user and 30 per guest IP are counted, and a run faster than the UI allows (0.4 s per match) isn't counted either. Such runs are still saved and shown to their player; the response doesn't say. Duplicate submissions (double clicks, retries) are idempotent on the ticket. |
+| **Data integrity** | Liquibase owns the schema and Hibernate only validates it. A bracket and all its entries are created in one transaction. A run is only accepted with a ticket the server signed (HMAC-SHA256, at most 12 hours old, for this bracket), whose matches name exactly the entrants it was issued for and form one single-elimination tournament: n-1 matches, every entry but the champion loses exactly once, no pair meets twice, no cycles, and nobody goes out deeper than the bracket has rounds. |
 | **Delivery** | Multi-stage Docker builds run as non-root users, with health-gated startup and restart policies in Compose. nginx serves the single-page app and proxies `/api`. GitHub Actions runs the backend and frontend test suites, then builds both images and publishes them to GitHub Container Registry. |
 
 ## Architecture
@@ -167,7 +167,9 @@ npm run dev                  # http://localhost:3000
 | `FIREBASE_CREDENTIALS_JSON` / `GOOGLE_APPLICATION_CREDENTIALS` | `backend/.env` | Firebase Admin service account (JSON, base64 JSON, or a file path) |
 | `VITE_FIREBASE_*` | `.env` / `frontend/.env.local` | Firebase web app config, built into the frontend bundle |
 | `VITE_API_URL` | frontend | API base URL (default `/api`) |
-| `READ_RATE_LIMIT`, `RESULT_USER_RATE_LIMIT`, `RESULT_IP_RATE_LIMIT`, `BRACKET_CREATION_LIMIT`, `METADATA_SEARCH_LIMIT`, `METADATA_PLAYLIST_LIMIT` | backend env | Rate limits. Defaults: 300 reads/min per IP, 5 runs/min per user and 10/min per guest IP, 10 brackets/hour, 600 YouTube searches and 30 playlist imports per hour per user. Any `app.rate-limit.buckets.*` property can be overridden. |
+| `RUN_TICKET_SECRET` | `backend/.env` | HMAC secret for run tickets, at least 32 bytes. Without it each start makes a random one (runs in progress can't be saved after a restart, and several instances would reject each other's tickets). |
+| `READ_RATE_LIMIT`, `RESULT_USER_RATE_LIMIT`, `RESULT_IP_RATE_LIMIT`, `RUN_START_USER_RATE_LIMIT`, `RUN_START_IP_RATE_LIMIT`, `BRACKET_CREATION_LIMIT`, `METADATA_SEARCH_LIMIT`, `METADATA_PLAYLIST_LIMIT` | backend env | Rate limits. Defaults: 300 reads/min per IP, 5 runs/min per user and 10/min per guest IP, 30 run starts/min per user and 60 per guest IP, 10 brackets/hour, 600 YouTube searches and 30 playlist imports per hour per user. Any `app.rate-limit.buckets.*` property can be overridden. |
+| `COUNTED_RUNS_PER_USER`, `COUNTED_RUNS_PER_IP` | backend env | Runs per bracket and day that count toward its leaderboard (defaults 10 per user, 30 per guest IP); later runs are saved but not counted. |
 
 Grant admin access by setting a Firebase custom claim of `{"admin": true}` or `{"role": "ADMIN"}` on a user.
 
@@ -183,13 +185,15 @@ All routes are served under `/api` by the proxy.
 | GET | `/brackets/{id}/items` | – | Entries in a bracket |
 | GET | `/brackets/{id}/rankings` | – | Global leaderboard |
 | GET | `/brackets/{id}/comments` | – | Newest 50 comments (no user ids) |
-| POST | `/brackets/{id}/results` | optional | Submit a run: ranking plus the real matches; idempotent per submission token (409 if the token belongs to someone else) |
+| POST | `/brackets/{id}/runs` | optional | Start a run: `{size}` gives `{ticket, entrantIds, size}`, the entrants in seeding order |
+| POST | `/brackets/{id}/results` | optional | Submit a run: `{ticket, matches, displayName?, comment?}`, matches in the order played. Returns the run with the server-derived `ranking` and tied `places`. Idempotent per ticket (409 if it belongs to someone else) |
 | POST | `/brackets` | user | Create a bracket together with its 2–500 entries |
 | GET | `/me/brackets` | user | Brackets you created |
 | GET | `/me/results?bracketId=` | user | Your runs, optionally for one bracket |
 | GET | `/metadata/spotify/playlist?url=` | user | Tracks from a public Spotify playlist |
 | GET | `/metadata/youtube/search?query=` | user | First embeddable YouTube match |
 | POST | `/admin/cache/clear[/{name}]` | admin | Clear all caches or one |
+| POST | `/admin/brackets/{id}/stats/rebuild` | admin | Recompute a bracket's leaderboard from its counted runs |
 | GET | `/actuator/health`, `/actuator/info` | – | Health (direct to the backend only; nginx doesn't proxy `/api/actuator`) |
 
 Errors are JSON: `{timestamp, status, error, message, errors?}`, where `errors` maps fields such as `items[2].mediaUrl` to messages.
@@ -202,7 +206,8 @@ duely/
 │   └── src/main/
 │       ├── java/com/bracketbattle/
 │       │   ├── controller/          REST endpoints (brackets, metadata, admin cache)
-│       │   ├── service/             Bracket creation, run validation, cache eviction
+│       │   ├── service/             Bracket creation, run tickets and saving, stats rebuilds
+│       │   ├── scoring/             Pure run scoring, leaderboard order, bracket sizes
 │       │   ├── security/            Firebase token filter, security config
 │       │   ├── ratelimit/           Valkey fixed-window rate limiter
 │       │   ├── media/               Media URL validation, YouTube/Spotify metadata
@@ -235,8 +240,9 @@ cd backend && mvn verify      # unit tests, then integration tests (needs Docker
 cd frontend && npm run typecheck && npm test && npm run build
 ```
 
-- **Backend:** JUnit 5 unit tests (media URL validation, sanitizer, ranking maths, rate-limit windows, run validation) run in `mvn test`. Integration tests (`*IT`) start Postgres and Valkey with Testcontainers and drive the API through MockMvc with a mocked `FirebaseAuth`: creation, submissions and idempotency, rankings after several runs, comments, `/me` endpoints, error statuses, admin access, rate limits with `Retry-After`, cache round-trips through real Valkey, the Liquibase backfill, and startup with Valkey down.
-- **Frontend:** Vitest covers the tournament engine (every entry count from 2 to 20 at every size), the ranking formula, media URL rules, and regression tests for the Browse filters and the bracket builder's title autofill.
+- **Backend:** JUnit 5 unit tests (media URL validation, sanitizer, run scoring, leaderboard order, run tickets, rate-limit windows) run in `mvn test`. Integration tests (`*IT`) start Postgres and Valkey with Testcontainers and drive the API through MockMvc with a mocked `FirebaseAuth`: creation, run tickets, submissions and idempotency, uncounted runs, rankings after several runs, stats rebuilds, comments, `/me` endpoints, error statuses, admin access, rate limits with `Retry-After`, cache round-trips through real Valkey, the Liquibase backfill, and startup with Valkey down.
+- **Shared vectors:** where the frontend mirrors a backend rule (run scoring, leaderboard order, bracket sizes, categories), the cases live once in `shared/*.json` and both suites check them.
+- **Frontend:** Vitest covers the tournament engine (every entry count from 2 to 20 at every size, each checked against the server's run validation), the ranking formula, media URL rules, and regression tests for the Browse filters and the bracket builder's title autofill.
 - CI runs both suites (plus `npm audit --omit=dev`) before any image is built.
 
 `frontend/package.json` overrides `@grpc/grpc-js`: Firebase's Firestore package still pins a vulnerable 1.9.x release. Duely doesn't use Firestore (and gRPC never runs in the browser), so the override only keeps `npm audit` clean.

@@ -10,11 +10,10 @@ import PageMeta, { bracketKind, pageTitle } from '../components/PageMeta';
 import { useAuth } from '../contexts/AuthContext';
 import { useSessionBattles } from '../contexts/SessionBattleContext';
 import {
-  bracketSizeOptions, createTournament, currentMatch, defaultBracketSize, finalRanking, pick, playedMatches, progress,
-  realMatchCount, roundName, TournamentState,
+  bracketSizeOptions, champion as championOf, currentMatch, defaultBracketSize, layoutTournament, pick, playedMatches,
+  progress, realMatchCount, roundName, TournamentState,
 } from '@/utils/tournament';
-import { randomId } from '@/utils/ids';
-import { displayScore } from '@/utils/rankings';
+import { displayScore, scoreRun } from '@/utils/rankings';
 import { playSelectionTick, playSuccessChime, playTick } from '@/utils/sound';
 
 type Load =
@@ -54,12 +53,15 @@ const BracketPage: React.FC = () => {
   const [leaderReloadKey, setLeaderReloadKey] = React.useState(0);
   const [selectedSize, setSelectedSize] = React.useState<number | null>(null);
   const [tournament, setTournament] = React.useState<TournamentState | null>(null);
+  // The server picks who plays and signs it; saving the run hands the ticket back. One ticket
+  // per run, so retrying a save is idempotent.
+  const [ticket, setTicket] = React.useState<string | null>(null);
+  const [starting, setStarting] = React.useState(false);
+  const [startError, setStartError] = React.useState<string | null>(null);
   const [animation, setAnimation] = React.useState<Animation | null>(null);
   const pickTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Completion: the token is created once per finished run so retries stay idempotent.
   const [form, setForm] = React.useState({ displayName: '', comment: '' });
-  const [submissionToken, setSubmissionToken] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
 
@@ -69,6 +71,8 @@ const BracketPage: React.FC = () => {
     let cancelled = false;
     setLoad({ status: 'loading' });
     setTournament(null);
+    setTicket(null);
+    setStartError(null);
     setSelectedSize(null);
     if (!Number.isInteger(bracketId) || bracketId <= 0) {
       setLoad({ status: 'error', title: 'Bracket not found', message: 'The link looks wrong.', notFound: true });
@@ -105,13 +109,19 @@ const BracketPage: React.FC = () => {
   }, [bracketId, leaderReloadKey]);
 
   const complete = tournament?.complete ?? false;
+  const signedInName = currentUser?.displayName ?? '';
+  const signedInNameRef = React.useRef(signedInName);
+  signedInNameRef.current = signedInName;
   React.useEffect(() => {
     if (complete) {
-      setForm({ displayName: currentUser?.displayName ?? '', comment: '' });
-      setSubmissionToken(randomId());
+      setForm({ displayName: signedInNameRef.current, comment: '' });
       setSaveError(null);
     }
-  }, [complete, currentUser]);
+  }, [complete]);
+  // Signing in on the champion screen fills in an empty name and never touches the comment.
+  React.useEffect(() => {
+    if (signedInName) setForm(f => (f.displayName ? f : { ...f, displayName: signedInName }));
+  }, [signedInName]);
 
   const path = `/bracket/${bracketId}`;
 
@@ -145,6 +155,27 @@ const BracketPage: React.FC = () => {
 
   if (!tournament) {
     const options = bracketSizeOptions(items.length);
+    const start = async () => {
+      if (!selectedSize || starting) return;
+      playTick(1000, 0.1, 0.08);
+      setStarting(true);
+      setStartError(null);
+      try {
+        const run = await bracketApi.startRun(bracketId, selectedSize);
+        const byId = new Map(items.map(item => [item.id, item]));
+        const entrants = run.entrantIds.map(entrantId => byId.get(entrantId));
+        if (entrants.some(entrant => !entrant)) {
+          setStartError('This bracket changed since the page loaded. Reload the page to play.');
+          return;
+        }
+        setTicket(run.ticket);
+        setTournament(layoutTournament(entrants as Item[], run.size));
+      } catch (error) {
+        setStartError(errorMessage(error, 'The bracket couldn’t be started.'));
+      } finally {
+        setStarting(false);
+      }
+    };
     return (
       <div className="page max-w-3xl pb-24 pt-10 sm:pt-16">
         {meta}
@@ -195,16 +226,22 @@ const BracketPage: React.FC = () => {
 
         {/* On phones the start button sticks to the bottom of the screen, so it's never below the size grid. */}
         <div className="sticky bottom-0 z-20 -mx-4 mt-8 border-t border-themed-primary bg-themed-primary px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:px-0 sm:pb-0 sm:pt-8">
+          {startError && (
+            <div className="notice notice-error mb-3" role="alert">
+              <p className="font-semibold text-themed-primary">The bracket didn’t start</p>
+              <p className="mt-0.5">{startError}</p>
+            </div>
+          )}
           <button
-            disabled={!selectedSize}
-            onClick={() => {
-              if (!selectedSize) return;
-              playTick(1000, 0.1, 0.08);
-              setTournament(createTournament(items, selectedSize));
-            }}
+            disabled={!selectedSize || starting}
+            onClick={() => void start()}
             className="btn btn-primary btn-lg w-full sm:w-auto sm:min-w-[16rem]"
           >
-            {selectedSize ? `Start the ${roundName(selectedSize).toLowerCase()}` : 'Pick a size to start'}
+            {starting
+              ? <><span className="spinner" /> Starting…</>
+              : !selectedSize
+                ? 'Pick a size to start'
+                : `${startError ? 'Try again: start' : 'Start'} the ${roundName(selectedSize).toLowerCase()}`}
           </button>
         </div>
 
@@ -229,7 +266,7 @@ const BracketPage: React.FC = () => {
                   {leader.value.item.title}
                 </p>
                 <p className="mt-1 text-sm text-themed-secondary tabular">
-                  Score {displayScore(leader.value.averageScore)} · {leader.value.winPercentage}% of matches won
+                  Score {displayScore(leader.value.score)} · {leader.value.winPercentage}% of matches won
                 </p>
               </div>
             </div>
@@ -266,23 +303,21 @@ const BracketPage: React.FC = () => {
   }
 
   if (tournament.complete) {
-    const ranking = finalRanking(tournament);
-    const champion = ranking[0];
+    const champion = championOf(tournament);
+    const matches = playedMatches(tournament);
 
     const save = async (withDetails: boolean) => {
-      if (!submissionToken || saving) return;
+      if (!ticket || saving) return;
       setSaving(true);
       setSaveError(null);
-      const run = {
-        ranking: ranking.map(item => item.id),
-        matches: playedMatches(tournament),
+      const details = {
         displayName: withDetails ? form.displayName.trim() || undefined : undefined,
         comment: withDetails ? form.comment.trim() || undefined : undefined,
       };
       try {
-        await bracketApi.saveBracketResult(bracketId, { ...run, submissionToken });
+        const saved = await bracketApi.saveBracketResult(bracketId, { ticket, matches, ...details });
         if (!currentUser) {
-          addSessionBattle({ bracketId, bracketName: bracket.name, ...run });
+          addSessionBattle({ bracketId, bracketName: bracket.name, ranking: saved.ranking, matches, ...details });
         }
         navigate(`/results/${bracketId}?fromBattle=true`);
       } catch (error) {
@@ -293,7 +328,8 @@ const BracketPage: React.FC = () => {
 
     const continueWithoutSaving = () => {
       if (!currentUser) {
-        addSessionBattle({ bracketId, bracketName: bracket.name, ranking: ranking.map(i => i.id), matches: playedMatches(tournament) });
+        // The same ranking the server would have derived from these matches.
+        addSessionBattle({ bracketId, bracketName: bracket.name, ranking: scoreRun(matches).ranking, matches });
         navigate(`/results/${bracketId}?fromBattle=true`);
       } else {
         navigate(`/results/${bracketId}`);
