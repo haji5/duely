@@ -7,6 +7,7 @@ import { TypeIcon } from '../components/BracketCard';
 import PageMeta from '../components/PageMeta';
 import type { BracketType } from '@/types';
 import { randomId } from '@/utils/ids';
+import { CATEGORIES } from '@/utils/categories';
 import {
   getSpotifyEmbedUrl, getYouTubeThumbnail, isSafeHttpsUrl, isSpotifyUrl, isYouTubeUrl, mediaUrlProblem,
 } from '../utils/mediaUtils';
@@ -24,10 +25,6 @@ export interface Entry {
 const LIMITS = { name: 100, description: 2000, title: 150, minEntries: 2, maxEntries: 500 };
 const TITLE_LOOKUP_DELAY_MS = 400;
 const YOUTUBE_LOOKUP_CONCURRENCY = 4;
-
-const CATEGORIES = [
-  'General', 'Music', 'TV', 'Movies', 'Sports', 'Gaming', 'Food', 'Travel', 'Art', 'Technology', 'Entertainment',
-];
 
 const CATEGORY_MISSING = 'Pick a category';
 

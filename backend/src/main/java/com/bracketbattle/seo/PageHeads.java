@@ -21,9 +21,9 @@ import java.util.Map;
  * JSON-LD) and a short plain-text summary inside {@code #root}, for crawlers and link unfurlers
  * that don't run JavaScript. React's createRoot replaces the summary on load.
  *
- * <p>User text is stored decoded (see Sanitizer), so it only ever goes in through jsoup's text and
- * attribute setters, which escape it, or through {@link JsonLd}. Never as HTML. Titles and
- * descriptions mirror frontend/src/components/PageMeta.tsx and the pages that use it.
+ * <p>User text is stored as typed, markup included (see Sanitizer), so it only ever goes in
+ * through jsoup's text and attribute setters, which escape it, or through {@link JsonLd}. Never as
+ * HTML. Titles and descriptions mirror frontend/src/components/PageMeta.tsx and the pages that use it.
  */
 @Component
 public class PageHeads {

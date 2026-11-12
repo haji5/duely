@@ -192,11 +192,11 @@ class BracketEdgeCasesIT extends IntegrationTest {
     }
 
     @Test
-    void markupOnlyCommentsAndNamesAreDropped() throws Exception {
+    void blankCommentsAndNamesAreDropped() throws Exception {
         long id = createBracket(USER_A, "Quiet", 2).get("id").asLong();
         Map<String, Object> payload = runPayload(itemIds(id), null, null);
-        payload.put("comment", "<b></b>   ");
-        payload.put("displayName", "<i></i>");
+        payload.put("comment", "\u00A0\u0000   ");
+        payload.put("displayName", "\t\r\n");
         JsonNode saved = body(perform(postJson("/brackets/" + id + "/results", payload)));
         assertThat(saved.get("comment").isNull()).isTrue();
         assertThat(saved.get("displayName").isNull()).isTrue();
@@ -207,7 +207,7 @@ class BracketEdgeCasesIT extends IntegrationTest {
         perform(postJson("/brackets/" + id + "/results", named));
         JsonNode comments = body(perform(get("/brackets/" + id + "/comments")));
         assertThat(comments).hasSize(1);
-        assertThat(comments.get(0).get("comment").asString()).isEqualTo("Nice one & more");
+        assertThat(comments.get(0).get("comment").asString()).isEqualTo("Nice <b>one</b> &amp; more");
         assertThat(comments.get(0).get("displayName").isNull()).isTrue();
     }
 
@@ -233,15 +233,15 @@ class BracketEdgeCasesIT extends IntegrationTest {
     }
 
     @Test
-    void markupOnlyNamesAndTitlesAreRequiredErrors() throws Exception {
-        Map<String, Object> payload = bracketPayload("<b></b>", "image", 2);
+    void blankNamesAndTitlesAreRequiredErrors() throws Exception {
+        Map<String, Object> payload = bracketPayload("\u00A0\u0007", "image", 2);
         MvcResult result = perform(as(USER_A, postJson("/brackets", payload)));
         assertThat(result.getResponse().getStatus()).isEqualTo(400);
         assertThat(body(result).get("errors").has("name")).isTrue();
 
         Map<String, Object> badTitle = bracketPayload("Fine", "image", 2);
         badTitle.put("items", List.of(
-                Map.of("title", "<script>x</script>", "mediaUrl", "https://images.example.com/1.png"),
+                Map.of("title", "\u0000 \u00A0", "mediaUrl", "https://images.example.com/1.png"),
                 Map.of("title", "ok", "mediaUrl", "https://images.example.com/2.png")));
         MvcResult titled = perform(as(USER_A, postJson("/brackets", badTitle)));
         assertThat(titled.getResponse().getStatus()).isEqualTo(400);

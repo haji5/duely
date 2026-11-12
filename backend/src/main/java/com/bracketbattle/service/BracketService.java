@@ -8,6 +8,7 @@ import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.dto.SaveResultRequest;
 import com.bracketbattle.media.MediaUrlValidator;
 import com.bracketbattle.model.Bracket;
+import com.bracketbattle.model.Categories;
 import com.bracketbattle.model.Item;
 import com.bracketbattle.model.MatchOutcome;
 import com.bracketbattle.model.Result;
@@ -133,7 +134,13 @@ public class BracketService {
             errors.put("name", "Bracket name is required");
         }
         if (category == null || category.isBlank()) {
-            category = "General";
+            category = Categories.DEFAULT;
+        } else {
+            Optional<String> known = Categories.canonical(category);
+            if (known.isEmpty()) {
+                errors.put("category", "Category must be one of " + String.join(", ", Categories.ALL));
+            }
+            category = known.orElse(category);
         }
         if (description != null && description.isBlank()) {
             description = null;
