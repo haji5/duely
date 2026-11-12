@@ -17,22 +17,24 @@ Welcome! This document provides essential knowledge for AI agents working on the
 ## 🧑‍💻 Developer Workflows
 - **Backend Testing**: `mvn verify` inside `/backend` (no Maven wrapper; Docker must be running). Unit tests are `*Test` (surefire), integration tests are `*IT` (failsafe) and extend `support/IntegrationTest`, which starts Postgres and Valkey in Testcontainers (`@ServiceConnection`), mocks Firebase with `@MockitoBean FirebaseAuth` (fake tokens `USER_A`, `USER_B`, `USER_C`, `ADMIN`) and replaces DNS with `FakeDnsConfig`. Any other Spring context test must mock `FirebaseAuth` too, since `FirebaseConfig` refuses to start without credentials.
 - **Frontend Testing**: Vitest with `@testing-library/react`: `npm run typecheck && npm test` inside `/frontend`. Pure logic (tournament, rankings, media URLs) lives in `src/utils` with unit tests next to it.
+- **Shared test vectors**: where the frontend mirrors a backend rule, the cases live once in `shared/*.json` and both suites read them (`support/SharedFixtures` in JUnit, `utils/sharedFixtures.ts` in Vitest). Add a case there, not to one side.
 - **Database Migrations**: Changes to schema **MUST** be implemented using Liquibase XML changelogs in `backend/src/main/resources/db/changelog/`. Do not rely on `hibernate.ddl-auto=update`.
 - **Dependencies**: `frontend/package.json` overrides `@grpc/grpc-js` because Firebase still pins a vulnerable version (Firestore isn't used). Keep `npm audit --omit=dev` clean; CI runs it.
 
 ## 📦 Project-Specific Conventions & Patterns
 - **Security & Firebase**:
-  - Token-based auth via `FirebaseAuthenticationFilter` (built in `SecurityConfig`, not a `@Component`). Get the caller with `CurrentUser.uidOrNull(authentication)`: the Firebase uid, or null for guests. An invalid token degrades to anonymous.
+  - Token-based auth via `FirebaseAuthenticationFilter` (built in `SecurityConfig`, not a `@Component`). Get the caller with `CurrentUser.uidOrNull(authentication)`: the Firebase uid, or null for guests. No `Authorization` header means a guest. A bearer token that fails verification is a `401` (`WWW-Authenticate: Bearer error="invalid_token"`) on writes, so a signed-in player's run is never saved as a guest's; on `GET`/`HEAD`/`OPTIONS` it degrades to anonymous. `api.ts` refreshes the token and retries a 401 once.
   - There is no CSRF layer, deliberately: the bearer token travels in the `Authorization` header, which browsers never attach cross-site. Don't add cookie-based auth without revisiting this.
-  - Errors go through `GlobalExceptionHandler`: throw `ResponseStatusException` (404/403/409), `InvalidRequestException` (400 with a field `errors` map) or `RateLimitExceededException` (429 with `Retry-After`).
+  - Errors go through `GlobalExceptionHandler`: throw `ResponseStatusException` (404/403/409), `InvalidRequestException` (400 with a field `errors` map) or `RateLimitExceededException` (429 with `Retry-After`). `IllegalArgumentException` is not a client error: it falls through to the logged 500.
 - **Input Sanitization**:
-  - All user text (names, descriptions, titles, comments) goes through `Sanitizer.stripToPlain`, which strips markup and stores **plain, decoded text** (`&lt;b&gt;` becomes `<b>`).
-  - Therefore the frontend must always render user content as text. **Never use `dangerouslySetInnerHTML` (or any HTML sink) for user content.**
+  - All user text (names, descriptions, titles, comments) goes through `Sanitizer.stripToPlain`, which only normalises plain text (NFC, newlines, control characters, trimming, length). It does **not** strip markup or decode entities: `x<y`, `<b>` and `&amp;` are stored exactly as typed.
+  - Rendering as text is therefore the only defence, by design. **Never use `dangerouslySetInnerHTML` (or any HTML sink) for user content**; on the server it goes through jsoup's text/attribute setters or `JsonLd`, never as HTML.
+  - Bracket categories are a fixed list (`model/Categories`, mirrored by `frontend/src/utils/categories.ts`, both checked against `shared/categories.json`). Anything else is a 400 on `category`.
 - **Media URLs**: `media/MediaUrlValidator` checks every stored URL: https only, public hosts (resolved once per host per request), and per type: `video` must be a YouTube link with an extractable id, `song` is Spotify (no `spotify.link`) or an audio URL, `image` any public https URL. `frontend/src/utils/mediaUtils.ts` mirrors these rules.
 - **Frontend State**:
   - `apiCache.ts` is a small TTL cache. Per-user keys include the uid. To wipe it on sign-in changes, use `resetApiAuthState()` in `api.ts` (AuthContext already does).
   - Use `useAuth().currentUser` for the signed-in user. Guests' own runs live in `SessionBattleContext` (sessionStorage).
-  - Show distinct loading, error (with retry) and empty states; never render "not found" or "no brackets" for a failed request. Use `errorMessage()` from `api.ts` for the server's message.
+  - Show distinct loading, error (with retry) and empty states; never render "not found" or "no brackets" for a failed request. Use `errorMessage()` from `api.ts` for the server's message. Requests time out after 15 s (30 s for the endpoints that wait on YouTube, Spotify or DNS); `apiCache.getOrLoad` shares a load already in flight. An `ErrorBoundary` around the routes catches render errors and reloads once when a lazy chunk vanished after a deploy.
   - Use `randomId()` (not `crypto.randomUUID`, which needs a secure context) for client ids and submission tokens.
 
 Follow these patterns strictly to remain productive and maintain project coherence!
