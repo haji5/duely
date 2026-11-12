@@ -82,4 +82,42 @@ describe('apiCache', () => {
     await pending;
     expect(apiCache.get('a')).toBe('fresh');
   });
+
+  it('callers asking for the same key at once share one load', async () => {
+    const d = deferred<string>();
+    const load = vi.fn(() => d.promise);
+    const first = apiCache.getOrLoad('k', 60_000, load);
+    const second = apiCache.getOrLoad('k', 60_000, load);
+    d.resolve('v');
+    expect(await first).toBe('v');
+    expect(await second).toBe('v');
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed shared load lets the next caller try again', async () => {
+    const failing = vi.fn(async () => { throw new Error('boom'); });
+    const a = apiCache.getOrLoad('k', 60_000, failing);
+    const b = apiCache.getOrLoad('k', 60_000, failing);
+    await expect(a).rejects.toThrow('boom');
+    await expect(b).rejects.toThrow('boom');
+    expect(failing).toHaveBeenCalledTimes(1);
+    expect(await apiCache.getOrLoad('k', 60_000, async () => 'ok')).toBe('ok');
+  });
+
+  it('a load that throws synchronously is not left in flight', async () => {
+    const throwing = () => { throw new Error('sync'); };
+    await expect(apiCache.getOrLoad('k', 60_000, throwing)).rejects.toThrow('sync');
+    expect(await apiCache.getOrLoad('k', 60_000, async () => 'ok')).toBe('ok');
+  });
+
+  it('a caller after invalidate() does not join the load that started before it', async () => {
+    const before = deferred<string>();
+    const pending = apiCache.getOrLoad('k', 60_000, () => before.promise);
+    apiCache.invalidate('k');
+    const after = apiCache.getOrLoad('k', 60_000, async () => 'after the write');
+    before.resolve('before the write');
+    expect(await after).toBe('after the write');
+    expect(await pending).toBe('before the write');
+    expect(apiCache.get('k')).toBe('after the write');
+  });
 });
