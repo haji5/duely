@@ -53,7 +53,7 @@ public class SecurityConfig {
                 // HEAD too, since link checkers and crawlers use it on page URLs.
                 .requestMatchers(HttpMethod.GET, PAGE_PATHS).permitAll()
                 .requestMatchers(HttpMethod.HEAD, PAGE_PATHS).permitAll()
-                // Guests may start and submit runs and report things (rate limited per IP)
+                // Guests may start and submit runs and report things (rate limited per address, see ClientSubject)
                 .requestMatchers(HttpMethod.POST, "/brackets/*/runs", "/brackets/*/results", "/reports").permitAll()
                 // /admin/** additionally needs ROLE_ADMIN via @PreAuthorize
                 .anyRequest().authenticated()

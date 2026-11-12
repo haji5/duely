@@ -12,6 +12,7 @@ import com.bracketbattle.dto.ValidationOrder;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Item;
 import com.bracketbattle.model.Result;
+import com.bracketbattle.ratelimit.ClientSubject;
 import com.bracketbattle.ratelimit.RateLimiter;
 import com.bracketbattle.security.CurrentUser;
 import com.bracketbattle.service.AccountService;
@@ -111,7 +112,7 @@ public class BracketController {
         if (userId != null) {
             rateLimiter.tryAcquire("run-start-user", userId);
         } else {
-            rateLimiter.tryAcquire("run-start-ip", request.getRemoteAddr());
+            rateLimiter.tryAcquire("run-start-ip", ClientSubject.of(request));
         }
         return runService.startRun(id, payload.size());
     }
@@ -125,9 +126,9 @@ public class BracketController {
         if (userId != null) {
             rateLimiter.tryAcquire("result-user", userId);
         } else {
-            rateLimiter.tryAcquire("result-ip", request.getRemoteAddr());
+            rateLimiter.tryAcquire("result-ip", ClientSubject.of(request));
         }
-        return runService.saveRun(id, userId, request.getRemoteAddr(), payload);
+        return runService.saveRun(id, userId, ClientSubject.of(request), payload);
     }
 
     @PostMapping("/brackets")
@@ -162,7 +163,7 @@ public class BracketController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void report(@Validated @RequestBody ReportRequest payload, Authentication authentication, HttpServletRequest request) {
         String userId = CurrentUser.uidOrNull(authentication);
-        rateLimiter.tryAcquire("report", userId != null ? userId : request.getRemoteAddr());
+        rateLimiter.tryAcquire("report", userId != null ? userId : ClientSubject.of(request));
         moderationService.report(payload, authentication, userId);
     }
 }
