@@ -1,0 +1,11 @@
+{
+  "comment": "A bracket links to media on at most maxHosts different hosts. Each case is https://host{i}.example/a.png for i below distinctHosts, then extraUrls; hosts compare case-insensitively and without a trailing dot.",
+  "maxHosts": 20,
+  "cases": [
+    { "distinctHosts": 20, "extraUrls": [], "tooMany": false },
+    { "distinctHosts": 21, "extraUrls": [], "tooMany": true },
+    { "distinctHosts": 20, "extraUrls": ["https://HOST0.example./b.png", "https://host19.example/c.png"], "tooMany": false },
+    { "distinctHosts": 20, "extraUrls": ["https://other.example/a.png"], "tooMany": true },
+    { "distinctHosts": 1, "extraUrls": [], "tooMany": false }
+  ]
+}

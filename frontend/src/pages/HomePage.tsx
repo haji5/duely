@@ -17,7 +17,7 @@ const HomePage: React.FC = () => {
 
   const handleSearchClick = () => {
     if (searchQuery.trim()) {
-      navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`);
+      void navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 

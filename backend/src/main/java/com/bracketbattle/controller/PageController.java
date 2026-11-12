@@ -1,6 +1,6 @@
 package com.bracketbattle.controller;
 
-import com.bracketbattle.model.Bracket;
+import com.bracketbattle.dto.BracketDto;
 import com.bracketbattle.seo.PageHeads;
 import com.bracketbattle.seo.SpaShell;
 import com.bracketbattle.service.BracketAccess;
@@ -47,7 +47,7 @@ public class PageController {
 
     @GetMapping("/pages/bracket/{id}")
     public ResponseEntity<String> bracket(@PathVariable String id) {
-        Optional<Bracket> bracket = findBracket(id);
+        Optional<BracketDto> bracket = findBracket(id);
         if (bracket.isEmpty()) {
             return notFound();
         }
@@ -57,7 +57,7 @@ public class PageController {
 
     @GetMapping("/pages/results/{id}")
     public ResponseEntity<String> results(@PathVariable String id) {
-        Optional<Bracket> bracket = findBracket(id);
+        Optional<BracketDto> bracket = findBracket(id);
         if (bracket.isEmpty()) {
             return notFound();
         }
@@ -70,7 +70,7 @@ public class PageController {
      * Ids too long for a Long are simply unknown brackets, not a 400. Page loads carry no bearer
      * token, so a hidden bracket is never rendered here, whoever asks.
      */
-    private Optional<Bracket> findBracket(String id) {
+    private Optional<BracketDto> findBracket(String id) {
         try {
             return bracketAccess.findVisible(Long.parseLong(id), null);
         } catch (NumberFormatException e) {

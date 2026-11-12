@@ -1,17 +1,19 @@
 package com.bracketbattle.service;
 
 import com.bracketbattle.advice.InvalidRequestException;
+import com.bracketbattle.dto.BracketDto;
 import com.bracketbattle.dto.BracketListQuery;
 import com.bracketbattle.dto.BracketPageDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.HomeDto;
+import com.bracketbattle.dto.ItemDto;
 import com.bracketbattle.dto.ItemRankingDto;
+import com.bracketbattle.dto.ResultDto;
 import com.bracketbattle.media.MediaUrlValidator;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.model.Categories;
 import com.bracketbattle.model.Item;
-import com.bracketbattle.model.Result;
 import com.bracketbattle.repository.BracketListRepository;
 import com.bracketbattle.repository.BracketRepository;
 import com.bracketbattle.repository.ItemRepository;
@@ -81,13 +83,13 @@ public class BracketService {
     }
 
     @Cacheable(value = "bracket", key = "#id", unless = "#result == null")
-    public Optional<Bracket> getBracketById(Long id) {
-        return bracketRepository.findById(id);
+    public Optional<BracketDto> getBracketById(Long id) {
+        return bracketRepository.findById(id).map(BracketDto::from);
     }
 
     @Cacheable(value = "bracketItems", key = "#bracketId")
-    public List<Item> getBracketItems(Long bracketId) {
-        return itemRepository.findByBracketIdOrderByIdAsc(bracketId);
+    public List<ItemDto> getBracketItems(Long bracketId) {
+        return new ArrayList<>(itemRepository.findByBracketIdOrderByIdAsc(bracketId).stream().map(ItemDto::from).toList());
     }
 
     @Cacheable(value = "bracketRankings", key = "#bracketId")
@@ -109,9 +111,9 @@ public class BracketService {
 
     /** A user's latest {@link #MAX_USER_RESULTS} runs of a bracket, oldest first. */
     @Cacheable(value = "userResults", key = "#userId + ':' + #bracketId")
-    public List<Result> getUserResults(String userId, long bracketId) {
-        List<Result> latest = new ArrayList<>(resultRepository.findByBracketIdAndUserIdOrderByCreatedAtDescIdDesc(
-                bracketId, userId, Limit.of(MAX_USER_RESULTS)));
+    public List<ResultDto> getUserResults(String userId, long bracketId) {
+        List<ResultDto> latest = new ArrayList<>(resultRepository.findByBracketIdAndUserIdOrderByCreatedAtDescIdDesc(
+                bracketId, userId, Limit.of(MAX_USER_RESULTS)).stream().map(ResultDto::from).toList());
         Collections.reverse(latest);
         return latest;
     }
@@ -127,7 +129,7 @@ public class BracketService {
             @CacheEvict(value = "bracketPages", allEntries = true),
             @CacheEvict(value = "home", allEntries = true)
     })
-    public Bracket createBracket(CreateBracketRequest request, String createdBy) {
+    public BracketDto createBracket(CreateBracketRequest request, String createdBy) {
         String name = Sanitizer.stripToPlain(request.name(), 100);
         String description = Sanitizer.stripToPlain(request.description(), 2000);
         String category = Sanitizer.stripToPlain(request.category(), 50);
@@ -177,7 +179,7 @@ public class BracketService {
             Bracket saved = bracketRepository.save(bracket);
             items.forEach(item -> item.setBracketId(saved.getId()));
             itemRepository.saveAll(items);
-            return saved;
+            return BracketDto.from(saved);
         });
     }
 }

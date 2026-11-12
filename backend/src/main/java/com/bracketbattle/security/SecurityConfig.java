@@ -49,6 +49,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/brackets", "/home", "/brackets/*",
                         "/brackets/*/items", "/brackets/*/rankings", "/brackets/*/stats", "/brackets/*/comments",
                         "/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                // Only reachable on the management port, inside the Docker network (application.properties).
+                .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
                 // Pages with per-route head tags, the sitemap and robots.txt (PageController, SitemapController).
                 // HEAD too, since link checkers and crawlers use it on page URLs.
                 .requestMatchers(HttpMethod.GET, PAGE_PATHS).permitAll()

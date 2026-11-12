@@ -60,6 +60,8 @@ const ShareButton: React.FC<{ path: string; title: string; text: string; label?:
               value={url}
               onFocus={(e) => e.currentTarget.select()}
               className="field mt-1"
+              // It appears in answer to the user's own click on Share, so focus follows them there.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </label>

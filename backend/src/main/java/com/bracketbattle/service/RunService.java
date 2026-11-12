@@ -4,7 +4,7 @@ import com.bracketbattle.advice.InvalidRequestException;
 import com.bracketbattle.config.CacheEvictor;
 import com.bracketbattle.dto.RunTicketDto;
 import com.bracketbattle.dto.SaveResultRequest;
-import com.bracketbattle.model.Item;
+import com.bracketbattle.dto.ItemDto;
 import com.bracketbattle.model.MatchOutcome;
 import com.bracketbattle.model.Result;
 import com.bracketbattle.ratelimit.RateLimiter;
@@ -14,6 +14,8 @@ import com.bracketbattle.repository.ResultRepository;
 import com.bracketbattle.scoring.BracketSizes;
 import com.bracketbattle.scoring.RunScoring;
 import com.bracketbattle.util.Sanitizer;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,7 +42,8 @@ import java.util.Set;
  * Runs from start to leaderboard. The server picks who plays ({@link #startRun}), the client
  * plays the matches, and the server derives the ranking from them ({@link #saveRun}). How much
  * one person can move a leaderboard is bounded: every valid run is saved and shown to its
- * player, but only runs that look played and fit the per-bracket daily quota are counted.
+ * player, but only runs that look played and fit the per-bracket daily quota are counted. Runs
+ * that are not are counted per reason in {@code duely.runs.uncounted}.
  */
 @Service
 public class RunService {
@@ -56,13 +59,15 @@ public class RunService {
     private final TransactionTemplate transactionTemplate;
     private final CacheEvictor caches;
     private final long minMillisPerMatch;
+    private final Counter tooFast;
+    private final Counter overQuota;
     private final Clock clock = Clock.systemUTC();
     private final SecureRandom random = new SecureRandom();
 
     public RunService(BracketService bracketService, BracketRepository bracketRepository,
                       ResultRepository resultRepository, ItemStatsRepository itemStatsRepository,
                       RunTickets tickets, RateLimiter rateLimiter, TransactionTemplate transactionTemplate, CacheEvictor caches,
-                      @Value("${app.runs.min-ms-per-match:400}") long minMillisPerMatch) {
+                      MeterRegistry meters, @Value("${app.runs.min-ms-per-match:400}") long minMillisPerMatch) {
         this.bracketService = bracketService;
         this.bracketRepository = bracketRepository;
         this.resultRepository = resultRepository;
@@ -72,6 +77,8 @@ public class RunService {
         this.transactionTemplate = transactionTemplate;
         this.caches = caches;
         this.minMillisPerMatch = minMillisPerMatch;
+        this.tooFast = uncounted(meters, "too_fast");
+        this.overQuota = uncounted(meters, "quota");
     }
 
     /** Picks {@code min(size, entries)} random entrants in seeding order and signs them. */
@@ -79,7 +86,7 @@ public class RunService {
         if (bracketService.getBracketById(bracketId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found");
         }
-        List<Long> ids = new ArrayList<>(bracketService.getBracketItems(bracketId).stream().map(Item::getId).toList());
+        List<Long> ids = new ArrayList<>(bracketService.getBracketItems(bracketId).stream().map(ItemDto::getId).toList());
         List<Integer> options = BracketSizes.options(ids.size());
         if (!options.contains(size)) {
             String message = options.isEmpty()
@@ -157,6 +164,7 @@ public class RunService {
         long elapsed = Duration.between(claims.issuedAt(), clock.instant()).toMillis();
         if (elapsed < minMillisPerMatch * matchCount) {
             log.info("Run on bracket {} not counted: {} matches in {} ms", bracketId, matchCount, elapsed);
+            tooFast.increment();
             return false;
         }
         boolean signedIn = userId != null;
@@ -164,6 +172,7 @@ public class RunService {
                 bracketId + ":" + (signedIn ? userId : guestSubject));
         if (!withinQuota) {
             log.info("Run on bracket {} not counted: daily quota used", bracketId);
+            overQuota.increment();
         }
         return withinQuota;
     }
@@ -185,6 +194,13 @@ public class RunService {
         if (userId != null) {
             caches.evict("userResults", userId + ":" + bracketId);
         }
+    }
+
+    private static Counter uncounted(MeterRegistry meters, String reason) {
+        return Counter.builder("duely.runs.uncounted")
+                .description("Saved runs that did not count toward the leaderboard")
+                .tag("reason", reason)
+                .register(meters);
     }
 
     private static Result requireSameSubmitter(Result existing, Long bracketId, String userId) {

@@ -37,6 +37,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- /actuator/prometheus, on the management port only (see application.properties) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
         <!-- Valkey (Redis-compatible): cache and rate-limit counters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

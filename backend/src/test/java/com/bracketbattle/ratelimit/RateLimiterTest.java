@@ -1,5 +1,6 @@
 package com.bracketbattle.ratelimit;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -31,7 +32,8 @@ class RateLimiterTest {
                     "counted-ip", new RateLimitProperties.Limit(1, 86400)));
     // 1_000_000_042 s: window index 16666667 for 60 s windows, 38 s left in the window
     private final Clock clock = Clock.fixed(Instant.ofEpochSecond(1_000_000_042), ZoneOffset.UTC);
-    private final RateLimiter limiter = new RateLimiter(redis, props, clock);
+    private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+    private final RateLimiter limiter = new RateLimiter(redis, props, clock, meters);
 
     @Test
     void windowKeyEncodesBucketSubjectAndWindow() {
@@ -58,6 +60,7 @@ class RateLimiterTest {
         assertThat(ex.getRetryAfterSeconds()).isEqualTo(38);
         assertThat(ex.getHeaders().getFirst("Retry-After")).isEqualTo("38");
         assertThat(ex.getStatusCode().value()).isEqualTo(429);
+        assertThat(meters.get("duely.rate_limit.rejections").tag("bucket", "read").counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -88,7 +91,7 @@ class RateLimiterTest {
         when(redis.execute(any(RedisScript.class), anyList(), anyString()))
                 .thenThrow(new RedisConnectionFailureException("down"));
         MutableClock time = new MutableClock(1_000_000_042);
-        RateLimiter limiter = new RateLimiter(redis, props, time);
+        RateLimiter limiter = new RateLimiter(redis, props, time, meters);
         limiter.tryAcquire("result-ip", "ip");
         limiter.tryAcquire("result-ip", "ip");
         assertThatThrownBy(() -> limiter.tryAcquire("result-ip", "ip")).isInstanceOf(RateLimitExceededException.class);

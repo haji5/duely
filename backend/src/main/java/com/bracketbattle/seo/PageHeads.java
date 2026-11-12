@@ -2,8 +2,8 @@ package com.bracketbattle.seo;
 
 import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.media.MediaUrls;
-import com.bracketbattle.model.Bracket;
-import com.bracketbattle.model.Item;
+import com.bracketbattle.dto.BracketDto;
+import com.bracketbattle.dto.ItemDto;
 import org.jsoup.nodes.DataNode;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -140,7 +140,7 @@ public class PageHeads {
         return shell;
     }
 
-    public Document bracket(Document shell, Bracket bracket, List<Item> items) {
+    public Document bracket(Document shell, BracketDto bracket, List<ItemDto> items) {
         String path = "/bracket/" + bracket.getId();
         String name = bracket.getName();
         String category = blankTo(bracket.getCategory(), "General");
@@ -194,7 +194,7 @@ public class PageHeads {
         return shell;
     }
 
-    public Document results(Document shell, Bracket bracket, List<Item> items, List<ItemRankingDto> rankings) {
+    public Document results(Document shell, BracketDto bracket, List<ItemDto> items, List<ItemRankingDto> rankings) {
         String path = "/results/" + bracket.getId();
         String name = bracket.getName();
         String leader = rankings.isEmpty() ? null : rankings.get(0).getItem().getTitle();
@@ -267,7 +267,7 @@ public class PageHeads {
     }
 
     /** "song" for video brackets in Music (music videos), else the bracket type. Same rule as bracketKind in PageMeta.tsx. */
-    static String kind(Bracket bracket) {
+    static String kind(BracketDto bracket) {
         return "video".equals(bracket.getType()) && "Music".equals(bracket.getCategory()) ? "song" : bracket.getType();
     }
 
@@ -293,7 +293,7 @@ public class PageHeads {
     }
 
     /** The entry's YouTube thumbnail (always 480x360 at hqdefault), else the site image. */
-    private void image(Document shell, Item item) {
+    private void image(Document shell, ItemDto item) {
         String videoId = item == null ? null : MediaUrls.youTubeVideoId(item.getMediaUrl());
         if (videoId == null) {
             defaultImage(shell);
@@ -366,7 +366,7 @@ public class PageHeads {
         return map("name", name, "item", item);
     }
 
-    private static Map<String, Object> creativeWork(Item item) {
+    private static Map<String, Object> creativeWork(ItemDto item) {
         return map("@type", "CreativeWork", "name", item.getTitle(), "url", item.getMediaUrl());
     }
 

@@ -1,7 +1,5 @@
 package com.bracketbattle.dto;
 
-import com.bracketbattle.model.Bracket;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,25 +8,25 @@ import java.util.List;
  * the top few of each category. Plain classes so the Valkey cache can round-trip them.
  */
 public class HomeDto {
-    private List<Bracket> popular = new ArrayList<>();
-    private List<Bracket> recent = new ArrayList<>();
+    private List<BracketDto> popular = new ArrayList<>();
+    private List<BracketDto> recent = new ArrayList<>();
     private List<CategorySection> categories = new ArrayList<>();
 
     public HomeDto() {}
 
-    public HomeDto(List<Bracket> popular, List<Bracket> recent, List<CategorySection> categories) {
+    public HomeDto(List<BracketDto> popular, List<BracketDto> recent, List<CategorySection> categories) {
         this.popular = new ArrayList<>(popular);
         this.recent = new ArrayList<>(recent);
         this.categories = new ArrayList<>(categories);
     }
 
     /** Played brackets, most counted runs first. Empty until something has been played. */
-    public List<Bracket> getPopular() { return popular; }
-    public void setPopular(List<Bracket> popular) { this.popular = popular; }
+    public List<BracketDto> getPopular() { return popular; }
+    public void setPopular(List<BracketDto> popular) { this.popular = popular; }
 
     /** Newest first. Empty only when there is no playable bracket at all. */
-    public List<Bracket> getRecent() { return recent; }
-    public void setRecent(List<Bracket> recent) { this.recent = recent; }
+    public List<BracketDto> getRecent() { return recent; }
+    public void setRecent(List<BracketDto> recent) { this.recent = recent; }
 
     /** Categories whose best bracket is most played first; within one, most played first. */
     public List<CategorySection> getCategories() { return categories; }
@@ -36,11 +34,11 @@ public class HomeDto {
 
     public static class CategorySection {
         private String category;
-        private List<Bracket> brackets = new ArrayList<>();
+        private List<BracketDto> brackets = new ArrayList<>();
 
         public CategorySection() {}
 
-        public CategorySection(String category, List<Bracket> brackets) {
+        public CategorySection(String category, List<BracketDto> brackets) {
             this.category = category;
             this.brackets = new ArrayList<>(brackets);
         }
@@ -48,7 +46,7 @@ public class HomeDto {
         public String getCategory() { return category; }
         public void setCategory(String category) { this.category = category; }
 
-        public List<Bracket> getBrackets() { return brackets; }
-        public void setBrackets(List<Bracket> brackets) { this.brackets = brackets; }
+        public List<BracketDto> getBrackets() { return brackets; }
+        public void setBrackets(List<BracketDto> brackets) { this.brackets = brackets; }
     }
 }

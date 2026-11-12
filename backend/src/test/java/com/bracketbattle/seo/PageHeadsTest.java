@@ -1,8 +1,8 @@
 package com.bracketbattle.seo;
 
 import com.bracketbattle.dto.ItemRankingDto;
-import com.bracketbattle.model.Bracket;
-import com.bracketbattle.model.Item;
+import com.bracketbattle.dto.BracketDto;
+import com.bracketbattle.dto.ItemDto;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.junit.jupiter.api.Test;
@@ -26,8 +26,8 @@ class PageHeadsTest {
 
     @Test
     void hostileBracketTextComesOutInert() throws IOException {
-        Bracket bracket = bracket(HOSTILE, "Desc </title><img src=x onerror=alert(1)>");
-        List<Item> items = List.of(item(1, HOSTILE + " entry", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+        BracketDto bracket = bracket(HOSTILE, "Desc </title><img src=x onerror=alert(1)>");
+        List<ItemDto> items = List.of(item(1, HOSTILE + " entry", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
                 item(2, "Plain", "https://images.example.com/a.png"));
 
         String html = heads.bracket(shell(), bracket, items).outerHtml();
@@ -76,10 +76,10 @@ class PageHeadsTest {
 
     @Test
     void resultsPageListsTopTenWithThePageWording() throws IOException {
-        List<Item> items = new java.util.ArrayList<>();
+        List<ItemDto> items = new java.util.ArrayList<>();
         List<ItemRankingDto> rankings = new java.util.ArrayList<>();
         for (int i = 0; i < 12; i++) {
-            Item item = item(i + 1, "Entry " + i, "https://images.example.com/" + i + ".png");
+            ItemDto item = item(i + 1, "Entry " + i, "https://images.example.com/" + i + ".png");
             items.add(item);
             rankings.add(new ItemRankingDto(item, 12 - i, i == 0 ? 1 : 20, 95 - i, 0.9, 1.0, 5));
         }
@@ -142,8 +142,8 @@ class PageHeadsTest {
 
     @Test
     void everyPageHandsTheOriginToTheApp() throws IOException {
-        Bracket bracket = bracket("Best songs", "");
-        List<Item> items = List.of(item(1, "First", "https://youtu.be/dQw4w9WgXcQ"), item(2, "Second", "https://youtu.be/aaaaaaaaaaa"));
+        BracketDto bracket = bracket("Best songs", "");
+        List<ItemDto> items = List.of(item(1, "First", "https://youtu.be/dQw4w9WgXcQ"), item(2, "Second", "https://youtu.be/aaaaaaaaaaa"));
         for (Document page : List.of(heads.home(shell()), heads.bracket(shell(), bracket, items),
                 heads.results(shell(), bracket, items, List.of()), heads.notFound(shell()))) {
             assertThat(page.select("meta[name=public-origin]")).hasSize(1);
@@ -165,16 +165,11 @@ class PageHeadsTest {
         return JsonMapper.builder().build().readTree(page.select("script[type=application/ld+json]").first().data());
     }
 
-    private static Bracket bracket(String name, String description) {
-        Bracket bracket = new Bracket(name, description, "video", "Music", "uid-owner");
-        bracket.setId(7L);
-        bracket.setCreatedAt(Instant.parse("2026-06-18T10:00:00Z"));
-        return bracket;
+    private static BracketDto bracket(String name, String description) {
+        return new BracketDto(7L, name, description, "video", "Music", Instant.parse("2026-06-18T10:00:00Z"), null, 0, 0);
     }
 
-    private static Item item(long id, String title, String url) {
-        Item item = new Item(7L, title, url, "video");
-        item.setId(id);
-        return item;
+    private static ItemDto item(long id, String title, String url) {
+        return new ItemDto(id, 7L, title, url, "video");
     }
 }

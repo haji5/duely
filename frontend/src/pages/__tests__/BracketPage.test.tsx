@@ -53,6 +53,7 @@ afterEach(() => {
   auth.currentUser = null;
   bracket.hiddenAt = undefined;
   vi.useRealTimers();
+  window.sessionStorage.clear();
 });
 
 describe('BracketPage setup', () => {
@@ -151,6 +152,41 @@ describe('BracketPage runs', () => {
     });
     expect(api.addSessionBattle).toHaveBeenCalledWith(expect.objectContaining({ ranking: [6, 3] }));
     expect(await screen.findByText('Results page')).toBeInTheDocument();
+    // Saved: nothing is left to resume.
+    expect(window.sessionStorage.getItem('duely:run:3')).toBeNull();
+  });
+});
+
+describe('BracketPage resume', () => {
+  it('picks a run up where a reload left it, with the same ticket', async () => {
+    api.getBracketRankings.mockResolvedValue([]);
+    api.startRun.mockResolvedValue({ ticket: 'signed', entrantIds: [7, 2, 11, 4, 9, 1, 12, 5], size: 8 });
+    const first = renderBracket();
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the quarterfinals' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Pick Entry 7' }));
+    expect(await screen.findByRole('button', { name: 'Pick Entry 11' }, { timeout: 3000 })).toBeInTheDocument();
+    first.unmount();
+
+    renderBracket();
+    expect(await screen.findByText('You have a run in progress')).toBeInTheDocument();
+    expect(screen.getByText('Quarterfinals, match 2 of 4.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    expect(screen.getByRole('button', { name: 'Pick Entry 11' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pick Entry 4' })).toBeInTheDocument();
+    expect(api.startRun).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.sessionStorage.getItem('duely:run:3') ?? '{}')).toMatchObject({ ticket: 'signed', picks: [7] });
+  });
+
+  it('can discard the unfinished run instead', async () => {
+    api.getBracketRankings.mockResolvedValue([]);
+    window.sessionStorage.setItem('duely:run:3', JSON.stringify({
+      ticket: 'old', size: 2, entrantIds: [3, 6], picks: [6], startedAt: Date.now(),
+    }));
+    renderBracket();
+    expect(await screen.findByText('You finished it but haven’t saved it yet.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Discard it' }));
+    expect(screen.queryByText('You have a run in progress')).not.toBeInTheDocument();
+    expect(window.sessionStorage.getItem('duely:run:3')).toBeNull();
   });
 });
 

@@ -1,11 +1,21 @@
 import type { Auth, User } from 'firebase/auth';
 import { local } from '@/utils/storage';
 
+/**
+ * The domain Firebase's sign-in pages are served from: the build's, unless the served page names
+ * another in <meta name="auth-domain"> (nginx fills it in when it proxies /__/auth/ to Firebase,
+ * see runtime-config.sh). On the site's own domain the redirect sign-in keeps working in
+ * browsers that block third-party storage, which is where the popup fails most often.
+ */
+export function authDomain(): string | undefined {
+  const fromPage = document.querySelector<HTMLMetaElement>('meta[name="auth-domain"]')?.content.trim();
+  return fromPage || import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+}
+
 // Firebase web config. These values are public identifiers (they ship in the bundle);
 // access is controlled by Firebase Auth's authorized domains, not by keeping them secret.
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
@@ -17,7 +27,7 @@ export const SESSION_HINT_KEY = 'authSession';
 
 type AuthModule = typeof import('firebase/auth');
 
-export type LoadedAuth = Pick<AuthModule, 'onAuthStateChanged' | 'signInWithPopup' | 'signOut'> & {
+export type LoadedAuth = Pick<AuthModule, 'onAuthStateChanged' | 'signInWithPopup' | 'signInWithRedirect' | 'getRedirectResult' | 'signOut'> & {
   auth: Auth;
   googleProvider: InstanceType<AuthModule['GoogleAuthProvider']>;
 };
@@ -32,7 +42,7 @@ let loadedAuth: Auth | null = null;
 export function loadAuth(): Promise<LoadedAuth> {
   loading ??= Promise.all([import('firebase/app'), import('firebase/auth')])
     .then(([{ initializeApp }, firebaseAuth]) => {
-      const auth = firebaseAuth.getAuth(initializeApp(firebaseConfig));
+      const auth = firebaseAuth.getAuth(initializeApp({ ...firebaseConfig, authDomain: authDomain() }));
       const googleProvider = new firebaseAuth.GoogleAuthProvider();
       googleProvider.setCustomParameters({ prompt: 'select_account' });
       loadedAuth = auth;
@@ -41,6 +51,8 @@ export function loadAuth(): Promise<LoadedAuth> {
         googleProvider,
         onAuthStateChanged: firebaseAuth.onAuthStateChanged,
         signInWithPopup: firebaseAuth.signInWithPopup,
+        signInWithRedirect: firebaseAuth.signInWithRedirect,
+        getRedirectResult: firebaseAuth.getRedirectResult,
         signOut: firebaseAuth.signOut,
       };
     })

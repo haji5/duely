@@ -2,8 +2,6 @@ package com.bracketbattle.model;
 
 import com.bracketbattle.advice.InvalidRequestException;
 import com.bracketbattle.scoring.RunScoring;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -15,14 +13,9 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * One completed run of a bracket. Immutable once saved.
- *
- * <p>userId, submissionToken and counted are hidden from JSON: the public API must not expose who
- * voted, the token is a per-submission secret (the run ticket's nonce), and whether a run counted
- * toward the leaderboard is deliberately not told to the client. The Valkey cache honours the same annotations, which
- * is fine because the idempotency and ownership checks read the repository. Results themselves
- * only ever go to their submitter (public views use CommentDto), so the matches are included:
- * the owner's "your ranking" needs them for real win percentages.
+ * One completed run of a bracket. Immutable once saved. Persistence only: its submitter gets a
+ * ResultDto, everyone else a CommentDto, so who voted, the ticket nonce and whether it counted
+ * never leave the server.
  */
 @Entity
 @Table(name = "results")
@@ -39,7 +32,6 @@ public class Result {
     @Column(name = "bracket_id", nullable = false)
     private Long bracketId;
 
-    @JsonIgnore
     @Column(name = "user_id")
     private String userId;
 
@@ -53,7 +45,6 @@ public class Result {
     @Column(name = "created_at")
     private Instant createdAt;
 
-    @JsonIgnore
     @Column(name = "submission_token")
     private String submissionToken;
 
@@ -64,7 +55,6 @@ public class Result {
     private String comment;
 
     /** Whether this run added to the leaderboard (see RunService). Every valid run is saved. */
-    @JsonIgnore
     @Column(name = "counted", nullable = false)
     private boolean counted = true;
 
@@ -91,20 +81,6 @@ public class Result {
         return RunScoring.legacy(getRanking());
     }
 
-    /** Each entry's place in this run, in ranking order. Tied entries share a range ("5th to 8th"). */
-    @JsonProperty(value = "places", access = JsonProperty.Access.READ_ONLY)
-    public List<Place> getPlaces() {
-        RunScoring.Scored scored = scored();
-        List<Place> places = new ArrayList<>();
-        for (Long itemId : getRanking()) {
-            RunScoring.Standing s = scored.standings().get(itemId);
-            places.add(s == null ? new Place(itemId, 0, 0) : new Place(itemId, s.placeFrom(), s.placeTo()));
-        }
-        return places;
-    }
-
-    public record Place(long itemId, int from, int to) {}
-
     @PrePersist
     void onCreate() {
         if (createdAt == null) {
@@ -118,9 +94,7 @@ public class Result {
     public Long getBracketId() { return bracketId; }
     public void setBracketId(Long bracketId) { this.bracketId = bracketId; }
 
-    @JsonIgnore
     public String getUserId() { return userId; }
-    @JsonIgnore
     public void setUserId(String userId) { this.userId = userId; }
 
     public List<Long> getRanking() {
@@ -142,9 +116,7 @@ public class Result {
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 
-    @JsonIgnore
     public String getSubmissionToken() { return submissionToken; }
-    @JsonIgnore
     public void setSubmissionToken(String submissionToken) { this.submissionToken = submissionToken; }
 
     public String getDisplayName() { return displayName; }
@@ -153,14 +125,12 @@ public class Result {
     public String getComment() { return comment; }
     public void setComment(String comment) { this.comment = comment; }
 
-    @JsonIgnore
     public boolean isCounted() { return counted; }
-    @JsonIgnore
     public void setCounted(boolean counted) { this.counted = counted; }
 
     private static <T> List<T> read(String json, TypeReference<List<T>> type) {
         if (json == null || json.isEmpty()) {
-            return new ArrayList<>(); // mutable: the cache serialiser can't rebuild List.of()
+            return new ArrayList<>();
         }
         try {
             return JSON.readValue(json, type);

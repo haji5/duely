@@ -75,23 +75,17 @@ const AboutPage: React.FC = () => (
       <Section id="data" title="What data does Duely store?">
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            Sign-in goes through Google via Firebase Authentication. Duely keeps your Firebase user ID with the
-            brackets and runs you create; it is never shown publicly.
+            Signed in, your Firebase user ID with the brackets and runs you create; it is never shown publicly.
           </li>
           <li>
-            When you finish a run you can add a display name and a comment. Both are public on the bracket’s results
-            page.
+            The display name and comment you can add to a finished run. Both are public on the bracket’s results page.
           </li>
-          <li>
-            Guest runs are saved without an account. The list of your own runs lives in your browser’s session storage
-            and disappears when the tab closes. Your theme and sign-in session are kept in local browser storage.
-          </li>
-          <li>Your IP address is used briefly to rate-limit requests. There are no ads and no analytics.</li>
-          <li>
-            Signed in, you can delete your data from the account menu. Brackets nobody else has played are deleted;
-            your runs stay in the rankings anonymously, without your name or comments.
-          </li>
+          <li>Guest runs, without any account. There are no ads and no analytics.</li>
         </ul>
+        <p>
+          The <Link to="/privacy" className={linkClass}>privacy page</Link> has the details: what your browser keeps,
+          what YouTube, Spotify and image hosts see, and how to delete your data.
+        </p>
       </Section>
 
       <Section id="comment-rules" title="What are the comment rules, and how do I report a problem?">

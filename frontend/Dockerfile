@@ -33,8 +33,9 @@ COPY . .
 # Build the application (VITE_* envs are inlined now)
 RUN npm run build
 
-# Runtime stage
-FROM nginx:alpine
+# Runtime stage. An exact version, so a rebuild can't change nginx underneath; Dependabot
+# proposes updates.
+FROM nginx:1.31.8-alpine
 
 WORKDIR /
 
@@ -49,7 +50,8 @@ COPY page-proxy.conf /etc/nginx/page-proxy.conf
 COPY runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
 ENV TRUSTED_PROXIES="" \
     REAL_IP_HEADER="X-Forwarded-For" \
-    PUBLIC_BASE_URL=""
+    PUBLIC_BASE_URL="" \
+    FIREBASE_AUTH_PROXY=""
 
 # Ensure nginx user can read/write necessary dirs and drop privileges. The sed guards against a
 # checkout that turned the script's line endings into CRLF.

@@ -1,10 +1,10 @@
 package com.bracketbattle.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 import java.time.Instant;
 
+/** Persistence only: the API and the cache use BracketDto, so a new column here stays private. */
 @Entity
 @Table(name = "brackets")
 public class Bracket {
@@ -28,15 +28,12 @@ public class Bracket {
     @Column(name = "created_at")
     private Instant createdAt;
 
-    // Hidden from JSON so public lists don't leak Firebase UIDs. The Valkey cache uses the same
-    // annotations, so cached copies have no owner either: ownership checks must always read the
-    // repository, never the cache.
-    @JsonIgnore
+    // A Firebase uid. Not in BracketDto, so neither the API nor the cache has it: ownership checks
+    // read the repository (BracketAccess).
     @Column(name = "created_by")
     private String createdBy;
 
-    // Set by a moderator. Hidden brackets are only ever served to their owner and admins, so the
-    // public never sees this field set; for those two it is the badge's source.
+    // Set by a moderator. Hidden brackets are only ever served to their owner and admins.
     @Column(name = "hidden_at")
     private Instant hiddenAt;
 
@@ -50,7 +47,6 @@ public class Bracket {
     private long runCount;
 
     // Only the sitemap needs it, and it reads the table.
-    @JsonIgnore
     @Column(name = "last_run_at", insertable = false, updatable = false)
     private Instant lastRunAt;
 
@@ -89,9 +85,7 @@ public class Bracket {
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 
-    @JsonIgnore
     public String getCreatedBy() { return createdBy; }
-    @JsonIgnore
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
 
     public Instant getHiddenAt() { return hiddenAt; }
@@ -105,8 +99,6 @@ public class Bracket {
     public long getRunCount() { return runCount; }
     public void setRunCount(long runCount) { this.runCount = runCount; }
 
-    @JsonIgnore
     public Instant getLastRunAt() { return lastRunAt; }
-    @JsonIgnore
     public void setLastRunAt(Instant lastRunAt) { this.lastRunAt = lastRunAt; }
 }

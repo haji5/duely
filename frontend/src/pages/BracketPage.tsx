@@ -17,6 +17,8 @@ import {
 } from '@/utils/tournament';
 import { displayScore, scoreRun } from '@/utils/rankings';
 import { playSelectionTick, playSuccessChime, playTick } from '@/utils/sound';
+import { useLatest } from '@/utils/useLatest';
+import { clearSavedRun, loadSavedRun, picksOf, restoreTournament, saveRun, type SavedRun } from '@/utils/runProgress';
 
 type Load =
   | { status: 'loading' }
@@ -25,6 +27,9 @@ type Load =
 
 // The current leader loads on its own, so a failed ranking never blocks playing the bracket.
 type Leader = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; value: ItemRanking | null };
+
+/** A run the server started: its ticket and the entrants it picked. Its picks live in the tournament. */
+type Run = Omit<SavedRun, 'picks'>;
 
 interface Animation {
   winnerId: number;
@@ -57,7 +62,9 @@ const BracketPage: React.FC = () => {
   const [tournament, setTournament] = React.useState<TournamentState | null>(null);
   // The server picks who plays and signs it; saving the run hands the ticket back. One ticket
   // per run, so retrying a save is idempotent.
-  const [ticket, setTicket] = React.useState<string | null>(null);
+  const [run, setRun] = React.useState<Run | null>(null);
+  // A run left unfinished (or unsaved) in this tab, offered on the start screen.
+  const [resumable, setResumable] = React.useState<{ run: SavedRun; tournament: TournamentState } | null>(null);
   const [starting, setStarting] = React.useState(false);
   const [startError, setStartError] = React.useState<string | null>(null);
   const [animation, setAnimation] = React.useState<Animation | null>(null);
@@ -73,7 +80,8 @@ const BracketPage: React.FC = () => {
     let cancelled = false;
     setLoad({ status: 'loading' });
     setTournament(null);
-    setTicket(null);
+    setRun(null);
+    setResumable(null);
     setStartError(null);
     setSelectedSize(null);
     if (!Number.isInteger(bracketId) || bracketId <= 0) {
@@ -88,6 +96,10 @@ const BracketPage: React.FC = () => {
         } else {
           setLoad({ status: 'ready', bracket, items });
           setSelectedSize(defaultBracketSize(items.length));
+          const saved = loadSavedRun(bracketId);
+          const restored = saved && restoreTournament(saved, items);
+          if (saved && restored) setResumable({ run: saved, tournament: restored });
+          else if (saved) clearSavedRun(bracketId);
         }
       })
       .catch((error) => {
@@ -110,16 +122,20 @@ const BracketPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [bracketId, leaderReloadKey]);
 
+  // Every pick is stored at once, so a reload or a discarded tab can pick up where it stopped.
+  React.useEffect(() => {
+    if (tournament && run) saveRun(bracketId, { ...run, picks: picksOf(tournament) });
+  }, [bracketId, tournament, run]);
+
   const complete = tournament?.complete ?? false;
   const signedInName = currentUser?.displayName ?? '';
-  const signedInNameRef = React.useRef(signedInName);
-  signedInNameRef.current = signedInName;
+  const signedInNameRef = useLatest(signedInName);
   React.useEffect(() => {
     if (complete) {
       setForm({ displayName: signedInNameRef.current, comment: '' });
       setSaveError(null);
     }
-  }, [complete]);
+  }, [complete, signedInNameRef]);
   // Signing in on the champion screen fills in an empty name and never touches the comment.
   React.useEffect(() => {
     if (signedInName) setForm(f => (f.displayName ? f : { ...f, displayName: signedInName }));
@@ -163,15 +179,17 @@ const BracketPage: React.FC = () => {
       setStarting(true);
       setStartError(null);
       try {
-        const run = await bracketApi.startRun(bracketId, selectedSize);
+        const started = await bracketApi.startRun(bracketId, selectedSize);
         const byId = new Map(items.map(item => [item.id, item]));
-        const entrants = run.entrantIds.map(entrantId => byId.get(entrantId));
+        const entrants = started.entrantIds.map(entrantId => byId.get(entrantId));
         if (entrants.some(entrant => !entrant)) {
           setStartError('This bracket changed since the page loaded. Reload the page to play.');
           return;
         }
-        setTicket(run.ticket);
-        setTournament(layoutTournament(entrants as Item[], run.size));
+        // A new run replaces the one left unfinished.
+        setResumable(null);
+        setRun({ ticket: started.ticket, size: started.size, entrantIds: started.entrantIds, startedAt: Date.now() });
+        setTournament(layoutTournament(entrants as Item[], started.size));
       } catch (error) {
         setStartError(errorMessage(error, 'The bracket couldn’t be started.'));
       } finally {
@@ -182,6 +200,18 @@ const BracketPage: React.FC = () => {
       <div className="page max-w-3xl pb-24 pt-10 sm:pt-16">
         {meta}
         {bracket.hiddenAt && <HiddenNotice bracketId={bracketId} onShown={() => setReloadKey(k => k + 1)} />}
+        {resumable && (
+          <ResumeNotice
+            tournament={resumable.tournament}
+            onResume={() => {
+              const { picks: _picks, ...rest } = resumable.run;
+              setRun(rest);
+              setTournament(resumable.tournament);
+              setResumable(null);
+            }}
+            onDiscard={() => { clearSavedRun(bracketId); setResumable(null); }}
+          />
+        )}
         <p className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-themed-secondary">
           <TypeIcon type={bracket.type} />
           {items.length} entries in this bracket
@@ -313,7 +343,7 @@ const BracketPage: React.FC = () => {
     const matches = playedMatches(tournament);
 
     const save = async (withDetails: boolean) => {
-      if (!ticket || saving) return;
+      if (!run || saving) return;
       setSaving(true);
       setSaveError(null);
       const details = {
@@ -321,11 +351,12 @@ const BracketPage: React.FC = () => {
         comment: withDetails ? form.comment.trim() || undefined : undefined,
       };
       try {
-        const saved = await bracketApi.saveBracketResult(bracketId, { ticket, matches, ...details });
+        const saved = await bracketApi.saveBracketResult(bracketId, { ticket: run.ticket, matches, ...details });
+        clearSavedRun(bracketId);
         if (!currentUser) {
           addSessionBattle({ bracketId, bracketName: bracket.name, ranking: saved.ranking, matches, ...details });
         }
-        navigate(`/results/${bracketId}?fromBattle=true`);
+        void navigate(`/results/${bracketId}?fromBattle=true`);
       } catch (error) {
         setSaveError(errorMessage(error, 'Your result couldn’t be saved.'));
         setSaving(false);
@@ -333,12 +364,13 @@ const BracketPage: React.FC = () => {
     };
 
     const continueWithoutSaving = () => {
+      clearSavedRun(bracketId);
       if (!currentUser) {
         // The same ranking the server would have derived from these matches.
         addSessionBattle({ bracketId, bracketName: bracket.name, ranking: scoreRun(matches).ranking, matches });
-        navigate(`/results/${bracketId}?fromBattle=true`);
+        void navigate(`/results/${bracketId}?fromBattle=true`);
       } else {
-        navigate(`/results/${bracketId}`);
+        void navigate(`/results/${bracketId}`);
       }
     };
 
@@ -507,6 +539,28 @@ const BracketPage: React.FC = () => {
   );
 };
 
+/** Offers the run this tab left unfinished, or finished but didn't save. */
+const ResumeNotice: React.FC<{ tournament: TournamentState; onResume: () => void; onDiscard: () => void }> = ({
+  tournament, onResume, onDiscard,
+}) => {
+  const where = tournament.complete
+    ? 'You finished it but haven’t saved it yet.'
+    : (() => {
+      const p = progress(tournament);
+      return `${roundName(p.roundSize)}, match ${p.matchNumber} of ${p.matchesInRound}.`;
+    })();
+  return (
+    <div className="notice notice-info mb-6" role="status">
+      <p className="font-semibold text-themed-primary">You have a run in progress</p>
+      <p className="mt-0.5">{where}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={onResume} className="btn btn-primary">Resume</button>
+        <button type="button" onClick={onDiscard} className="btn btn-secondary">Discard it</button>
+      </div>
+    </div>
+  );
+};
+
 const ChampionReveal: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <m.div
     initial={{ opacity: 0, transform: 'translateY(12px)' }}
@@ -567,6 +621,7 @@ const BattleItem: React.FC<{
       className="relative"
     >
       {/* Clicking the card picks it (mouse convenience); the Pick button is the accessible control. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         onClick={() => canPick && onSelect()}
         className={`group card pressable relative flex min-h-[24rem] flex-col overflow-hidden border-2 sm:min-h-[30rem] ${canPick ? 'cursor-pointer [--press-scale:0.99]' : 'cursor-default [--press-scale:1]'}`}
@@ -644,11 +699,11 @@ const BattleItem: React.FC<{
 
 // Bursts from the card's centre. Offsets are picked once per mount so re-renders don't retarget them.
 const Confetti: React.FC<{ sideColor: string }> = ({ sideColor }) => {
-  const pieces = React.useMemo(() => Array.from({ length: 12 }, (_, i) => {
+  const [pieces] = React.useState(() => Array.from({ length: 12 }, (_, i) => {
     const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.5;
     const distance = 120 + Math.random() * 120;
     return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance, rotate: Math.random() * 360 };
-  }), []);
+  }));
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">

@@ -324,4 +324,29 @@
         </sql>
     </changeSet>
 
+    <!-- Leftovers. results.version was never used, and idx_user_bracket_token (user, bracket,
+         token) is covered by the token's unique index and idx_results_user_bracket_created. The
+         type checks hold every new row to the three types the API accepts; rows from before the
+         API checked are left alone, so the constraint is only validated when none break it. -->
+    <changeSet id="16" author="bracket-battle">
+        <dropIndex indexName="idx_user_bracket_token" tableName="results"/>
+        <dropColumn tableName="results" columnName="version"/>
+        <sql>
+            ALTER TABLE brackets ADD CONSTRAINT ck_brackets_type CHECK (type IN ('song', 'video', 'image')) NOT VALID;
+            ALTER TABLE items ADD CONSTRAINT ck_items_media_type CHECK (media_type IN ('song', 'video', 'image')) NOT VALID;
+        </sql>
+        <sql splitStatements="false">
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM brackets WHERE type NOT IN ('song', 'video', 'image')) THEN
+                    ALTER TABLE brackets VALIDATE CONSTRAINT ck_brackets_type;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM items WHERE media_type NOT IN ('song', 'video', 'image')) THEN
+                    ALTER TABLE items VALIDATE CONSTRAINT ck_items_media_type;
+                END IF;
+            END
+            $$;
+        </sql>
+    </changeSet>
+
 </databaseChangeLog>

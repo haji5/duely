@@ -36,7 +36,7 @@ public class MediaMetadataController {
         }
         rateLimiter.tryAcquire("metadata-search", CurrentUser.uidOrNull(authentication));
         String mediaUrl = metadataService.findEmbeddableYouTubeUrl(query);
-        if (mediaUrl == null) {
+        if (mediaUrl.equals(MediaMetadataService.NO_MATCH)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No embeddable YouTube video found");
         }
         return Map.of("mediaUrl", mediaUrl);

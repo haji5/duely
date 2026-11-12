@@ -1,5 +1,6 @@
 package com.bracketbattle.service;
 
+import com.bracketbattle.dto.BracketDto;
 import com.bracketbattle.model.Bracket;
 import com.bracketbattle.repository.BracketRepository;
 import com.bracketbattle.security.CurrentUser;
@@ -13,7 +14,7 @@ import java.util.Optional;
 /**
  * Who may see and change a bracket. A hidden bracket exists only for its owner and admins: to
  * everyone else, crawlers and page requests included, it is a 404, as if it had been deleted.
- * Ownership is always read from the table, never the cache: cached brackets carry no owner.
+ * Ownership is always read from the table: BracketDto, which the cache holds, has no owner.
  */
 @Component
 public class BracketAccess {
@@ -27,8 +28,8 @@ public class BracketAccess {
     }
 
     /** The bracket, if it exists and the caller (null for a guest or a page request) may see it. */
-    public Optional<Bracket> findVisible(long id, Authentication authentication) {
-        Optional<Bracket> bracket = bracketService.getBracketById(id);
+    public Optional<BracketDto> findVisible(long id, Authentication authentication) {
+        Optional<BracketDto> bracket = bracketService.getBracketById(id);
         if (bracket.isEmpty() || bracket.get().getHiddenAt() == null || CurrentUser.isAdmin(authentication)) {
             return bracket;
         }
@@ -36,7 +37,7 @@ public class BracketAccess {
         return uid != null && bracketRepository.existsByIdAndCreatedBy(id, uid) ? bracket : Optional.empty();
     }
 
-    public Bracket requireVisible(long id, Authentication authentication) {
+    public BracketDto requireVisible(long id, Authentication authentication) {
         return findVisible(id, authentication).orElseThrow(BracketAccess::notFound);
     }
 

@@ -426,9 +426,12 @@ class BracketApiIT extends IntegrationTest {
     }
 
     @Test
-    void actuatorExposesOnlyHealthAndInfo() throws Exception {
+    void actuatorExposesOnlyHealthInfoAndMetrics() throws Exception {
+        // Tests share the application's port; deployed, these are on the management port only.
         assertThat(perform(get("/actuator/health")).getResponse().getStatus()).isEqualTo(200);
         assertThat(perform(get("/actuator/health/readiness")).getResponse().getStatus()).isEqualTo(200);
+        assertThat(perform(get("/actuator/prometheus")).getResponse().getContentAsString()).contains("jvm_threads_live_threads");
+        assertThat(perform(as(USER_A, get("/actuator/env"))).getResponse().getStatus()).isEqualTo(404);
         assertThat(perform(as(USER_A, get("/actuator/caches"))).getResponse().getStatus()).isEqualTo(404);
         assertThat(perform(as(USER_A, delete("/actuator/caches"))).getResponse().getStatus()).isIn(404, 405);
     }

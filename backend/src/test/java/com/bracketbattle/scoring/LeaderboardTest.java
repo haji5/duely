@@ -1,7 +1,7 @@
 package com.bracketbattle.scoring;
 
 import com.bracketbattle.dto.ItemRankingDto;
-import com.bracketbattle.model.Item;
+import com.bracketbattle.dto.ItemDto;
 import com.bracketbattle.support.SharedFixtures;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -21,8 +21,7 @@ class LeaderboardTest {
         assertThat(Leaderboard.PRIOR_RUNS).isEqualTo(vectors.get("k").asInt());
         List<ItemRankingDto> rows = new ArrayList<>();
         vectors.get("rows").forEach(r -> {
-            Item item = new Item(1L, "item", "https://images.example.com/x.png", "image");
-            item.setId(r.get("itemId").asLong());
+            ItemDto item = new ItemDto(r.get("itemId").asLong(), 1L, "item", "https://images.example.com/x.png", "image");
             long times = r.get("timesRanked").asLong();
             double sum = r.get("scoreSum").asDouble();
             long wins = r.get("wins").asLong();

@@ -1,20 +1,20 @@
 package com.bracketbattle.controller;
 
+import com.bracketbattle.dto.BracketDto;
 import com.bracketbattle.dto.BracketListQuery;
 import com.bracketbattle.dto.BracketPageDto;
 import com.bracketbattle.dto.BracketStatsDto;
 import com.bracketbattle.dto.CommentDto;
 import com.bracketbattle.dto.CreateBracketRequest;
 import com.bracketbattle.dto.HomeDto;
+import com.bracketbattle.dto.ItemDto;
 import com.bracketbattle.dto.ItemRankingDto;
 import com.bracketbattle.dto.ReportRequest;
+import com.bracketbattle.dto.ResultDto;
 import com.bracketbattle.dto.RunTicketDto;
 import com.bracketbattle.dto.SaveResultRequest;
 import com.bracketbattle.dto.StartRunRequest;
 import com.bracketbattle.dto.ValidationOrder;
-import com.bracketbattle.model.Bracket;
-import com.bracketbattle.model.Item;
-import com.bracketbattle.model.Result;
 import com.bracketbattle.ratelimit.ClientSubject;
 import com.bracketbattle.ratelimit.RateLimiter;
 import com.bracketbattle.security.CurrentUser;
@@ -77,7 +77,7 @@ public class BracketController {
 
     /** Hidden brackets are a 404 here and below for everyone but their owner and admins. */
     @GetMapping("/brackets/{id}")
-    public Bracket getBracket(@PathVariable Long id, Authentication authentication) {
+    public BracketDto getBracket(@PathVariable Long id, Authentication authentication) {
         return bracketAccess.requireVisible(id, authentication);
     }
 
@@ -90,7 +90,7 @@ public class BracketController {
     }
 
     @GetMapping("/brackets/{id}/items")
-    public List<Item> getBracketItems(@PathVariable Long id, Authentication authentication) {
+    public List<ItemDto> getBracketItems(@PathVariable Long id, Authentication authentication) {
         bracketAccess.requireVisible(id, authentication);
         return bracketService.getBracketItems(id);
     }
@@ -129,7 +129,7 @@ public class BracketController {
 
     /** Open to guests; signed-in runs are attributed to the user and show up in their history. */
     @PostMapping("/brackets/{id}/results")
-    public Result saveBracketResult(@PathVariable Long id, @Validated(ValidationOrder.class) @RequestBody SaveResultRequest payload,
+    public ResultDto saveBracketResult(@PathVariable Long id, @Validated(ValidationOrder.class) @RequestBody SaveResultRequest payload,
                                     Authentication authentication, HttpServletRequest request) {
         bracketAccess.requireVisible(id, authentication);
         String userId = CurrentUser.uidOrNull(authentication);
@@ -138,11 +138,11 @@ public class BracketController {
         } else {
             rateLimiter.tryAcquire("result-ip", ClientSubject.of(request));
         }
-        return runService.saveRun(id, userId, ClientSubject.of(request), payload);
+        return ResultDto.from(runService.saveRun(id, userId, ClientSubject.of(request), payload));
     }
 
     @PostMapping("/brackets")
-    public Bracket createBracket(@Validated(ValidationOrder.class) @RequestBody CreateBracketRequest payload, Authentication authentication) {
+    public BracketDto createBracket(@Validated(ValidationOrder.class) @RequestBody CreateBracketRequest payload, Authentication authentication) {
         String userId = CurrentUser.uidOrNull(authentication);
         rateLimiter.tryAcquire("bracket-create", userId);
         return bracketService.createBracket(payload, userId);
@@ -160,7 +160,7 @@ public class BracketController {
 
     /** The caller's latest runs of one bracket, oldest first. */
     @GetMapping("/me/results")
-    public List<Result> getMyResults(@RequestParam long bracketId, Authentication authentication) {
+    public List<ResultDto> getMyResults(@RequestParam long bracketId, Authentication authentication) {
         return bracketService.getUserResults(CurrentUser.uidOrNull(authentication), bracketId);
     }
 
