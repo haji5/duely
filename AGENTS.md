@@ -35,6 +35,6 @@ Welcome! This document provides essential knowledge for AI agents working on the
   - `apiCache.ts` is a small TTL cache. Per-user keys include the uid. To wipe it on sign-in changes, use `resetApiAuthState()` in `api.ts` (AuthContext already does).
   - Use `useAuth().currentUser` for the signed-in user. Guests' own runs live in `SessionBattleContext` (sessionStorage).
   - Show distinct loading, error (with retry) and empty states; never render "not found" or "no brackets" for a failed request. Use `errorMessage()` from `api.ts` for the server's message. Requests time out after 15 s (30 s for the endpoints that wait on YouTube, Spotify or DNS); `apiCache.getOrLoad` shares a load already in flight. An `ErrorBoundary` around the routes catches render errors and reloads once when a lazy chunk vanished after a deploy.
-  - Use `randomId()` (not `crypto.randomUUID`, which needs a secure context) for client ids and submission tokens.
+  - Use `randomId()` (not `crypto.randomUUID`, which needs a secure context) for client ids. Runs need no client token: the server's run ticket is the idempotency key.
 
 Follow these patterns strictly to remain productive and maintain project coherence!
