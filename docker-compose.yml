@@ -97,6 +97,8 @@ services:
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.29.53.250}
       # Left empty unless set, so shared links use whatever host the page was loaded from.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # The Firebase project's auth host, to serve its sign-in pages on this site (see runtime-config.sh).
+      FIREBASE_AUTH_PROXY: ${FIREBASE_AUTH_PROXY:-}
     depends_on:
       backend:
         condition: service_healthy

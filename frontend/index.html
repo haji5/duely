@@ -26,6 +26,9 @@
     <!-- Filled with the configured public origin by nginx and the backend; canonicals and share
          links use it (PageMeta.tsx). Empty means "this page's own origin". -->
     <meta name="public-origin" content="" />
+    <!-- Filled by nginx when it proxies Firebase's sign-in pages (FIREBASE_AUTH_PROXY); empty
+         means the build's auth domain (config/firebase.ts). -->
+    <meta name="auth-domain" content="" />
     <link rel="apple-touch-icon" href="/logo192.png" />
     <link rel="manifest" href="/manifest.json" />
     <!-- Every page's H1 is Big Shoulders 900; fetch it with the HTML instead of after the CSS. -->

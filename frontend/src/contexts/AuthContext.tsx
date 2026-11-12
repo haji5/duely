@@ -15,7 +15,10 @@ export interface UserProfile {
 
 interface AuthContextType {
   currentUser: UserProfile | null;
-  /** Opens the Google sign-in popup. Resolves quietly if the user closes it. */
+  /**
+   * Opens the Google sign-in popup, or goes to Google's sign-in page and back where popups don't
+   * work. Resolves quietly if the user closes the popup.
+   */
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -32,8 +35,19 @@ export const useAuth = (): AuthContextType => {
 
 const CANCELLED_POPUP_CODES = new Set(['auth/popup-closed-by-user', 'auth/cancelled-popup-request']);
 
-const isCancelledPopup = (error: unknown): boolean =>
-  typeof error === 'object' && error !== null && 'code' in error && CANCELLED_POPUP_CODES.has(String(error.code));
+// The popup can't open here (blocked, or a webview without windows): sign in by redirect instead.
+const NO_POPUP_CODES = new Set(['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment']);
+
+const errorCode = (error: unknown): string | null =>
+  typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : null;
+
+/**
+ * Apps that open shared links in their own browser (Facebook, Instagram, TikTok, Line, Snapchat,
+ * Android webviews), where popups either never open or never report back.
+ */
+export function isInAppBrowser(userAgent = navigator.userAgent): boolean {
+  return /FBAN|FBAV|FB_IAB|Instagram|TikTok|musical_ly|BytedanceWebview|Line\/|Snapchat|; wv\)/i.test(userAgent);
+}
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -70,8 +84,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
 
-    loadAuth().then(({ auth, onAuthStateChanged }) => {
+    loadAuth().then(({ auth, onAuthStateChanged, getRedirectResult }) => {
       if (cancelled) return;
+      // Back from a redirect sign-in: the listener below reports the user; a failure is only here.
+      getRedirectResult(auth).catch((error: unknown) => console.error('Redirect sign-in failed:', error));
       // Firebase's listener is the single source of truth for the signed-in user.
       unsubscribe = onAuthStateChanged(auth, (user) => {
         const uid = user?.uid ?? null;
@@ -115,11 +131,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signInWithGoogle = async (): Promise<void> => {
     setAuthNeeded(true);
-    const { auth, googleProvider, signInWithPopup } = await loadAuth();
+    const { auth, googleProvider, signInWithPopup, signInWithRedirect } = await loadAuth();
+    const viaRedirect = async () => {
+      // The page reloads on the way back; the hint makes it load Firebase to finish signing in.
+      local.set(SESSION_HINT_KEY, '1');
+      await signInWithRedirect(auth, googleProvider);
+    };
+    if (isInAppBrowser()) {
+      await viaRedirect();
+      return;
+    }
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      if (isCancelledPopup(error)) return;
+      const code = errorCode(error);
+      if (code !== null && CANCELLED_POPUP_CODES.has(code)) return;
+      if (code !== null && NO_POPUP_CODES.has(code)) {
+        await viaRedirect();
+        return;
+      }
       throw error;
     }
   };

@@ -96,6 +96,9 @@ services:
       # REAL_IP_HEADER. A proxy on this host connects from the network's gateway, 172.29.53.1.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       REAL_IP_HEADER: ${REAL_IP_HEADER:-X-Forwarded-For}
+      # e.g. duely-12345.firebaseapp.com: sign-in pages on this site, so the redirect sign-in works
+      # in in-app browsers (README, "Running it publicly").
+      FIREBASE_AUTH_PROXY: ${FIREBASE_AUTH_PROXY:-}
     depends_on:
       backend:
         condition: service_healthy
