@@ -17,7 +17,7 @@ services:
       CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://${LAN_IP:-localhost}:3000"
 
   tunnel:
-    image: cloudflare/cloudflared:2026.10.1
+    image: cloudflare/cloudflared:2026.10.7
     command: tunnel --no-autoupdate --url http://frontend:3000
     restart: unless-stopped
     depends_on:
