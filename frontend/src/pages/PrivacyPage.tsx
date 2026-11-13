@@ -39,9 +39,10 @@ const PrivacyPage: React.FC = () => (
             public.
           </li>
           <li>
-            <strong>Runs.</strong> Every finished run is saved: which entries played, who beat whom and when. A run can
+            <strong>Runs.</strong> A finished run is saved: which entries played, who beat whom and when. A run can
             carry a display name and a comment if you add them, and both are public on the bracket’s results page.
-            Guests’ runs are saved without any account.
+            Guests’ runs are saved without any account. A guest’s run that doesn’t count toward the rankings (played
+            faster than the game allows, or past the day’s limit for that bracket) is deleted within a day.
           </li>
           <li>
             <strong>Reports.</strong> A report keeps the reason and any details you wrote. If you were signed in, your
