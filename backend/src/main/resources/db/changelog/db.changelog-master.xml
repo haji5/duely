@@ -349,4 +349,13 @@
         </sql>
     </changeSet>
 
+    <!-- Guests' uncounted runs are deleted once their ticket can no longer be replayed
+         (RunPruner). This partial index is what that sweep reads; the delete repeats its predicate
+         literally so the planner can match it. -->
+    <changeSet id="17" author="bracket-battle">
+        <sql>
+            CREATE INDEX idx_results_uncounted_guest ON results (created_at) WHERE counted = false AND user_id IS NULL;
+        </sql>
+    </changeSet>
+
 </databaseChangeLog>

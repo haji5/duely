@@ -56,6 +56,7 @@ describe('PrivacyPage', () => {
       expect(screen.getByRole('heading', { level: 2, name })).toBeInTheDocument();
     }
     expect(screen.getByText(/youtube-nocookie\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/doesn’t count toward the rankings .* is deleted within a day/)).toBeInTheDocument();
   });
 
   it('is linked from the about page', () => {

@@ -266,6 +266,25 @@ class ModerationIT extends IntegrationTest {
         assertThat(all.get(1).get("resolvedAt").isNull()).isFalse();
     }
 
+    @Test
+    void reportingACommentOnAHiddenBracketLooksLikeReportingOneThatDoesNotExist() throws Exception {
+        long id = createBracket(USER_A, "Hidden comments", 4).get("id").asLong();
+        long commentId = submit(null, id, itemIds(id), "a guest's comment");
+        assertThat(status(post("/admin/brackets/" + id + "/hide"), ADMIN)).isEqualTo(204);
+
+        MvcResult hidden = perform(postJson("/reports", report("comment", commentId)));
+        MvcResult missing = perform(postJson("/reports", report("comment", 987654321)));
+        assertThat(hidden.getResponse().getStatus()).isEqualTo(404);
+        assertThat(missing.getResponse().getStatus()).isEqualTo(404);
+        assertThat(body(hidden).get("message").asString())
+                .isEqualTo(body(missing).get("message").asString())
+                .isEqualTo("Comment not found");
+
+        // The owner and admins still see the bracket, so they can still report the comment.
+        assertThat(status(postJson("/reports", report("comment", commentId)), USER_A)).isEqualTo(204);
+        assertThat(status(postJson("/reports", report("comment", commentId)), ADMIN)).isEqualTo(204);
+    }
+
     // ---- deleting an account's data ----------------------------------------------------------
 
     @Test

@@ -34,8 +34,24 @@ services:
   valkey:
     image: valkey/valkey:8-alpine
     restart: unless-stopped
-    # A cache and rate-limit counters, disposable by design: nothing is written to disk.
+    # The cache, disposable by design: nothing is written to disk, and when full it evicts the
+    # least recently used entries. Rate-limit counters live in valkey-limits instead.
     command: ["valkey-server", "--appendonly", "no", "--save", "", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    networks:
+      - bracket-battle-network
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Rate-limit counters and daily quotas, apart from the cache so filling the cache cannot evict
+  # them. Never evicts: when full, writes fail and the backend counts in memory instead. Nothing
+  # on disk either, so a restart resets the windows.
+  valkey-limits:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "no", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
     networks:
       - bracket-battle-network
     healthcheck:
@@ -62,6 +78,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
+      LIMITS_VALKEY_HOST: valkey-limits
+      LIMITS_VALKEY_PORT: 6379
       # Pages are same-origin through nginx; this only matters for other sites calling the API.
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-${PUBLIC_BASE_URL}}
       # The origin in canonicals, og:url, JSON-LD, the sitemap and robots.txt. The backend refuses
@@ -73,6 +91,8 @@ services:
       postgres:
         condition: service_healthy
       valkey:
+        condition: service_healthy
+      valkey-limits:
         condition: service_healthy
     networks:
       - bracket-battle-network

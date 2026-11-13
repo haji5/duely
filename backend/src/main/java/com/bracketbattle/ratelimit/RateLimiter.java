@@ -17,11 +17,12 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Fixed-window rate limiter backed by Valkey, so limits are shared by every backend instance and
- * memory stays bounded (each window's counter expires with the window). If Valkey is unreachable,
- * reads fail open, because a cache outage should not take the game down; every other bucket keeps
- * its limit in a bounded in-process map (per instance), so a Valkey restart does not lift the
- * limits on writes and upstream lookups. Either way it logs a throttled warning.
+ * Fixed-window rate limiter backed by Valkey ({@link RateLimitStore}: in Compose its own instance,
+ * which never evicts), so limits are shared by every backend instance and memory stays bounded
+ * (each window's counter expires with the window). If that Valkey is unreachable or full, reads
+ * fail open, because an outage should not take the game down; every other bucket keeps its limit
+ * in a bounded in-process map (per instance), so a Valkey restart does not lift the limits on
+ * writes and upstream lookups. Either way it logs a throttled warning.
  *
  * <p>Refused requests are counted per bucket in {@code duely.rate_limit.rejections}.
  */
@@ -48,8 +49,8 @@ public class RateLimiter {
     private final LocalWindowCounter local = new LocalWindowCounter(LOCAL_MAX_SUBJECTS);
 
     @Autowired
-    public RateLimiter(StringRedisTemplate redis, RateLimitProperties properties, MeterRegistry meters) {
-        this(redis, properties, Clock.systemUTC(), meters);
+    public RateLimiter(RateLimitStore store, RateLimitProperties properties, MeterRegistry meters) {
+        this(store.template(), properties, Clock.systemUTC(), meters);
     }
 
     RateLimiter(StringRedisTemplate redis, RateLimitProperties properties, Clock clock, MeterRegistry meters) {
@@ -100,7 +101,7 @@ public class RateLimiter {
             long nowMs = clock.millis();
             long last = lastWarning.get();
             if (nowMs - last > WARN_INTERVAL_MS && lastWarning.compareAndSet(last, nowMs)) {
-                log.warn("Valkey is unreachable: reads are not rate limited and other limits count on this instance only: {}",
+                log.warn("The limits Valkey is unreachable or full: reads are not rate limited and other limits count on this instance only: {}",
                         e.getMessage());
             }
             return FAIL_OPEN_BUCKETS.contains(bucket) ? null : local.increment(bucket, String.valueOf(subject), now, period);

@@ -24,11 +24,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /**
  * Server-authoritative runs: the server picks the entrants, signs them into a ticket, derives the
  * ranking from the matches, and bounds what one player can add to a leaderboard. The daily quotas
- * are lowered to 2 counted runs per bracket here so they are cheap to reach.
+ * are lowered to 2 counted runs per user and 3 per address and bracket here so they are cheap to
+ * reach.
  */
 @TestPropertySource(properties = {
         "app.rate-limit.buckets.counted-user.limit=2",
-        "app.rate-limit.buckets.counted-ip.limit=2"
+        "app.rate-limit.buckets.counted-ip.limit=3"
 })
 class RunIntegrityIT extends IntegrationTest {
 
@@ -145,29 +146,42 @@ class RunIntegrityIT extends IntegrationTest {
 
     @Test
     void runsPastTheDailyQuotaAreSavedButNotCounted() throws Exception {
+        // Every MockMvc request comes from 127.0.0.1: signed in or not, these runs share an address.
         long id = createBracket(USER_A, "Quota", 4).get("id").asLong();
         long other = createBracket(USER_A, "Quota elsewhere", 4).get("id").asLong();
         List<Long> r = itemIds(id);
         double overQuota = uncounted("quota");
 
+        // The user's quota (2) runs out first.
         for (int i = 0; i < 3; i++) {
-            assertThat(perform(as(USER_A, postJson("/brackets/" + id + "/results", runPayload(r, null, null))))
-                    .getResponse().getStatus()).isEqualTo(200);
+            assertThat(submit(USER_A, id, r)).isEqualTo(200);
         }
         assertThat(itemStats.findTotals(id).values()).hasSize(4).allMatch(t -> t.timesRanked() == 2);
         assertThat(runCount(id)).isEqualTo(2);
         assertThat(body(perform(as(USER_A, get("/me/results").param("bracketId", Long.toString(id)))))).hasSize(3);
 
-        // The quota is per bracket and per player: another bracket, and guests, start fresh.
-        perform(as(USER_A, postJson("/brackets/" + other + "/results", runPayload(itemIds(other), null, null))));
-        assertThat(runCount(other)).isEqualTo(1);
+        // The refused run did not use up the address, which has one counted run left (of 3).
         for (int i = 0; i < 3; i++) {
-            assertThat(perform(postJson("/brackets/" + id + "/results", runPayload(r, null, null)))
-                    .getResponse().getStatus()).isEqualTo(200);
+            assertThat(submit(null, id, r)).isEqualTo(200);
         }
-        assertThat(runCount(id)).isEqualTo(4);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isEqualTo(6);
-        assertThat(uncounted("quota")).isEqualTo(overQuota + 2);
+        assertThat(runCount(id)).isEqualTo(3);
+
+        // Signing in as someone else does not add to what the address can count.
+        assertThat(submit(USER_B, id, r)).isEqualTo(200);
+        assertThat(runCount(id)).isEqualTo(3);
+        assertThat(body(perform(as(USER_B, get("/me/results").param("bracketId", Long.toString(id)))))).hasSize(1);
+
+        // The quotas are per bracket: another bracket starts fresh.
+        assertThat(submit(USER_A, other, itemIds(other))).isEqualTo(200);
+        assertThat(runCount(other)).isEqualTo(1);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM results WHERE bracket_id = ?", Long.class, id)).isEqualTo(7);
+        assertThat(uncounted("quota")).isEqualTo(overQuota + 4);
+    }
+
+    private int submit(String token, long bracketId, List<Long> ranking) throws Exception {
+        return perform(as(token, postJson("/brackets/" + bracketId + "/results", runPayload(ranking, null, null))))
+                .getResponse().getStatus();
     }
 
     private double uncounted(String reason) {
@@ -214,9 +228,12 @@ class RunIntegrityIT extends IntegrationTest {
                 List.of(r.get(7), r.get(6), r.get(5), r.get(4), r.get(3), r.get(2), r.get(1), r.get(0)));
         String[] users = {USER_A, USER_B, USER_C, null, ADMIN};
         for (int i = 0; i < runs.size(); i++) {
-            assertThat(perform(as(users[i], postJson("/brackets/" + id + "/results", runPayload(runs.get(i), null, null))))
+            String address = "198.51.100." + (i + 1); // each player on their own network, so all five count
+            assertThat(perform(as(users[i], postJson("/brackets/" + id + "/results", runPayload(runs.get(i), null, null))
+                    .with(r2 -> { r2.setRemoteAddr(address); return r2; })))
                     .getResponse().getStatus()).isEqualTo(200);
         }
+        assertThat(runCount(id)).isEqualTo(5);
         // An uncounted run must stay out of the rebuild too.
         JsonNode quick = startRun(null, id, 4);
         perform(postJson("/brackets/" + id + "/results", Map.of("ticket", quick.get("ticket").asString(), "matches", knockoutMatches(ids(quick)))));
