@@ -15,7 +15,7 @@ name: duely
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: bracket_battle
@@ -127,7 +127,7 @@ services:
 
   # pg_dump -Fc every night into BACKUP_DIR on the host, 14 days kept (deploy/backup.sh).
   backup:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/backup.sh"]
     environment:
