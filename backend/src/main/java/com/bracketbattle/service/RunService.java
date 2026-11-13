@@ -103,9 +103,10 @@ public class RunService {
      * Saves a finished run. Idempotent on the ticket: a retry by the same submitter returns the
      * original result, while a ticket reused by someone else is a 409.
      *
-     * @param guestSubject the limiter subject for a guest (their network); unused when signed in
+     * @param addressSubject the caller's network ({@code ClientSubject}), signed in or not: every
+     *                       run counts against its address's daily quota
      */
-    public Result saveRun(Long bracketId, String userId, String guestSubject, SaveResultRequest request) {
+    public Result saveRun(Long bracketId, String userId, String addressSubject, SaveResultRequest request) {
         if (!bracketRepository.existsById(bracketId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Bracket not found");
         }
@@ -127,7 +128,7 @@ public class RunService {
             return requireSameSubmitter(existing.get(), bracketId, userId);
         }
 
-        boolean counted = isCounted(bracketId, userId, guestSubject, claims, matches.size());
+        boolean counted = isCounted(bracketId, userId, addressSubject, claims, matches.size());
         Result result = new Result(bracketId, userId, scored.ranking(), matches, claims.nonce());
         result.setCounted(counted);
         result.setDisplayName(blankToNull(Sanitizer.stripToPlain(request.displayName(), 100)));
@@ -157,19 +158,20 @@ public class RunService {
 
     /**
      * Whether a run adds to the leaderboard. Not counted, without telling the client: a run
-     * faster than the UI allows (it animates every pick for over a second), and runs past the
-     * daily quota for this bracket, per signed-in user or per guest network.
+     * faster than the UI allows (it animates every pick for over a second), and runs past a
+     * daily quota for this bracket: the signed-in user's, then the network's. The network quota
+     * applies to every run, so signing in or out does not add to what one address can count; a
+     * run the user's quota refuses does not use up the network's.
      */
-    private boolean isCounted(long bracketId, String userId, String guestSubject, RunTickets.Claims claims, int matchCount) {
+    private boolean isCounted(long bracketId, String userId, String addressSubject, RunTickets.Claims claims, int matchCount) {
         long elapsed = Duration.between(claims.issuedAt(), clock.instant()).toMillis();
         if (elapsed < minMillisPerMatch * matchCount) {
             log.info("Run on bracket {} not counted: {} matches in {} ms", bracketId, matchCount, elapsed);
             tooFast.increment();
             return false;
         }
-        boolean signedIn = userId != null;
-        boolean withinQuota = rateLimiter.tryConsume(signedIn ? "counted-user" : "counted-ip",
-                bracketId + ":" + (signedIn ? userId : guestSubject));
+        boolean withinQuota = (userId == null || rateLimiter.tryConsume("counted-user", bracketId + ":" + userId))
+                && rateLimiter.tryConsume("counted-ip", bracketId + ":" + addressSubject);
         if (!withinQuota) {
             log.info("Run on bracket {} not counted: daily quota used", bracketId);
             overQuota.increment();
