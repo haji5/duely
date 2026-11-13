@@ -32,7 +32,7 @@ services:
       retries: 10
 
   valkey:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:9-alpine
     restart: unless-stopped
     # The cache, disposable by design: nothing is written to disk, and when full it evicts the
     # least recently used entries. Rate-limit counters live in valkey-limits instead.
@@ -49,7 +49,7 @@ services:
   # them. Never evicts: when full, writes fail and the backend counts in memory instead. Nothing
   # on disk either, so a restart resets the windows.
   valkey-limits:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:9-alpine
     restart: unless-stopped
     command: ["valkey-server", "--appendonly", "no", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
     networks:

@@ -20,7 +20,7 @@ services:
       retries: 10
 
   valkey:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:9-alpine
     restart: unless-stopped
     ports:
       # Bound to localhost only: Valkey has no password and holds deserialized cache data
@@ -40,7 +40,7 @@ services:
   # them. Never evicts: when full, writes fail and the backend counts in memory instead. Nothing
   # on disk either, so a restart resets the windows.
   valkey-limits:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:9-alpine
     restart: unless-stopped
     command: ["valkey-server", "--appendonly", "no", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
     networks:
