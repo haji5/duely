@@ -76,10 +76,11 @@ public class ModerationService {
         if ("bracket".equals(request.targetType())) {
             bracketAccess.requireVisible(targetId, authentication);
         } else {
-            Result result = resultRepository.findById(targetId)
+            // A comment on a hidden bracket gets the same answer as one that does not exist.
+            resultRepository.findById(targetId)
                     .filter(r -> r.isCounted() && r.getComment() != null && !r.getComment().isBlank())
+                    .flatMap(r -> bracketAccess.findVisible(r.getBracketId(), authentication))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comment not found"));
-            bracketAccess.requireVisible(result.getBracketId(), authentication);
         }
         reportRepository.insert(request.targetType(), targetId, reason,
                 details == null || details.isBlank() ? null : details, reporterUid);
