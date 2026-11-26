@@ -35,7 +35,7 @@ RUN npm run build
 
 # Runtime stage. An exact version, so a rebuild can't change nginx underneath; Dependabot
 # proposes updates.
-FROM nginx:1.31.8-alpine
+FROM nginx:1.31.9-alpine
 
 WORKDIR /
 
